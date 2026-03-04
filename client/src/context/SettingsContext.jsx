@@ -22,6 +22,13 @@ export function SettingsProvider({ children }) {
 
   useEffect(() => { fetchSettings(); }, []);
 
+  // Apply theme to document whenever settings change
+  useEffect(() => {
+    if (settings?.theme) {
+      document.documentElement.setAttribute('data-theme', settings.theme);
+    }
+  }, [settings?.theme]);
+
   return (
     <SettingsContext.Provider value={{ settings, setSettings, loading, refetchSettings: fetchSettings }}>
       {children}

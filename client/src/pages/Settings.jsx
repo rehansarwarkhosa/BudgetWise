@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { useSettings } from '../context/SettingsContext';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
+import { IoSunny, IoMoon } from 'react-icons/io5';
 import { updateSettings, deleteAllData, exportAllData, importAllData } from '../api';
 
 export default function Settings() {
@@ -18,6 +19,7 @@ export default function Settings() {
   const [mode, setMode] = useState(settings?.mode || 'monthly');
   const [negativeLimit, setNegativeLimit] = useState(settings?.negativeLimit ?? 0);
   const [notificationEmail, setNotificationEmail] = useState(settings?.notificationEmail || '');
+  const [theme, setTheme] = useState(settings?.theme || 'dark');
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
@@ -25,6 +27,7 @@ export default function Settings() {
       setMode(settings.mode || 'monthly');
       setNegativeLimit(settings.negativeLimit ?? 0);
       setNotificationEmail(settings.notificationEmail || '');
+      setTheme(settings.theme || 'dark');
       setInitialized(true);
     }
   }, [settings, initialized]);
@@ -32,7 +35,7 @@ export default function Settings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateSettings({ mode, negativeLimit: Number(negativeLimit), notificationEmail });
+      await updateSettings({ mode, negativeLimit: Number(negativeLimit), notificationEmail, theme });
       await refetchSettings();
       setInitialized(false);
       toast.success('Settings saved');
@@ -88,6 +91,36 @@ export default function Settings() {
   return (
     <div className="page">
       <h1 className="page-title">Settings</h1>
+
+      {/* Theme Toggle */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="form-group">
+          <label>Appearance</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {['light', 'dark'].map((t) => (
+              <button key={t} type="button" onClick={async () => {
+                setTheme(t);
+                document.documentElement.setAttribute('data-theme', t);
+                try {
+                  await updateSettings({ theme: t });
+                  await refetchSettings();
+                  setInitialized(false);
+                } catch {}
+              }} style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                padding: '10px 14px', borderRadius: 'var(--radius-sm)', fontSize: 14, fontWeight: 600,
+                border: `2px solid ${theme === t ? 'var(--primary)' : 'var(--border)'}`,
+                background: theme === t ? 'var(--primary)' : 'transparent',
+                color: theme === t ? 'white' : 'var(--text-secondary)',
+                cursor: 'pointer', transition: 'all 0.2s',
+              }}>
+                {t === 'light' ? <IoSunny size={18} /> : <IoMoon size={18} />}
+                {t === 'light' ? 'Light' : 'Dark'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="form-group">

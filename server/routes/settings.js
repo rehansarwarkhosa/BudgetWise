@@ -34,7 +34,7 @@ router.get('/', async (req, res, next) => {
 // Update settings
 router.put('/', async (req, res, next) => {
   try {
-    const { mode, negativeLimit, currentPeriod, notificationEmail } = req.body;
+    const { mode, negativeLimit, currentPeriod, notificationEmail, theme } = req.body;
     let settings = await Settings.findOne();
     if (!settings) {
       const period = getCurrentPeriod();
@@ -44,6 +44,7 @@ router.put('/', async (req, res, next) => {
     if (negativeLimit !== undefined) settings.negativeLimit = negativeLimit;
     if (currentPeriod) settings.currentPeriod = currentPeriod;
     if (notificationEmail !== undefined) settings.notificationEmail = notificationEmail;
+    if (theme !== undefined) settings.theme = theme;
     await settings.save();
     success(res, settings);
   } catch (err) { next(err); }
@@ -119,6 +120,8 @@ router.post('/import', async (req, res, next) => {
           mode: data.settings.mode,
           negativeLimit: data.settings.negativeLimit,
           currentPeriod: data.settings.currentPeriod,
+          notificationEmail: data.settings.notificationEmail || '',
+          theme: data.settings.theme || 'dark',
         }, { upsert: true });
       }
 

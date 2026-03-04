@@ -8,6 +8,7 @@ const settingsSchema = new mongoose.Schema({
     year: { type: Number, required: true },
   },
   notificationEmail: { type: String, default: '' },
+  theme: { type: String, enum: ['dark', 'light'], default: 'dark' },
 }, { timestamps: true });
 
 export default mongoose.model('Settings', settingsSchema);

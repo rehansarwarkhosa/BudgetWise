@@ -11,7 +11,7 @@ export default function Modal({ open, onClose, title, children }) {
 
   return (
     <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+      position: 'fixed', inset: 0, background: 'var(--modal-backdrop)',
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
       zIndex: 100, padding: 0,
     }}>
