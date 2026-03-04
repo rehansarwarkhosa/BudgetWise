@@ -36,6 +36,7 @@ export const deleteRoutine = (id) => api.delete(`/routines/${id}`);
 export const getRoutineEntries = (id) => api.get(`/routines/${id}/entries`);
 export const logRoutineEntry = (id, data) => api.post(`/routines/${id}/entries`, data);
 export const deleteRoutineEntry = (entryId) => api.delete(`/routines/entries/${entryId}`);
+export const batchLogRoutineEntries = (id, data) => api.post(`/routines/${id}/entries/batch`, data);
 export const checkReminders = () => api.get('/routines/check-reminders');
 
 // Savings

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { IoAdd, IoTrash, IoCheckmarkCircle, IoCloseCircle, IoChevronForward, IoCreate, IoCopy } from 'react-icons/io5';
+import { IoAdd, IoTrash, IoCheckmarkCircle, IoCloseCircle, IoChevronForward, IoCreate, IoCopy, IoFlash } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
@@ -9,7 +9,7 @@ import useFetch from '../hooks/useFetch';
 import { formatDateTime, formatDate } from '../utils/format';
 import {
   getRoutines, createRoutine, deleteRoutine, updateRoutine,
-  getRoutineEntries, logRoutineEntry, deleteRoutineEntry,
+  getRoutineEntries, logRoutineEntry, deleteRoutineEntry, batchLogRoutineEntries,
 } from '../api';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -320,6 +320,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [logModal, setLogModal] = useState(false);
+  const [batchModal, setBatchModal] = useState(false);
   const [fetched, setFetched] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDeleteEntry, setConfirmDeleteEntry] = useState(null);
@@ -459,9 +460,16 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
       {/* Action buttons */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {!isExpired && (
-          <button className="btn-primary" style={{ flex: 1 }} onClick={() => setLogModal(true)}>
-            Log Entry
-          </button>
+          <>
+            <button className="btn-primary" style={{ flex: 1 }} onClick={() => setLogModal(true)}>
+              Log Entry
+            </button>
+            <button className="btn-outline" style={{ width: 'auto', padding: '12px 14px' }}
+              title="Quick Batch"
+              onClick={() => setBatchModal(true)}>
+              <IoFlash size={16} />
+            </button>
+          </>
         )}
         <button className="btn-outline" style={{ width: 'auto', padding: '12px 14px' }}
           onClick={() => {
@@ -553,6 +561,11 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
       {logModal && (
         <LogEntryModal open={logModal} routine={routine}
           onClose={() => setLogModal(false)} onDone={() => { fetchEntries(); onDone(); }} />
+      )}
+
+      {batchModal && (
+        <BatchLogModal open={batchModal} routine={routine}
+          onClose={() => setBatchModal(false)} onDone={() => { fetchEntries(); onDone(); }} />
       )}
 
       <ConfirmModal open={confirmDelete} onClose={() => setConfirmDelete(false)}
@@ -682,6 +695,64 @@ function LogEntryModal({ open, routine, onClose, onDone }) {
 
         <button type="submit" className="btn-primary" disabled={loading}>
           {loading ? 'Logging...' : 'Log Entry'}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+function BatchLogModal({ open, routine, onClose, onDone }) {
+  const [status, setStatus] = useState('incomplete');
+  const [count, setCount] = useState(1);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await batchLogRoutineEntries(routine._id, { status, count });
+      toast.success(`${count} ${status} entr${count > 1 ? 'ies' : 'y'} logged`);
+      onClose(); onDone();
+    } catch (err) { toast.error(err.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Quick Batch Log">
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label>Status</label>
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="complete">Complete</option>
+            <option value="incomplete">Incomplete</option>
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label>How many entries?</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button type="button" className="btn-outline"
+              style={{ width: 40, height: 40, padding: 0, fontSize: 20, fontWeight: 700 }}
+              onClick={() => setCount(c => Math.max(1, c - 1))}>−</button>
+            <span style={{ fontSize: 28, fontWeight: 700, minWidth: 40, textAlign: 'center' }}>{count}</span>
+            <button type="button" className="btn-outline"
+              style={{ width: 40, height: 40, padding: 0, fontSize: 20, fontWeight: 700 }}
+              onClick={() => setCount(c => Math.min(50, c + 1))}>+</button>
+          </div>
+        </div>
+
+        <div style={{
+          padding: '10px 12px', background: 'var(--bg-input)', borderRadius: 8,
+          fontSize: 13, color: 'var(--text-muted)', marginBottom: 16,
+        }}>
+          This will log <strong style={{ color: 'var(--text-primary)' }}>{count}</strong> {status === 'complete'
+            ? <span style={{ color: 'var(--success)' }}>complete</span>
+            : <span style={{ color: 'var(--danger)' }}>incomplete</span>
+          } entr{count > 1 ? 'ies' : 'y'} right now.
+        </div>
+
+        <button type="submit" className="btn-primary" disabled={loading}>
+          {loading ? 'Logging...' : `Log ${count} Entr${count > 1 ? 'ies' : 'y'}`}
         </button>
       </form>
     </Modal>

@@ -234,4 +234,32 @@ router.post('/:id/entries', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Batch log entries (quick shortcut)
+router.post('/:id/entries/batch', async (req, res, next) => {
+  try {
+    const { status, count } = req.body;
+    const routine = await Routine.findById(req.params.id);
+    if (!routine) return error(res, 'Routine not found', 404);
+
+    const now = getNowKarachi();
+    if (routine.dueDate && new Date(routine.dueDate) < now) {
+      return error(res, 'Routine has expired, no more entries allowed', 400);
+    }
+
+    const n = Math.min(Math.max(1, parseInt(count) || 1), 50);
+    const entryDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+
+    const docs = Array.from({ length: n }, () => ({
+      routineId: req.params.id,
+      status: status || 'complete',
+      date: entryDate,
+      fieldValues: [],
+      manualDate: false,
+    }));
+
+    const entries = await RoutineEntry.insertMany(docs);
+    success(res, entries, 201);
+  } catch (err) { next(err); }
+});
+
 export default router;
