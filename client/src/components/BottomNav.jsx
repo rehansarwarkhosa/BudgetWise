@@ -1,8 +1,9 @@
 import { NavLink } from 'react-router-dom';
-import { IoWallet, IoRepeat, IoSave, IoTime, IoSettings, IoDocumentText } from 'react-icons/io5';
+import { IoWallet, IoRepeat, IoSave, IoTime, IoSettings, IoDocumentText, IoFlash } from 'react-icons/io5';
 
 const tabs = [
-  { path: '/', icon: IoWallet, label: 'Budget' },
+  { path: '/', icon: IoFlash, label: 'Trail' },
+  { path: '/budget', icon: IoWallet, label: 'Budget' },
   { path: '/routines', icon: IoRepeat, label: 'Routines' },
   { path: '/savings', icon: IoSave, label: 'Savings' },
   { path: '/notes', icon: IoDocumentText, label: 'Notes' },

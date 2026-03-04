@@ -8,6 +8,7 @@ import Savings from './pages/Savings';
 import History from './pages/History';
 import Settings from './pages/Settings';
 import Notes from './pages/Notes';
+import QuickTrail from './pages/QuickTrail';
 import Guide from './pages/Guide';
 
 export default function App() {
@@ -26,7 +27,8 @@ export default function App() {
           }}
         />
         <Routes>
-          <Route path="/" element={<Budget />} />
+          <Route path="/" element={<QuickTrail />} />
+          <Route path="/budget" element={<Budget />} />
           <Route path="/routines" element={<Routines />} />
           <Route path="/savings" element={<Savings />} />
           <Route path="/notes" element={<Notes />} />

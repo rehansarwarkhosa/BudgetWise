@@ -5,13 +5,15 @@ import { useSettings } from '../context/SettingsContext';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
 import { IoSunny, IoMoon } from 'react-icons/io5';
-import { updateSettings, deleteAllData, exportAllData, importAllData } from '../api';
+import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails } from '../api';
 
 export default function Settings() {
   const { settings, loading, refetchSettings } = useSettings();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [confirmDeleteTrails, setConfirmDeleteTrails] = useState(false);
+  const [deletingTrails, setDeletingTrails] = useState(false);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
@@ -192,6 +194,17 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* Delete Trail Entries */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Trail Data</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Delete all quick trail entries.
+        </p>
+        <button className="btn-danger" onClick={() => setConfirmDeleteTrails(true)} disabled={deletingTrails}>
+          {deletingTrails ? 'Deleting...' : 'Delete All Trail Entries'}
+        </button>
+      </div>
+
       {/* Danger Zone */}
       <div className="card" style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--danger)', marginBottom: 8 }}>
@@ -210,6 +223,18 @@ export default function Settings() {
         title="Delete all data?"
         message="This will permanently delete ALL data (income, budgets, expenses, routines, savings, notes, tags). This action cannot be undone. Consider exporting a backup first."
         confirmText="Delete Everything" />
+
+      <ConfirmModal open={confirmDeleteTrails} onClose={() => setConfirmDeleteTrails(false)}
+        onConfirm={async () => {
+          setDeletingTrails(true);
+          try {
+            await deleteAllTrails();
+            toast.success('All trail entries deleted');
+          } catch (err) { toast.error(err.message); }
+          finally { setDeletingTrails(false); }
+        }}
+        title="Delete all trail entries?"
+        message="This will permanently delete all your quick trail entries. This action cannot be undone." />
     </div>
   );
 }

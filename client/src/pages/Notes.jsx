@@ -487,7 +487,7 @@ function CreateSubTopicModal({ open, topicId, onClose, onDone }) {
 
 // ─── Note Editor Modal ───
 
-const COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#F1F1F6'];
+const COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
 
 function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsChanged }) {
   const [title, setTitle] = useState(note?.title || '');

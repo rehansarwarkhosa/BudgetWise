@@ -10,6 +10,7 @@ import Tag from '../models/Tag.js';
 import Topic from '../models/Topic.js';
 import SubTopic from '../models/SubTopic.js';
 import Note from '../models/Note.js';
+import Trail from '../models/Trail.js';
 import { success, error } from '../utils/response.js';
 import { getCurrentPeriod } from '../utils/monthEnd.js';
 
@@ -53,7 +54,7 @@ router.put('/', async (req, res, next) => {
 // Export all data
 router.get('/export', async (req, res, next) => {
   try {
-    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes] = await Promise.all([
+    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails] = await Promise.all([
       Settings.findOne(),
       Income.find(),
       Budget.find(),
@@ -65,11 +66,12 @@ router.get('/export', async (req, res, next) => {
       Topic.find(),
       SubTopic.find(),
       Note.find(),
+      Trail.find(),
     ]);
     success(res, {
       exportDate: new Date().toISOString(),
       version: 1,
-      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes,
+      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails,
     });
   } catch (err) { next(err); }
 });
@@ -92,6 +94,7 @@ router.post('/import', async (req, res, next) => {
       topics: await Topic.find().lean(),
       subTopics: await SubTopic.find().lean(),
       notes: await Note.find().lean(),
+      trails: await Trail.find().lean(),
       settings: await Settings.findOne().lean(),
     };
 
@@ -101,6 +104,7 @@ router.post('/import', async (req, res, next) => {
         Income.deleteMany({}), Budget.deleteMany({}), Expense.deleteMany({}),
         Routine.deleteMany({}), RoutineEntry.deleteMany({}), Savings.deleteMany({}),
         Tag.deleteMany({}), Topic.deleteMany({}), SubTopic.deleteMany({}), Note.deleteMany({}),
+        Trail.deleteMany({}),
       ]);
 
       // Restore from import file — sequential to catch failures early
@@ -114,6 +118,7 @@ router.post('/import', async (req, res, next) => {
       if (data.topics?.length) await Topic.insertMany(data.topics);
       if (data.subTopics?.length) await SubTopic.insertMany(data.subTopics);
       if (data.notes?.length) await Note.insertMany(data.notes);
+      if (data.trails?.length) await Trail.insertMany(data.trails);
 
       if (data.settings) {
         await Settings.findOneAndUpdate({}, {
@@ -132,6 +137,7 @@ router.post('/import', async (req, res, next) => {
         Income.deleteMany({}), Budget.deleteMany({}), Expense.deleteMany({}),
         Routine.deleteMany({}), RoutineEntry.deleteMany({}), Savings.deleteMany({}),
         Tag.deleteMany({}), Topic.deleteMany({}), SubTopic.deleteMany({}), Note.deleteMany({}),
+        Trail.deleteMany({}),
       ]);
       if (snapshot.incomes.length) await Income.insertMany(snapshot.incomes);
       if (snapshot.budgets.length) await Budget.insertMany(snapshot.budgets);
@@ -143,6 +149,7 @@ router.post('/import', async (req, res, next) => {
       if (snapshot.topics.length) await Topic.insertMany(snapshot.topics);
       if (snapshot.subTopics.length) await SubTopic.insertMany(snapshot.subTopics);
       if (snapshot.notes.length) await Note.insertMany(snapshot.notes);
+      if (snapshot.trails.length) await Trail.insertMany(snapshot.trails);
       if (snapshot.settings) {
         await Settings.findOneAndUpdate({}, snapshot.settings, { upsert: true });
       }
@@ -165,6 +172,7 @@ router.delete('/all-data', async (req, res, next) => {
       Topic.deleteMany({}),
       SubTopic.deleteMany({}),
       Note.deleteMany({}),
+      Trail.deleteMany({}),
     ]);
     const period = getCurrentPeriod();
     const settings = await Settings.findOneAndUpdate(

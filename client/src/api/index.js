@@ -67,3 +67,9 @@ export const createNote = (subTopicId, data) => api.post(`/notes/subtopics/${sub
 export const updateNote = (id, data) => api.put(`/notes/note/${id}`, data);
 export const deleteNote = (id) => api.delete(`/notes/note/${id}`);
 export const searchNotes = (params) => api.get('/notes/search', { params });
+
+// Trails
+export const getTrails = (page) => api.get(`/trails?page=${page}&limit=20`);
+export const createTrail = (data) => api.post('/trails', data);
+export const deleteTrail = (id) => api.delete(`/trails/${id}`);
+export const deleteAllTrails = () => api.delete('/trails');
