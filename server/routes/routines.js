@@ -39,16 +39,26 @@ router.get('/check-reminders', async (req, res, next) => {
     const currentMin = now.getMinutes();
     const todayStr = now.toISOString().split('T')[0];
 
+    // notifyKey = "YYYY-MM-DD|HH:mm" — unique per day + scheduled time
+    const notifyKey = `${todayStr}|${String(currentHour).padStart(2, '0')}:${String(currentMin).padStart(2, '0')}`;
+
     const routines = await Routine.find({ dueDate: { $gte: now } });
     const triggered = [];
 
     for (const routine of routines) {
+      let routineDirty = false;
       for (const reminder of routine.reminders) {
         if (!reminder.enabled) continue;
 
         const [rh, rm] = reminder.time.split(':').map(Number);
         const timeDiff = (currentHour * 60 + currentMin) - (rh * 60 + rm);
         if (timeDiff < 0 || timeDiff >= 10) continue;
+
+        // Build the key for this specific reminder firing: date + scheduled time
+        const reminderKey = `${todayStr}|${reminder.time}`;
+
+        // Skip if already notified for this date+time
+        if (reminder.lastNotifiedDate === reminderKey) continue;
 
         let matches = false;
         switch (reminder.type) {
@@ -71,9 +81,16 @@ router.get('/check-reminders', async (req, res, next) => {
             routineId: routine._id,
             routineName: routine.name,
             reminderTime: reminder.time,
+            reminderId: reminder._id,
             message: `Time to work on "${routine.name}"!`,
           });
+          // Mark as notified
+          reminder.lastNotifiedDate = reminderKey;
+          routineDirty = true;
         }
+      }
+      if (routineDirty) {
+        await routine.save();
       }
     }
 

@@ -12,6 +12,7 @@ const reminderSchema = new mongoose.Schema({
   days: [{ type: Number }],
   dates: [{ type: Date }],
   enabled: { type: Boolean, default: true },
+  lastNotifiedDate: { type: String, default: '' },
 }, { _id: true });
 
 const routineSchema = new mongoose.Schema({
