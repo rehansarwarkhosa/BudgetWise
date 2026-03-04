@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useSettings } from '../context/SettingsContext';
@@ -18,16 +18,23 @@ export default function Settings() {
   const [mode, setMode] = useState(settings?.mode || 'monthly');
   const [negativeLimit, setNegativeLimit] = useState(settings?.negativeLimit ?? 0);
   const [notificationEmail, setNotificationEmail] = useState(settings?.notificationEmail || '');
+  const [initialized, setInitialized] = useState(false);
 
-  if (settings && mode !== settings.mode && !saving) setMode(settings.mode);
-  if (settings && negativeLimit !== settings.negativeLimit && !saving) setNegativeLimit(settings.negativeLimit);
-  if (settings && notificationEmail !== settings.notificationEmail && !saving) setNotificationEmail(settings.notificationEmail || '');
+  useEffect(() => {
+    if (settings && !initialized) {
+      setMode(settings.mode || 'monthly');
+      setNegativeLimit(settings.negativeLimit ?? 0);
+      setNotificationEmail(settings.notificationEmail || '');
+      setInitialized(true);
+    }
+  }, [settings, initialized]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
       await updateSettings({ mode, negativeLimit: Number(negativeLimit), notificationEmail });
       await refetchSettings();
+      setInitialized(false);
       toast.success('Settings saved');
     } catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
