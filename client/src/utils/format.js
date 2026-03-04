@@ -13,6 +13,15 @@ export const formatDateTime = (date) => {
   return new Date(date).toLocaleString('en-PK', {
     timeZone: 'Asia/Karachi',
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    hour12: true,
+  });
+};
+
+export const formatTime = (date) => {
+  return new Date(date).toLocaleTimeString('en-PK', {
+    timeZone: 'Asia/Karachi',
+    hour: '2-digit', minute: '2-digit',
+    hour12: true,
   });
 };
 

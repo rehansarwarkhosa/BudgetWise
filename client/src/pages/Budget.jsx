@@ -6,7 +6,7 @@ import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import useFetch from '../hooks/useFetch';
-import { formatPKR } from '../utils/format';
+import { formatPKR, formatDate } from '../utils/format';
 import {
   getIncomeSummary, getIncomes, addIncome, deleteIncome,
   getBudgets, createBudget, updateBudget, deleteBudget, addFundsToBudget,
@@ -477,7 +477,7 @@ function BudgetDetailModal({ open, budget, onClose, onDone }) {
                       <div>
                         <div style={{ fontSize: 14, fontWeight: 500 }}>{exp.description}</div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                          {new Date(exp.date).toLocaleDateString('en-PK', { timeZone: 'Asia/Karachi' })}
+                          {formatDate(exp.date)}
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -528,7 +528,7 @@ function IncomeListModal({ open, incomes, onClose, onDelete }) {
                   <div style={{ fontSize: 11, color: 'var(--warning)' }}>Note: {inc.deficitNote}</div>
                 )}
                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  {new Date(inc.date).toLocaleDateString('en-PK', { timeZone: 'Asia/Karachi' })}
+                  {formatDate(inc.date)}
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

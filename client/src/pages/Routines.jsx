@@ -6,11 +6,13 @@ import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import useFetch from '../hooks/useFetch';
-import { formatDateTime } from '../utils/format';
+import { formatDateTime, formatDate } from '../utils/format';
 import {
   getRoutines, createRoutine, deleteRoutine, updateRoutine,
   getRoutineEntries, logRoutineEntry, deleteRoutineEntry,
 } from '../api';
+
+const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 export default function Routines() {
   const { data: routines, loading, refetch } = useFetch(getRoutines);
@@ -31,17 +33,28 @@ export default function Routines() {
           {routines?.map((r) => (
             <div key={r._id} className="card" style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
               onClick={() => setDetailRoutine(r)}>
-              <div>
-                <h3 style={{ fontSize: 15, fontWeight: 600 }}>{r.name}</h3>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 600 }}>{r.name}</h3>
+                  {r.isExpired && <span className="badge badge-danger">Expired</span>}
+                </div>
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {r.entryCount} entr{r.entryCount !== 1 ? 'ies' : 'y'}
+                  {r.completedEntries}/{r.targetEntries} entries ({r.progress}%)
                   {r.lastEntry && <> &middot; Last: {formatDateTime(r.lastEntry.date)}</>}
                 </p>
                 {r.dueDate && (
-                  <p style={{ fontSize: 11, color: 'var(--warning)', marginTop: 2 }}>
-                    Due: {new Date(r.dueDate).toLocaleDateString('en-PK', { timeZone: 'Asia/Karachi' })}
+                  <p style={{ fontSize: 11, color: r.isExpired ? 'var(--danger)' : 'var(--warning)', marginTop: 2 }}>
+                    Due: {formatDate(r.dueDate)}
                   </p>
                 )}
+                {/* Mini progress bar */}
+                <div style={{ marginTop: 4, height: 4, background: 'var(--bg-input)', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', borderRadius: 2, transition: 'width 0.3s',
+                    width: `${Math.min(r.progress, 100)}%`,
+                    background: r.progress >= 100 ? 'var(--success)' : 'var(--primary)',
+                  }} />
+                </div>
               </div>
               <IoChevronForward size={18} color="var(--text-muted)" />
             </div>
@@ -60,10 +73,117 @@ export default function Routines() {
   );
 }
 
+function ReminderEditor({ reminders, setReminders }) {
+  const addReminder = () => {
+    setReminders([...reminders, { type: 'daily', time: '09:00', days: [], dates: [], enabled: true }]);
+  };
+
+  const updateReminder = (idx, key, val) => {
+    const updated = [...reminders];
+    updated[idx] = { ...updated[idx], [key]: val };
+    setReminders(updated);
+  };
+
+  const removeReminder = (idx) => {
+    setReminders(reminders.filter((_, i) => i !== idx));
+  };
+
+  const toggleDay = (idx, day) => {
+    const current = reminders[idx].days || [];
+    const updated = current.includes(day) ? current.filter(d => d !== day) : [...current, day];
+    updateReminder(idx, 'days', updated);
+  };
+
+  const addCustomDate = (idx, dateStr) => {
+    if (!dateStr) return;
+    const current = reminders[idx].dates || [];
+    updateReminder(idx, 'dates', [...current, dateStr]);
+  };
+
+  const removeCustomDate = (idx, dateIdx) => {
+    const current = reminders[idx].dates || [];
+    updateReminder(idx, 'dates', current.filter((_, i) => i !== dateIdx));
+  };
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <label style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>Reminders</label>
+        <button type="button" className="btn-ghost" onClick={addReminder}
+          style={{ color: 'var(--primary)', fontSize: 13 }}>+ Add Reminder</button>
+      </div>
+      {reminders.map((rem, idx) => (
+        <div key={idx} style={{ background: 'var(--bg-input)', borderRadius: 8, padding: 12, marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <select value={rem.type} onChange={(e) => updateReminder(idx, 'type', e.target.value)}
+              style={{ flex: 1 }}>
+              <option value="daily">Daily</option>
+              <option value="weekdays">Weekdays</option>
+              <option value="custom_days">Custom Days</option>
+              <option value="custom_dates">Custom Dates</option>
+            </select>
+            <input type="time" value={rem.time} onChange={(e) => updateReminder(idx, 'time', e.target.value)}
+              style={{ flex: '0 0 120px' }} />
+            <button type="button" className="btn-ghost" onClick={() => removeReminder(idx)}
+              style={{ color: 'var(--danger)', padding: 4 }}><IoTrash size={16} /></button>
+          </div>
+
+          {rem.type === 'custom_days' && (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {DAY_LABELS.map((label, dayIdx) => (
+                <button key={dayIdx} type="button"
+                  onClick={() => toggleDay(idx, dayIdx)}
+                  style={{
+                    width: 32, height: 32, borderRadius: '50%', fontSize: 12, fontWeight: 600,
+                    border: '1px solid var(--border)', cursor: 'pointer',
+                    background: (rem.days || []).includes(dayIdx) ? 'var(--primary)' : 'transparent',
+                    color: (rem.days || []).includes(dayIdx) ? 'white' : 'var(--text-secondary)',
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {rem.type === 'custom_dates' && (
+            <div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                <input type="date" id={`rem-date-${idx}`} style={{ flex: 1 }} />
+                <button type="button" className="btn-outline" style={{ width: 'auto', padding: '8px 12px', fontSize: 13 }}
+                  onClick={() => {
+                    const input = document.getElementById(`rem-date-${idx}`);
+                    addCustomDate(idx, input.value);
+                    input.value = '';
+                  }}>Add</button>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                {(rem.dates || []).map((d, di) => (
+                  <span key={di} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    background: 'var(--bg-card)', borderRadius: 12, padding: '2px 8px', fontSize: 11,
+                  }}>
+                    {formatDate(d)}
+                    <button type="button" onClick={() => removeCustomDate(idx, di)}
+                      style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: 0, fontSize: 14 }}>
+                      &times;
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed }) {
   const [name, setName] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [targetEntries, setTargetEntries] = useState('');
   const [fields, setFields] = useState([]);
+  const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -71,7 +191,12 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
   if (open && cloneSource && !initialized) {
     setName(cloneSource.name + ' (Copy)');
     setDueDate(cloneSource.dueDate ? cloneSource.dueDate.split('T')[0] : '');
+    setTargetEntries(cloneSource.targetEntries || '');
     setFields(cloneSource.fields?.map(f => ({ label: f.label, type: f.type, options: [...(f.options || [])] })) || []);
+    setReminders(cloneSource.reminders?.map(r => ({
+      type: r.type, time: r.time, days: [...(r.days || [])],
+      dates: [...(r.dates || [])], enabled: r.enabled ?? true,
+    })) || []);
     setInitialized(true);
     onCloneUsed?.();
   }
@@ -81,8 +206,10 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
   }
 
   if (!open && initialized) {
-    // Reset on close (will trigger on next render cycle)
-    setTimeout(() => { setName(''); setDueDate(''); setFields([]); setInitialized(false); }, 0);
+    setTimeout(() => {
+      setName(''); setDueDate(''); setTargetEntries(''); setFields([]); setReminders([]);
+      setInitialized(false);
+    }, 0);
   }
 
   const addField = () => {
@@ -107,14 +234,17 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
       const validFields = fields.filter((f) => f.label.trim());
       await createRoutine({
         name,
-        dueDate: dueDate || null,
+        dueDate,
+        targetEntries: Number(targetEntries),
         fields: validFields.map((f) => ({
           ...f,
           options: hasOptions(f.type) ? f.options.filter((o) => o.trim()) : [],
         })),
+        reminders,
       });
       toast.success('Routine created');
-      setName(''); setDueDate(''); setFields([]); setInitialized(false);
+      setName(''); setDueDate(''); setTargetEntries(''); setFields([]); setReminders([]);
+      setInitialized(false);
       onClose(); onDone();
     } catch (err) { toast.error(err.message); }
     finally { setLoading(false); }
@@ -129,9 +259,16 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
             onChange={(e) => setName(e.target.value)} required />
         </div>
         <div className="form-group">
-          <label>Due Date (optional)</label>
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <label>Due Date</label>
+          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
         </div>
+        <div className="form-group">
+          <label>Target Entries</label>
+          <input type="number" placeholder="e.g., 30" value={targetEntries}
+            onChange={(e) => setTargetEntries(e.target.value)} required min="1" />
+        </div>
+
+        <ReminderEditor reminders={reminders} setReminders={setReminders} />
 
         <div style={{ marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -189,6 +326,8 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
+  const [editTargetEntries, setEditTargetEntries] = useState('');
+  const [editReminders, setEditReminders] = useState([]);
 
   const fetchEntries = async () => {
     if (!routine?._id) return;
@@ -230,7 +369,12 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 
   const handleSaveEdit = async () => {
     try {
-      await updateRoutine(routine._id, { name: editName, dueDate: editDueDate || null });
+      await updateRoutine(routine._id, {
+        name: editName,
+        dueDate: editDueDate || null,
+        targetEntries: Number(editTargetEntries),
+        reminders: editReminders,
+      });
       toast.success('Routine updated');
       setEditing(false);
       onDone();
@@ -239,13 +383,15 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 
   // Compute stats
   const completedCount = entries.filter(e => e.status === 'complete').length;
+  const targetEntries = routine?.targetEntries || entries.length || 1;
+  const progress = Math.round((completedCount / targetEntries) * 100);
   const completionRate = entries.length > 0 ? Math.round((completedCount / entries.length) * 100) : 0;
+  const isExpired = routine?.isExpired;
 
   // Streak: consecutive complete entries from most recent
   let currentStreak = 0;
   let longestStreak = 0;
   let tempStreak = 0;
-  // entries are sorted newest first
   for (const entry of entries) {
     if (entry.status === 'complete') {
       tempStreak++;
@@ -254,7 +400,6 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
       tempStreak = 0;
     }
   }
-  // Current streak from newest
   for (const entry of entries) {
     if (entry.status === 'complete') currentStreak++;
     else break;
@@ -262,6 +407,30 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 
   return (
     <Modal open={open} onClose={handleClose} title={routine?.name}>
+      {/* Expired badge */}
+      {isExpired && (
+        <div style={{ marginBottom: 12 }}>
+          <span className="badge badge-danger" style={{ fontSize: 13, padding: '4px 12px' }}>Expired</span>
+        </div>
+      )}
+
+      {/* Progress bar */}
+      {fetched && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+            <span>{completedCount}/{targetEntries} entries</span>
+            <span>{progress}%</span>
+          </div>
+          <div style={{ height: 8, background: 'var(--bg-input)', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', borderRadius: 4, transition: 'width 0.3s',
+              width: `${Math.min(progress, 100)}%`,
+              background: progress >= 100 ? 'var(--success)' : progress >= 75 ? 'var(--primary-light)' : 'var(--primary)',
+            }} />
+          </div>
+        </div>
+      )}
+
       {/* Stats bar */}
       {fetched && entries.length > 0 && (
         <div style={{
@@ -270,15 +439,15 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
         }}>
           <div style={{ flex: 1, textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--primary)' }}>{completionRate}%</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Completion</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Rate</div>
           </div>
           <div style={{ flex: 1, textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--success)' }}>{currentStreak}</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Current Streak</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Streak</div>
           </div>
           <div style={{ flex: 1, textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--warning)' }}>{longestStreak}</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Best Streak</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Best</div>
           </div>
           <div style={{ flex: 1, textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 700 }}>{entries.length}</div>
@@ -289,11 +458,22 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 
       {/* Action buttons */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <button className="btn-primary" style={{ flex: 1 }} onClick={() => setLogModal(true)}>
-          Log Entry
-        </button>
+        {!isExpired && (
+          <button className="btn-primary" style={{ flex: 1 }} onClick={() => setLogModal(true)}>
+            Log Entry
+          </button>
+        )}
         <button className="btn-outline" style={{ width: 'auto', padding: '12px 14px' }}
-          onClick={() => { setEditing(true); setEditName(routine?.name || ''); setEditDueDate(routine?.dueDate ? routine.dueDate.split('T')[0] : ''); }}>
+          onClick={() => {
+            setEditing(true);
+            setEditName(routine?.name || '');
+            setEditDueDate(routine?.dueDate ? routine.dueDate.split('T')[0] : '');
+            setEditTargetEntries(routine?.targetEntries || '');
+            setEditReminders(routine?.reminders?.map(r => ({
+              type: r.type, time: r.time, days: [...(r.days || [])],
+              dates: [...(r.dates || [])], enabled: r.enabled ?? true,
+            })) || []);
+          }}>
           <IoCreate size={16} />
         </button>
         <button className="btn-outline" style={{ width: 'auto', padding: '12px 14px' }}
@@ -317,6 +497,12 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
             <label>Due Date</label>
             <input type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} />
           </div>
+          <div className="form-group">
+            <label>Target Entries</label>
+            <input type="number" value={editTargetEntries} min="1"
+              onChange={(e) => setEditTargetEntries(e.target.value)} />
+          </div>
+          <ReminderEditor reminders={editReminders} setReminders={setEditReminders} />
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn-primary" style={{ flex: 1 }} onClick={handleSaveEdit}>Save</button>
             <button className="btn-outline" style={{ flex: 1 }} onClick={() => setEditing(false)}>Cancel</button>
@@ -421,8 +607,7 @@ function LogEntryModal({ open, routine, onClose, onDone }) {
         </div>
 
         <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input type="checkbox" checked={manualDate} onChange={(e) => setManualDate(e.target.checked)}
-            style={{ width: 'auto' }} />
+          <input type="checkbox" checked={manualDate} onChange={(e) => setManualDate(e.target.checked)} />
           <label style={{ margin: 0 }}>Set date manually</label>
         </div>
 
@@ -470,8 +655,7 @@ function LogEntryModal({ open, routine, onClose, onDone }) {
                 {field.options.map((opt) => (
                   <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, cursor: 'pointer' }}>
                     <input type="radio" name={field._id} value={opt}
-                      onChange={(e) => handleFieldChange(field._id, field.label, e.target.value)}
-                      style={{ width: 'auto' }} />
+                      onChange={(e) => handleFieldChange(field._id, field.label, e.target.value)} />
                     {opt}
                   </label>
                 ))}
@@ -487,8 +671,7 @@ function LogEntryModal({ open, routine, onClose, onDone }) {
                           ? [...current, opt]
                           : current.filter((v) => v !== opt);
                         handleFieldChange(field._id, field.label, newVal);
-                      }}
-                      style={{ width: 'auto' }} />
+                      }} />
                     {opt}
                   </label>
                 ))}

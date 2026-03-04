@@ -49,7 +49,7 @@ input, textarea, select, button {
   font-size: inherit;
 }
 
-input, textarea, select {
+input:not([type="radio"]):not([type="checkbox"]), textarea, select {
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -61,11 +61,16 @@ input, textarea, select {
   transition: border-color 0.2s;
 }
 
-input:focus, textarea:focus, select:focus {
+input[type="radio"], input[type="checkbox"] {
+  width: auto;
+  accent-color: var(--primary);
+}
+
+input:not([type="radio"]):not([type="checkbox"]):focus, textarea:focus, select:focus {
   border-color: var(--primary);
 }
 
-input::placeholder, textarea::placeholder {
+input:not([type="radio"]):not([type="checkbox"])::placeholder, textarea::placeholder {
   color: var(--text-muted);
 }
 

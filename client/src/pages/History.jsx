@@ -20,7 +20,7 @@ export default function History() {
 
   // Generate past periods (last 12 months)
   const periods = [];
-  const now = new Date();
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
   for (let i = 1; i <= 12; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     periods.push({ month: d.getMonth() + 1, year: d.getFullYear() });

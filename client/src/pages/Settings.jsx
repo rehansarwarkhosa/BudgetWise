@@ -48,7 +48,7 @@ export default function Settings() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `budgetwise-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `budgetwise-backup-${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' })}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Backup downloaded');

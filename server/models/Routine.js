@@ -6,10 +6,20 @@ const fieldSchema = new mongoose.Schema({
   options: [{ type: String }],
 }, { _id: true });
 
+const reminderSchema = new mongoose.Schema({
+  type: { type: String, enum: ['daily', 'weekdays', 'custom_days', 'custom_dates'], required: true },
+  time: { type: String, required: true },
+  days: [{ type: Number }],
+  dates: [{ type: Date }],
+  enabled: { type: Boolean, default: true },
+}, { _id: true });
+
 const routineSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  dueDate: { type: Date, default: null },
+  dueDate: { type: Date, required: true },
+  targetEntries: { type: Number, required: true, min: 1 },
   fields: [fieldSchema],
+  reminders: [reminderSchema],
 }, { timestamps: true });
 
 export default mongoose.model('Routine', routineSchema);
