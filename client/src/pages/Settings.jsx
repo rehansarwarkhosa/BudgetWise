@@ -1,0 +1,163 @@
+import { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import { useSettings } from '../context/SettingsContext';
+import Spinner from '../components/Spinner';
+import ConfirmModal from '../components/ConfirmModal';
+import { updateSettings, deleteAllData, exportAllData, importAllData } from '../api';
+
+export default function Settings() {
+  const { settings, loading, refetchSettings } = useSettings();
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef(null);
+  const navigate = useNavigate();
+
+  const [mode, setMode] = useState(settings?.mode || 'monthly');
+  const [negativeLimit, setNegativeLimit] = useState(settings?.negativeLimit ?? 0);
+
+  if (settings && mode !== settings.mode && !saving) setMode(settings.mode);
+  if (settings && negativeLimit !== settings.negativeLimit && !saving) setNegativeLimit(settings.negativeLimit);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateSettings({ mode, negativeLimit: Number(negativeLimit) });
+      await refetchSettings();
+      toast.success('Settings saved');
+    } catch (err) { toast.error(err.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleDeleteAll = async () => {
+    setDeleting(true);
+    try {
+      await deleteAllData();
+      await refetchSettings();
+      toast.success('All data deleted');
+    } catch (err) { toast.error(err.message); }
+    finally { setDeleting(false); }
+  };
+
+  const handleExport = async () => {
+    try {
+      const res = await exportAllData();
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `budgetwise-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Backup downloaded');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.version) throw new Error('Invalid backup file');
+      await importAllData(data);
+      await refetchSettings();
+      toast.success('Data restored successfully');
+    } catch (err) {
+      toast.error(err.message || 'Failed to import');
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div className="page">
+      <h1 className="page-title">Settings</h1>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="form-group">
+          <label>Budget Mode</label>
+          <select value={mode} onChange={(e) => setMode(e.target.value)}>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label>Negative Limit (PKR)</label>
+          <input type="number" value={negativeLimit} min="0"
+            onChange={(e) => setNegativeLimit(e.target.value)}
+            placeholder="How far income can go negative" />
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            Maximum amount your income pool can go into the negative when allocating budgets.
+          </p>
+        </div>
+
+        <div className="form-group">
+          <label>Current Period</label>
+          <p style={{ fontSize: 14, fontWeight: 500 }}>
+            {settings?.currentPeriod?.month}/{settings?.currentPeriod?.year}
+          </p>
+        </div>
+
+        <button className="btn-primary" onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving...' : 'Save Settings'}
+        </button>
+      </div>
+
+      {/* Guide */}
+      <div className="card" style={{ marginBottom: 16, cursor: 'pointer' }} onClick={() => navigate('/guide')}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Financial Module Guide</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+          Learn how income, budgets, expenses, savings, and rollover work together.
+        </p>
+      </div>
+
+      {/* Backup & Restore */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
+          Backup & Restore
+        </h3>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Export your data as a backup file, or restore from a previous backup.
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-primary" style={{ flex: 1 }} onClick={handleExport}>
+            Export Backup
+          </button>
+          <button className="btn-outline" style={{ flex: 1 }} disabled={importing}
+            onClick={() => fileInputRef.current?.click()}>
+            {importing ? 'Importing...' : 'Import Backup'}
+          </button>
+          <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport}
+            style={{ display: 'none' }} />
+        </div>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="card" style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--danger)', marginBottom: 8 }}>
+          Danger Zone
+        </h3>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Delete all data and reset the application. Consider exporting a backup first.
+        </p>
+        <button className="btn-danger" onClick={() => setConfirmDeleteAll(true)} disabled={deleting}>
+          {deleting ? 'Deleting...' : 'Delete All Data'}
+        </button>
+      </div>
+
+      <ConfirmModal open={confirmDeleteAll} onClose={() => setConfirmDeleteAll(false)}
+        onConfirm={handleDeleteAll}
+        title="Delete all data?"
+        message="This will permanently delete ALL data (income, budgets, expenses, routines, savings, notes, tags). This action cannot be undone. Consider exporting a backup first."
+        confirmText="Delete Everything" />
+    </div>
+  );
+}
