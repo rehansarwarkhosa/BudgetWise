@@ -34,7 +34,7 @@ router.get('/', async (req, res, next) => {
 // Update settings
 router.put('/', async (req, res, next) => {
   try {
-    const { mode, negativeLimit, currentPeriod } = req.body;
+    const { mode, negativeLimit, currentPeriod, notificationEmail } = req.body;
     let settings = await Settings.findOne();
     if (!settings) {
       const period = getCurrentPeriod();
@@ -43,6 +43,7 @@ router.put('/', async (req, res, next) => {
     if (mode !== undefined) settings.mode = mode;
     if (negativeLimit !== undefined) settings.negativeLimit = negativeLimit;
     if (currentPeriod) settings.currentPeriod = currentPeriod;
+    if (notificationEmail !== undefined) settings.notificationEmail = notificationEmail;
     await settings.save();
     success(res, settings);
   } catch (err) { next(err); }

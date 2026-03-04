@@ -3,24 +3,25 @@ export const formatPKR = (amount) => {
 };
 
 export const formatDate = (date) => {
-  return new Date(date).toLocaleDateString('en-PK', {
+  return new Date(date).toLocaleDateString('en-US', {
     timeZone: 'Asia/Karachi',
     day: 'numeric', month: 'short', year: 'numeric',
   });
 };
 
 export const formatDateTime = (date) => {
-  return new Date(date).toLocaleString('en-PK', {
+  return new Date(date).toLocaleString('en-US', {
     timeZone: 'Asia/Karachi',
-    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    day: 'numeric', month: 'short',
+    hour: 'numeric', minute: '2-digit',
     hour12: true,
   });
 };
 
 export const formatTime = (date) => {
-  return new Date(date).toLocaleTimeString('en-PK', {
+  return new Date(date).toLocaleTimeString('en-US', {
     timeZone: 'Asia/Karachi',
-    hour: '2-digit', minute: '2-digit',
+    hour: 'numeric', minute: '2-digit',
     hour12: true,
   });
 };

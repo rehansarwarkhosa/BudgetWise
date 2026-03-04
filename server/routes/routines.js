@@ -1,7 +1,8 @@
 import { Router } from 'express';
+import sgMail from '@sendgrid/mail';
 import Routine from '../models/Routine.js';
 import RoutineEntry from '../models/RoutineEntry.js';
-import PushSubscription from '../models/PushSubscription.js';
+import Settings from '../models/Settings.js';
 import { success, error } from '../utils/response.js';
 
 const router = Router();
@@ -28,24 +29,7 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// --- Push Subscription ---
-
-router.post('/subscribe', async (req, res, next) => {
-  try {
-    const { endpoint, keys } = req.body;
-    if (!endpoint || !keys?.p256dh || !keys?.auth) {
-      return error(res, 'Invalid subscription');
-    }
-    await PushSubscription.findOneAndUpdate(
-      { endpoint },
-      { endpoint, keys },
-      { upsert: true, new: true }
-    );
-    success(res, { message: 'Subscribed' }, 201);
-  } catch (err) { next(err); }
-});
-
-// --- Check Reminders (cron endpoint) ---
+// --- Check Reminders (cron endpoint) — sends email via SendGrid ---
 
 router.get('/check-reminders', async (req, res, next) => {
   try {
@@ -93,40 +77,48 @@ router.get('/check-reminders', async (req, res, next) => {
       }
     }
 
-    // Send push notifications
-    if (triggered.length > 0) {
-      try {
-        const webpush = await import('web-push');
-        const subscriptions = await PushSubscription.find();
+    // Send email notifications via SendGrid
+    let emailSent = false;
+    if (triggered.length > 0 && process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM_EMAIL) {
+      const settings = await Settings.findOne();
+      const toEmail = settings?.notificationEmail || process.env.NOTIFICATION_EMAIL;
 
-        if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-          webpush.default.setVapidDetails(
-            'mailto:budgetwise@example.com',
-            process.env.VAPID_PUBLIC_KEY,
-            process.env.VAPID_PRIVATE_KEY
-          );
+      if (toEmail) {
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-          for (const sub of subscriptions) {
-            for (const t of triggered) {
-              try {
-                await webpush.default.sendNotification(sub, JSON.stringify({
-                  title: `Reminder: ${t.routineName}`,
-                  body: t.message,
-                }));
-              } catch (pushErr) {
-                if (pushErr.statusCode === 410) {
-                  await PushSubscription.deleteOne({ _id: sub._id });
-                }
-              }
-            }
-          }
+        const reminderList = triggered.map(t =>
+          `<li><strong>${t.routineName}</strong> — scheduled at ${t.reminderTime}</li>`
+        ).join('');
+
+        const timeStr = now.toLocaleString('en-US', {
+          timeZone: 'Asia/Karachi',
+          day: 'numeric', month: 'short', year: 'numeric',
+          hour: 'numeric', minute: '2-digit', hour12: true,
+        });
+
+        try {
+          await sgMail.send({
+            to: toEmail,
+            from: process.env.SENDGRID_FROM_EMAIL,
+            subject: `BudgetWise — ${triggered.length} Routine Reminder${triggered.length > 1 ? 's' : ''}`,
+            html: `
+              <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #6C63FF; margin-bottom: 4px;">Routine Reminders</h2>
+                <p style="color: #666; font-size: 13px; margin-bottom: 16px;">${timeStr} (PKT)</p>
+                <ul style="padding-left: 20px; line-height: 1.8;">${reminderList}</ul>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+                <p style="color: #999; font-size: 12px;">Sent by BudgetWise</p>
+              </div>
+            `,
+          });
+          emailSent = true;
+        } catch (emailErr) {
+          console.error('SendGrid error:', emailErr.message);
         }
-      } catch {
-        // web-push not installed or VAPID not configured
       }
     }
 
-    success(res, triggered);
+    success(res, { triggered, emailSent, count: triggered.length });
   } catch (err) { next(err); }
 });
 
@@ -142,7 +134,6 @@ router.delete('/entries/:entryId', async (req, res, next) => {
 
 // --- Single routine CRUD (after static routes) ---
 
-// Get single routine
 router.get('/:id', async (req, res, next) => {
   try {
     const routine = await Routine.findById(req.params.id);
@@ -151,7 +142,6 @@ router.get('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Create routine
 router.post('/', async (req, res, next) => {
   try {
     const { name, dueDate, targetEntries, fields, reminders } = req.body;
@@ -169,7 +159,6 @@ router.post('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Update routine
 router.put('/:id', async (req, res, next) => {
   try {
     const { name, dueDate, targetEntries, fields, reminders } = req.body;
@@ -185,7 +174,6 @@ router.put('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Delete routine and its entries
 router.delete('/:id', async (req, res, next) => {
   try {
     const routine = await Routine.findByIdAndDelete(req.params.id);

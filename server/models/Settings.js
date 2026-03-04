@@ -7,6 +7,7 @@ const settingsSchema = new mongoose.Schema({
     month: { type: Number, required: true },
     year: { type: Number, required: true },
   },
+  notificationEmail: { type: String, default: '' },
 }, { timestamps: true });
 
 export default mongoose.model('Settings', settingsSchema);

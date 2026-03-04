@@ -17,14 +17,16 @@ export default function Settings() {
 
   const [mode, setMode] = useState(settings?.mode || 'monthly');
   const [negativeLimit, setNegativeLimit] = useState(settings?.negativeLimit ?? 0);
+  const [notificationEmail, setNotificationEmail] = useState(settings?.notificationEmail || '');
 
   if (settings && mode !== settings.mode && !saving) setMode(settings.mode);
   if (settings && negativeLimit !== settings.negativeLimit && !saving) setNegativeLimit(settings.negativeLimit);
+  if (settings && notificationEmail !== settings.notificationEmail && !saving) setNotificationEmail(settings.notificationEmail || '');
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateSettings({ mode, negativeLimit: Number(negativeLimit) });
+      await updateSettings({ mode, negativeLimit: Number(negativeLimit), notificationEmail });
       await refetchSettings();
       toast.success('Settings saved');
     } catch (err) { toast.error(err.message); }
@@ -103,6 +105,16 @@ export default function Settings() {
           <label>Current Period</label>
           <p style={{ fontSize: 14, fontWeight: 500 }}>
             {settings?.currentPeriod?.month}/{settings?.currentPeriod?.year}
+          </p>
+        </div>
+
+        <div className="form-group">
+          <label>Notification Email</label>
+          <input type="email" value={notificationEmail}
+            onChange={(e) => setNotificationEmail(e.target.value)}
+            placeholder="Email for routine reminders" />
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            Routine reminders will be sent to this email via the cron job.
           </p>
         </div>
 
