@@ -20,6 +20,9 @@ export const createBudget = (data) => api.post('/budgets', data);
 export const updateBudget = (id, data) => api.put(`/budgets/${id}`, data);
 export const addFundsToBudget = (id, data) => api.post(`/budgets/${id}/add-funds`, data);
 export const deleteBudget = (id) => api.delete(`/budgets/${id}`);
+export const getFundEntries = (budgetId) => api.get(`/budgets/${budgetId}/funds`);
+export const deleteFundEntry = (id) => api.delete(`/budgets/funds/${id}`);
+export const reorderBudget = (id, direction) => api.put(`/budgets/${id}/reorder`, { direction });
 
 // Expenses
 export const getExpenses = (budgetId) => api.get(`/expenses/budget/${budgetId}`);
@@ -74,3 +77,7 @@ export const getTrails = (page) => api.get(`/trails?page=${page}&limit=20`);
 export const createTrail = (data) => api.post('/trails', data);
 export const deleteTrail = (id) => api.delete(`/trails/${id}`);
 export const deleteAllTrails = () => api.delete('/trails');
+
+// Audit Logs
+export const getAuditLogs = (page = 1) => api.get(`/audit-logs?page=${page}&limit=50`);
+export const clearAuditLogs = () => api.delete('/audit-logs');

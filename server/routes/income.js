@@ -2,6 +2,7 @@ import { Router } from 'express';
 import Income from '../models/Income.js';
 import Budget from '../models/Budget.js';
 import Settings from '../models/Settings.js';
+import AuditLog from '../models/AuditLog.js';
 import { success, error, round2 } from '../utils/response.js';
 import { getCurrentPeriod } from '../utils/monthEnd.js';
 
@@ -75,6 +76,11 @@ router.post('/', async (req, res, next) => {
       period,
     });
 
+    await AuditLog.create({
+      action: 'CREATE', entity: 'Income', entityId: income._id,
+      details: `Added income "${source}" of ${round2(amount).toLocaleString()} PKR`,
+    });
+
     success(res, income, 201);
   } catch (err) { next(err); }
 });
@@ -101,6 +107,12 @@ router.delete('/:id', async (req, res, next) => {
     }
 
     await Income.findByIdAndDelete(req.params.id);
+
+    await AuditLog.create({
+      action: 'DELETE', entity: 'Income', entityId: income._id,
+      details: `Deleted income "${income.source}" of ${income.amount.toLocaleString()} PKR`,
+    });
+
     success(res, { message: 'Income deleted' });
   } catch (err) { next(err); }
 });

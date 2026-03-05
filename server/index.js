@@ -16,6 +16,7 @@ import savingsRoutes from './routes/savings.js';
 import tagRoutes from './routes/tags.js';
 import noteRoutes from './routes/notes.js';
 import trailRoutes from './routes/trails.js';
+import auditLogRoutes from './routes/auditLogs.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -33,6 +34,7 @@ app.use('/api/savings', savingsRoutes);
 app.use('/api/tags', tagRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/trails', trailRoutes);
+app.use('/api/audit-logs', auditLogRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, data: { status: 'ok' } });

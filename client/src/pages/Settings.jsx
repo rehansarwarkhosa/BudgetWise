@@ -5,7 +5,8 @@ import { useSettings } from '../context/SettingsContext';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
 import { IoSunny, IoMoon } from 'react-icons/io5';
-import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails } from '../api';
+import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails, getAuditLogs, clearAuditLogs } from '../api';
+import { formatDate } from '../utils/format';
 
 export default function Settings() {
   const { settings, loading, refetchSettings } = useSettings();
@@ -23,6 +24,13 @@ export default function Settings() {
   const [notificationEmail, setNotificationEmail] = useState(settings?.notificationEmail || '');
   const [theme, setTheme] = useState(settings?.theme || 'dark');
   const [initialized, setInitialized] = useState(false);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditPages, setAuditPages] = useState(1);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [showAuditLog, setShowAuditLog] = useState(false);
+  const [confirmClearAudit, setConfirmClearAudit] = useState(false);
 
   useEffect(() => {
     if (settings && !initialized) {
@@ -33,6 +41,27 @@ export default function Settings() {
       setInitialized(true);
     }
   }, [settings, initialized]);
+
+  const fetchAuditLogs = async (page = 1) => {
+    setAuditLoading(true);
+    try {
+      const res = await getAuditLogs(page);
+      setAuditLogs(res.data.logs);
+      setAuditTotal(res.data.total);
+      setAuditPages(res.data.pages);
+      setAuditPage(res.data.page);
+    } catch (err) { toast.error(err.message); }
+    finally { setAuditLoading(false); }
+  };
+
+  const handleClearAuditLogs = async () => {
+    try {
+      await clearAuditLogs();
+      setAuditLogs([]);
+      setAuditTotal(0);
+      toast.success('Audit logs cleared');
+    } catch (err) { toast.error(err.message); }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -172,6 +201,82 @@ export default function Settings() {
           Learn how income, budgets, expenses, savings, and rollover work together.
         </p>
       </div>
+
+      {/* Audit Log */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600 }}>Audit Log</h3>
+          {showAuditLog && auditLogs.length > 0 && (
+            <button className="btn-ghost" style={{ fontSize: 12, color: 'var(--danger)' }}
+              onClick={() => setConfirmClearAudit(true)}>
+              Clear All
+            </button>
+          )}
+        </div>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Track every action performed in the app.
+        </p>
+        {!showAuditLog ? (
+          <button className="btn-outline" onClick={() => { setShowAuditLog(true); fetchAuditLogs(1); }}>
+            View Audit Log
+          </button>
+        ) : auditLoading ? (
+          <Spinner />
+        ) : auditLogs.length === 0 ? (
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>No audit logs yet</p>
+        ) : (
+          <>
+            <div style={{ display: 'grid', gap: 0 }}>
+              {auditLogs.map((log) => (
+                <div key={log._id} style={{
+                  padding: '10px 0', borderBottom: '1px solid var(--border)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                      background: log.action === 'DELETE' ? 'rgba(239,68,68,0.15)' : log.action === 'CREATE' ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.15)',
+                      color: log.action === 'DELETE' ? 'var(--danger)' : log.action === 'CREATE' ? 'var(--success)' : 'var(--primary)',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {log.action}
+                    </span>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                      {formatDate(log.timestamp)}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 13, marginTop: 4 }}>{log.details}</div>
+                </div>
+              ))}
+            </div>
+            {auditPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 12 }}>
+                <button className="btn-outline" style={{ fontSize: 12 }}
+                  disabled={auditPage <= 1}
+                  onClick={() => fetchAuditLogs(auditPage - 1)}>
+                  Previous
+                </button>
+                <span style={{ fontSize: 12, lineHeight: '32px', color: 'var(--text-muted)' }}>
+                  {auditPage} / {auditPages}
+                </span>
+                <button className="btn-outline" style={{ fontSize: 12 }}
+                  disabled={auditPage >= auditPages}
+                  onClick={() => fetchAuditLogs(auditPage + 1)}>
+                  Next
+                </button>
+              </div>
+            )}
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, textAlign: 'center' }}>
+              {auditTotal} total entries
+            </p>
+          </>
+        )}
+      </div>
+
+      <ConfirmModal open={confirmClearAudit} onClose={() => setConfirmClearAudit(false)}
+        onConfirm={handleClearAuditLogs}
+        title="Clear audit logs?"
+        message="This will permanently delete all audit log entries. This action cannot be undone."
+        confirmText="Clear All" />
 
       {/* Backup & Restore */}
       <div className="card" style={{ marginBottom: 16 }}>

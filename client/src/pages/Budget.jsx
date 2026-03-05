@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoCreate } from 'react-icons/io5';
+import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoCreate, IoChevronUp, IoChevronDown } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
@@ -11,6 +11,7 @@ import {
   getIncomeSummary, getIncomes, addIncome, deleteIncome,
   getBudgets, createBudget, updateBudget, deleteBudget, addFundsToBudget,
   getExpenses, addExpense, updateExpense, deleteExpense,
+  getFundEntries, deleteFundEntry, reorderBudget,
 } from '../api';
 
 const CATEGORIES = ['General', 'Food', 'Transport', 'Shopping', 'Bills', 'Health', 'Education', 'Entertainment', 'Other'];
@@ -27,6 +28,7 @@ export default function Budget() {
   const [detailModal, setDetailModal] = useState(null);
   const [incomeListModal, setIncomeListModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null); // { type, id, name }
+  const [deletePassword, setDeletePassword] = useState('');
 
   const refreshAll = () => {
     refetchSummary();
@@ -45,6 +47,13 @@ export default function Budget() {
         toast.success('Income deleted');
       }
       refreshAll();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleReorder = async (budgetId, direction) => {
+    try {
+      await reorderBudget(budgetId, direction);
+      refetchBudgets();
     } catch (err) { toast.error(err.message); }
   };
 
@@ -94,14 +103,21 @@ export default function Budget() {
               {cat}
             </h3>
             <div style={{ display: 'grid', gap: 12 }}>
-              {grouped[cat].map((b) => (
-                <BudgetCard key={b._id} budget={b}
-                  onExpense={() => setExpenseModal(b._id)}
-                  onAddFunds={() => setFundsModal(b._id)}
-                  onDetail={() => setDetailModal(b)}
-                  onDelete={() => setConfirmDelete({ type: 'budget', id: b._id, name: b.name })}
-                />
-              ))}
+              {grouped[cat].map((b) => {
+                const globalIdx = budgets.findIndex(gb => gb._id === b._id);
+                return (
+                  <BudgetCard key={b._id} budget={b}
+                    onExpense={() => setExpenseModal(b._id)}
+                    onAddFunds={() => setFundsModal(b._id)}
+                    onDetail={() => setDetailModal(b)}
+                    onDelete={() => { setDeletePassword(''); setConfirmDelete({ type: 'budget', id: b._id, name: b.name }); }}
+                    onMoveUp={() => handleReorder(b._id, 'up')}
+                    onMoveDown={() => handleReorder(b._id, 'down')}
+                    isFirst={globalIdx === 0}
+                    isLast={globalIdx === budgets.length - 1}
+                  />
+                );
+              })}
             </div>
           </div>
         ))
@@ -123,15 +139,33 @@ export default function Budget() {
       <IncomeListModal open={incomeListModal} incomes={incomes}
         onClose={() => setIncomeListModal(false)}
         onDelete={(id, source) => setConfirmDelete({ type: 'income', id, name: source })} />
-      <ConfirmModal open={!!confirmDelete} onClose={() => setConfirmDelete(null)}
+      {/* Password-protected delete for budgets */}
+      <Modal open={!!confirmDelete && confirmDelete?.type === 'budget'} onClose={() => setConfirmDelete(null)} title="Delete budget?">
+        <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
+          Are you sure you want to delete "{confirmDelete?.name}"? This cannot be undone.
+        </p>
+        <div className="form-group">
+          <label>Enter password to confirm</label>
+          <input type="password" placeholder="Enter 4-digit password" value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)} maxLength={4} />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-outline" style={{ flex: 1 }} onClick={() => setConfirmDelete(null)}>Cancel</button>
+          <button className="btn-danger" style={{ flex: 1 }} disabled={deletePassword !== '0000'}
+            onClick={() => { handleConfirmDelete(); setConfirmDelete(null); }}>
+            Delete
+          </button>
+        </div>
+      </Modal>
+      <ConfirmModal open={!!confirmDelete && confirmDelete?.type === 'income'} onClose={() => setConfirmDelete(null)}
         onConfirm={handleConfirmDelete}
-        title={`Delete ${confirmDelete?.type}?`}
+        title="Delete income?"
         message={`Are you sure you want to delete "${confirmDelete?.name}"? This cannot be undone.`} />
     </div>
   );
 }
 
-function BudgetCard({ budget, onExpense, onAddFunds, onDetail, onDelete }) {
+function BudgetCard({ budget, onExpense, onAddFunds, onDetail, onDelete, onMoveUp, onMoveDown, isFirst, isLast }) {
   const pct = budget.allocatedAmount > 0
     ? ((budget.allocatedAmount - budget.remainingAmount) / budget.allocatedAmount) * 100 : 0;
   const isExhausted = budget.remainingAmount <= 0;
@@ -145,10 +179,20 @@ function BudgetCard({ budget, onExpense, onAddFunds, onDetail, onDelete }) {
             {budget.expenseCount} expense{budget.expenseCount !== 1 ? 's' : ''} &middot; Spent {formatPKR(budget.totalSpent)}
           </p>
         </div>
-        <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          style={{ color: 'var(--danger)', padding: 4 }}>
-          <IoTrash size={16} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); onMoveUp(); }}
+            style={{ padding: 4, opacity: isFirst ? 0.3 : 1 }} disabled={isFirst}>
+            <IoChevronUp size={16} />
+          </button>
+          <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); onMoveDown(); }}
+            style={{ padding: 4, opacity: isLast ? 0.3 : 1 }} disabled={isLast}>
+            <IoChevronDown size={16} />
+          </button>
+          <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            style={{ color: 'var(--danger)', padding: 4 }}>
+            <IoTrash size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Progress bar */}
@@ -346,31 +390,40 @@ function AddFundsModal({ open, budgetId, onClose, onDone }) {
 
 function BudgetDetailModal({ open, budget, onClose, onDone }) {
   const [expenses, setExpenses] = useState([]);
+  const [funds, setFunds] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('expenses');
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetName, setBudgetName] = useState('');
   const [budgetCategory, setBudgetCategory] = useState('');
-  const [editingExpense, setEditingExpense] = useState(null); // expense obj
+  const [editingExpense, setEditingExpense] = useState(null);
   const [editDesc, setEditDesc] = useState('');
   const [editAmt, setEditAmt] = useState('');
   const [confirmDeleteExp, setConfirmDeleteExp] = useState(null);
+  const [confirmDeleteFund, setConfirmDeleteFund] = useState(null);
+  const [fetched, setFetched] = useState(false);
 
-  const fetchExpenses = async () => {
+  const fetchData = async () => {
     if (!budget?._id) return;
     setLoading(true);
     try {
-      const res = await getExpenses(budget._id);
-      setExpenses(res.data);
+      const [expRes, fundRes] = await Promise.all([
+        getExpenses(budget._id),
+        getFundEntries(budget._id),
+      ]);
+      setExpenses(expRes.data);
+      setFunds(fundRes.data);
+      setFetched(true);
     } catch (err) { toast.error(err.message); }
     finally { setLoading(false); }
   };
 
-  if (open && budget?._id && expenses.length === 0 && !loading) {
-    fetchExpenses();
+  if (open && budget?._id && !fetched && !loading) {
+    fetchData();
   }
 
   const handleClose = () => {
-    setExpenses([]); setEditingBudget(false); setEditingExpense(null);
+    setExpenses([]); setFunds([]); setFetched(false); setEditingBudget(false); setEditingExpense(null); setActiveTab('expenses');
     onClose();
   };
 
@@ -389,7 +442,7 @@ function BudgetDetailModal({ open, budget, onClose, onDone }) {
       await updateExpense(editingExpense._id, { description: editDesc, amount: Number(editAmt) });
       toast.success('Expense updated');
       setEditingExpense(null);
-      fetchExpenses();
+      fetchData();
       onDone();
     } catch (err) { toast.error(err.message); }
   };
@@ -400,7 +453,18 @@ function BudgetDetailModal({ open, budget, onClose, onDone }) {
       await deleteExpense(confirmDeleteExp._id);
       toast.success('Expense deleted');
       setConfirmDeleteExp(null);
-      fetchExpenses();
+      fetchData();
+      onDone();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleDeleteFund = async () => {
+    if (!confirmDeleteFund) return;
+    try {
+      await deleteFundEntry(confirmDeleteFund._id);
+      toast.success('Fund entry deleted');
+      setConfirmDeleteFund(null);
+      fetchData();
       onDone();
     } catch (err) { toast.error(err.message); }
   };
@@ -449,61 +513,122 @@ function BudgetDetailModal({ open, budget, onClose, onDone }) {
             </div>
           )}
 
+          {/* Tabs for Expenses / Funds */}
+          <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--border)' }}>
+            <button onClick={() => setActiveTab('expenses')}
+              style={{
+                flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                background: 'none', border: 'none', color: activeTab === 'expenses' ? 'var(--primary)' : 'var(--text-muted)',
+                borderBottom: activeTab === 'expenses' ? '2px solid var(--primary)' : '2px solid transparent',
+                marginBottom: -2,
+              }}>
+              Expenses ({expenses.length})
+            </button>
+            <button onClick={() => setActiveTab('funds')}
+              style={{
+                flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                background: 'none', border: 'none', color: activeTab === 'funds' ? 'var(--primary)' : 'var(--text-muted)',
+                borderBottom: activeTab === 'funds' ? '2px solid var(--primary)' : '2px solid transparent',
+                marginBottom: -2,
+              }}>
+              Funds ({funds.length})
+            </button>
+          </div>
+
           {/* Expense list */}
-          {expenses.length === 0 ? (
-            <EmptyState title="No expenses yet" />
-          ) : (
-            <div style={{ display: 'grid', gap: 8 }}>
-              {expenses.map((exp) => (
-                <div key={exp._id}>
-                  {editingExpense?._id === exp._id ? (
-                    <div style={{ background: 'var(--bg-input)', borderRadius: 8, padding: 12 }}>
-                      <div className="form-group">
-                        <input type="text" value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Description" />
-                      </div>
-                      <div className="form-group">
-                        <input type="number" value={editAmt} onChange={(e) => setEditAmt(e.target.value)} placeholder="Amount" min="1" />
-                      </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="btn-primary" style={{ flex: 1, fontSize: 13 }} onClick={handleSaveExpense}>Save</button>
-                        <button className="btn-outline" style={{ flex: 1, fontSize: 13 }} onClick={() => setEditingExpense(null)}>Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '10px 0', borderBottom: '1px solid var(--border)',
-                    }}>
-                      <div>
-                        <div style={{ fontSize: 14, fontWeight: 500 }}>{exp.description}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                          {formatDate(exp.date)}
+          {activeTab === 'expenses' && (
+            expenses.length === 0 ? (
+              <EmptyState title="No expenses yet" />
+            ) : (
+              <div style={{ display: 'grid', gap: 8 }}>
+                {expenses.map((exp) => (
+                  <div key={exp._id}>
+                    {editingExpense?._id === exp._id ? (
+                      <div style={{ background: 'var(--bg-input)', borderRadius: 8, padding: 12 }}>
+                        <div className="form-group">
+                          <input type="text" value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Description" />
+                        </div>
+                        <div className="form-group">
+                          <input type="number" value={editAmt} onChange={(e) => setEditAmt(e.target.value)} placeholder="Amount" min="1" />
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button className="btn-primary" style={{ flex: 1, fontSize: 13 }} onClick={handleSaveExpense}>Save</button>
+                          <button className="btn-outline" style={{ flex: 1, fontSize: 13 }} onClick={() => setEditingExpense(null)}>Cancel</button>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span className="pkr" style={{ fontWeight: 600, color: 'var(--danger)' }}>
-                          -{formatPKR(exp.amount)}
-                        </span>
-                        <button className="btn-ghost" style={{ padding: 4 }}
-                          onClick={() => { setEditingExpense(exp); setEditDesc(exp.description); setEditAmt(exp.amount); }}>
-                          <IoCreate size={14} color="var(--text-muted)" />
-                        </button>
-                        <button className="btn-ghost" style={{ color: 'var(--danger)', padding: 4 }}
-                          onClick={() => setConfirmDeleteExp(exp)}>
-                          <IoTrash size={14} />
-                        </button>
+                    ) : (
+                      <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '10px 0', borderBottom: '1px solid var(--border)',
+                      }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 500 }}>{exp.description}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            {formatDate(exp.date)}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span className="pkr" style={{ fontWeight: 600, color: 'var(--danger)' }}>
+                            -{formatPKR(exp.amount)}
+                          </span>
+                          <button className="btn-ghost" style={{ padding: 4 }}
+                            onClick={() => { setEditingExpense(exp); setEditDesc(exp.description); setEditAmt(exp.amount); }}>
+                            <IoCreate size={14} color="var(--text-muted)" />
+                          </button>
+                          <button className="btn-ghost" style={{ color: 'var(--danger)', padding: 4 }}
+                            onClick={() => setConfirmDeleteExp(exp)}>
+                            <IoTrash size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* Funds list */}
+          {activeTab === 'funds' && (
+            funds.length === 0 ? (
+              <EmptyState title="No funds added yet" />
+            ) : (
+              <div style={{ display: 'grid', gap: 8 }}>
+                {funds.map((fund) => (
+                  <div key={fund._id} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '10px 0', borderBottom: '1px solid var(--border)',
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 500 }}>{fund.note}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {formatDate(fund.date)}
                       </div>
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="pkr" style={{ fontWeight: 600, color: 'var(--success)' }}>
+                        +{formatPKR(fund.amount)}
+                      </span>
+                      <button className="btn-ghost" style={{ color: 'var(--danger)', padding: 4 }}
+                        onClick={() => setConfirmDeleteFund(fund)}>
+                        <IoTrash size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
           )}
 
           <ConfirmModal open={!!confirmDeleteExp} onClose={() => setConfirmDeleteExp(null)}
             onConfirm={handleDeleteExpense}
             title="Delete expense?"
             message={`Delete "${confirmDeleteExp?.description}" (${formatPKR(confirmDeleteExp?.amount)})?`} />
+
+          <ConfirmModal open={!!confirmDeleteFund} onClose={() => setConfirmDeleteFund(null)}
+            onConfirm={handleDeleteFund}
+            title="Delete fund entry?"
+            message={`Delete fund "${confirmDeleteFund?.note}" (${formatPKR(confirmDeleteFund?.amount)})? This will reduce the budget's allocated and remaining amounts.`} />
         </>
       )}
     </Modal>
