@@ -248,8 +248,14 @@ router.post('/budget-categories', async (req, res, next) => {
 // Delete a budget category
 router.delete('/budget-categories/:id', async (req, res, next) => {
   try {
-    const category = await BudgetCategory.findByIdAndDelete(req.params.id);
+    const category = await BudgetCategory.findById(req.params.id);
     if (!category) return error(res, 'Category not found', 404);
+    const budgetsUsing = await Budget.find({ category: category.name }).select('name');
+    if (budgetsUsing.length > 0) {
+      const names = budgetsUsing.map(b => `"${b.name}"`).join(', ');
+      return error(res, `Cannot delete — used by: ${names}. Change their category first.`);
+    }
+    await category.deleteOne();
     await AuditLog.create({ action: 'DELETE', entity: 'BudgetCategory', entityId: category._id, details: `Deleted budget category "${category.name}"` });
     success(res, { message: 'Category deleted' });
   } catch (err) { next(err); }

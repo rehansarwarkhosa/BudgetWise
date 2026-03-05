@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { IoSend, IoTrash, IoCopy } from 'react-icons/io5';
+import { IoSend, IoTrash, IoCopy, IoSearch, IoClose } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
@@ -16,11 +16,15 @@ export default function QuickTrail() {
   const [sending, setSending] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [searchMode, setSearchMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const inputRef = useRef(null);
+  const searchRef = useRef(null);
+  const searchTimeout = useRef(null);
 
-  const fetchTrails = async (p = 1, append = false) => {
+  const fetchTrails = async (p = 1, append = false, search = searchQuery) => {
     try {
-      const res = await getTrails(p);
+      const res = await getTrails(p, search || undefined);
       const data = res.data;
       setEntries(prev => append ? [...prev, ...data.entries] : data.entries);
       setPage(data.page);
@@ -29,8 +33,28 @@ export default function QuickTrail() {
   };
 
   useEffect(() => {
-    fetchTrails(1).finally(() => setLoading(false));
+    fetchTrails(1, false, '').finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!searchMode) return;
+    clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => {
+      fetchTrails(1, false, searchQuery);
+    }, 300);
+    return () => clearTimeout(searchTimeout.current);
+  }, [searchQuery]);
+
+  const toggleSearch = () => {
+    if (searchMode) {
+      setSearchMode(false);
+      setSearchQuery('');
+      fetchTrails(1, false, '');
+    } else {
+      setSearchMode(true);
+      setTimeout(() => searchRef.current?.focus(), 50);
+    }
+  };
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -62,7 +86,7 @@ export default function QuickTrail() {
 
   const handleLoadMore = async () => {
     setLoadingMore(true);
-    await fetchTrails(page + 1, true);
+    await fetchTrails(page + 1, true, searchQuery);
     setLoadingMore(false);
   };
 
@@ -72,7 +96,20 @@ export default function QuickTrail() {
 
   return (
     <div className="page">
-      <h1 className="page-title">Trail</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <h1 className="page-title" style={{ marginBottom: 0 }}>Trail</h1>
+        <button className="btn-ghost" onClick={toggleSearch}
+          style={{ padding: 6, borderRadius: 8, background: searchMode ? 'var(--bg-input)' : 'transparent' }}>
+          {searchMode ? <IoClose size={20} /> : <IoSearch size={20} />}
+        </button>
+      </div>
+
+      {/* Search bar */}
+      {searchMode && (
+        <input ref={searchRef} type="text" placeholder="Search trails..."
+          value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ marginBottom: 12, width: '100%' }} />
+      )}
 
       {/* Input bar */}
       <form onSubmit={handleSend} style={{
@@ -98,7 +135,7 @@ export default function QuickTrail() {
 
       {/* Entries */}
       {entries.length === 0 ? (
-        <EmptyState icon="⚡" title="No entries yet" subtitle="Type something and hit send" />
+        <EmptyState icon={searchMode ? "🔍" : "⚡"} title={searchMode ? "No results" : "No entries yet"} subtitle={searchMode ? `Nothing found for "${searchQuery}"` : "Type something and hit send"} />
       ) : (
         <div style={{ display: 'grid', gap: 10 }}>
           {entries.map((entry) => (

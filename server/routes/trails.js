@@ -5,16 +5,18 @@ import { success, error } from '../utils/response.js';
 
 const router = Router();
 
-// GET / — paginated, newest first
+// GET / — paginated, newest first, optional search
 router.get('/', async (req, res, next) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
     const skip = (page - 1) * limit;
+    const search = req.query.search?.trim();
+    const filter = search ? { text: { $regex: search, $options: 'i' } } : {};
 
     const [entries, total] = await Promise.all([
-      Trail.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
-      Trail.countDocuments(),
+      Trail.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Trail.countDocuments(filter),
     ]);
 
     success(res, {

@@ -76,7 +76,7 @@ export const deleteNote = (id) => api.delete(`/notes/note/${id}`);
 export const searchNotes = (params) => api.get('/notes/search', { params });
 
 // Trails
-export const getTrails = (page) => api.get(`/trails?page=${page}&limit=20`);
+export const getTrails = (page, search) => api.get('/trails', { params: { page, limit: 20, ...(search ? { search } : {}) } });
 export const createTrail = (data) => api.post('/trails', data);
 export const deleteTrail = (id) => api.delete(`/trails/${id}`);
 export const deleteAllTrails = () => api.delete('/trails');
