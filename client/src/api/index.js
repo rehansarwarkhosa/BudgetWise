@@ -6,6 +6,9 @@ export const updateSettings = (data) => api.put('/settings', data);
 export const deleteAllData = () => api.delete('/settings/all-data');
 export const exportAllData = () => api.get('/settings/export');
 export const importAllData = (data) => api.post('/settings/import', data);
+export const getBudgetCategories = () => api.get('/settings/budget-categories');
+export const addBudgetCategory = (data) => api.post('/settings/budget-categories', data);
+export const deleteBudgetCategory = (id) => api.delete(`/settings/budget-categories/${id}`);
 
 // Income
 export const getIncomeSummary = () => api.get('/income/summary');

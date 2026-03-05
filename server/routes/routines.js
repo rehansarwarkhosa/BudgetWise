@@ -3,6 +3,7 @@ import sgMail from '@sendgrid/mail';
 import Routine from '../models/Routine.js';
 import RoutineEntry from '../models/RoutineEntry.js';
 import Settings from '../models/Settings.js';
+import AuditLog from '../models/AuditLog.js';
 import { success, error } from '../utils/response.js';
 
 const router = Router();
@@ -145,6 +146,11 @@ router.delete('/entries/:entryId', async (req, res, next) => {
   try {
     const entry = await RoutineEntry.findByIdAndDelete(req.params.entryId);
     if (!entry) return error(res, 'Entry not found', 404);
+    const routine = await Routine.findById(entry.routineId);
+    await AuditLog.create({
+      action: 'DELETE', entity: 'RoutineEntry', entityId: entry._id,
+      details: `Deleted routine entry (${entry.status}) from "${routine?.name || 'unknown'}"`,
+    });
     success(res, { message: 'Entry deleted' });
   } catch (err) { next(err); }
 });
@@ -172,6 +178,10 @@ router.post('/', async (req, res, next) => {
       fields: fields || [],
       reminders: reminders || [],
     });
+    await AuditLog.create({
+      action: 'CREATE', entity: 'Routine', entityId: routine._id,
+      details: `Created routine "${name}" (target: ${targetEntries} entries)`,
+    });
     success(res, routine, 201);
   } catch (err) { next(err); }
 });
@@ -187,6 +197,10 @@ router.put('/:id', async (req, res, next) => {
     if (fields) routine.fields = fields;
     if (reminders !== undefined) routine.reminders = reminders;
     await routine.save();
+    await AuditLog.create({
+      action: 'UPDATE', entity: 'Routine', entityId: routine._id,
+      details: `Updated routine "${routine.name}"`,
+    });
     success(res, routine);
   } catch (err) { next(err); }
 });
@@ -196,6 +210,10 @@ router.delete('/:id', async (req, res, next) => {
     const routine = await Routine.findByIdAndDelete(req.params.id);
     if (!routine) return error(res, 'Routine not found', 404);
     await RoutineEntry.deleteMany({ routineId: routine._id });
+    await AuditLog.create({
+      action: 'DELETE', entity: 'Routine', entityId: routine._id,
+      details: `Deleted routine "${routine.name}" and all its entries`,
+    });
     success(res, { message: 'Routine and entries deleted' });
   } catch (err) { next(err); }
 });
@@ -230,6 +248,11 @@ router.post('/:id/entries', async (req, res, next) => {
       manualDate: !!manualDate,
     });
 
+    await AuditLog.create({
+      action: 'CREATE', entity: 'RoutineEntry', entityId: entry._id,
+      details: `Logged ${status || 'complete'} entry for "${routine.name}"`,
+    });
+
     success(res, entry, 201);
   } catch (err) { next(err); }
 });
@@ -258,6 +281,10 @@ router.post('/:id/entries/batch', async (req, res, next) => {
     }));
 
     const entries = await RoutineEntry.insertMany(docs);
+    await AuditLog.create({
+      action: 'CREATE', entity: 'RoutineEntry',
+      details: `Batch logged ${n} ${status || 'complete'} entries for "${routine.name}"`,
+    });
     success(res, entries, 201);
   } catch (err) { next(err); }
 });

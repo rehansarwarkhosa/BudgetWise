@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import Tag from '../models/Tag.js';
 import Note from '../models/Note.js';
+import AuditLog from '../models/AuditLog.js';
 import { success, error } from '../utils/response.js';
 
 const router = Router();
@@ -19,6 +20,7 @@ router.post('/', async (req, res, next) => {
     const { name, color } = req.body;
     if (!name) return error(res, 'Name is required');
     const tag = await Tag.create({ name, color });
+    await AuditLog.create({ action: 'CREATE', entity: 'Tag', entityId: tag._id, details: `Created tag "${name}"` });
     success(res, tag, 201);
   } catch (err) {
     if (err.code === 11000) return error(res, 'Tag already exists');
@@ -35,6 +37,7 @@ router.put('/:id', async (req, res, next) => {
     if (name) tag.name = name;
     if (color) tag.color = color;
     await tag.save();
+    await AuditLog.create({ action: 'UPDATE', entity: 'Tag', entityId: tag._id, details: `Updated tag "${tag.name}"` });
     success(res, tag);
   } catch (err) {
     if (err.code === 11000) return error(res, 'Tag already exists');
@@ -48,6 +51,7 @@ router.delete('/:id', async (req, res, next) => {
     const tag = await Tag.findByIdAndDelete(req.params.id);
     if (!tag) return error(res, 'Tag not found', 404);
     await Note.updateMany({ tags: tag._id }, { $pull: { tags: tag._id } });
+    await AuditLog.create({ action: 'DELETE', entity: 'Tag', entityId: tag._id, details: `Deleted tag "${tag.name}"` });
     success(res, { message: 'Tag deleted' });
   } catch (err) { next(err); }
 });

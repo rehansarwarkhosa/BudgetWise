@@ -11,15 +11,15 @@ import {
   getIncomeSummary, getIncomes, addIncome, deleteIncome,
   getBudgets, createBudget, updateBudget, deleteBudget, addFundsToBudget,
   getExpenses, addExpense, updateExpense, deleteExpense,
-  getFundEntries, deleteFundEntry, reorderBudget,
+  getFundEntries, deleteFundEntry, reorderBudget, getBudgetCategories,
 } from '../api';
-
-const CATEGORIES = ['General', 'Food', 'Transport', 'Shopping', 'Bills', 'Health', 'Education', 'Entertainment', 'Other'];
 
 export default function Budget() {
   const { data: summary, loading: summaryLoading, refetch: refetchSummary } = useFetch(getIncomeSummary);
   const { data: budgets, loading: budgetsLoading, refetch: refetchBudgets } = useFetch(getBudgets);
   const { data: incomes, refetch: refetchIncomes } = useFetch(getIncomes);
+  const { data: categoriesData } = useFetch(getBudgetCategories);
+  const categoryNames = categoriesData?.map(c => c.name) || ['General'];
 
   const [incomeModal, setIncomeModal] = useState(false);
   const [budgetModal, setBudgetModal] = useState(false);
@@ -28,7 +28,6 @@ export default function Budget() {
   const [detailModal, setDetailModal] = useState(null);
   const [incomeListModal, setIncomeListModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null); // { type, id, name }
-  const [deletePassword, setDeletePassword] = useState('');
 
   const refreshAll = () => {
     refetchSummary();
@@ -110,7 +109,7 @@ export default function Budget() {
                     onExpense={() => setExpenseModal(b._id)}
                     onAddFunds={() => setFundsModal(b._id)}
                     onDetail={() => setDetailModal(b)}
-                    onDelete={() => { setDeletePassword(''); setConfirmDelete({ type: 'budget', id: b._id, name: b.name }); }}
+                    onDelete={() => setConfirmDelete({ type: 'budget', id: b._id, name: b.name })}
                     onMoveUp={() => handleReorder(b._id, 'up')}
                     onMoveDown={() => handleReorder(b._id, 'down')}
                     isFirst={globalIdx === 0}
@@ -129,37 +128,19 @@ export default function Budget() {
       {/* Modals */}
       <IncomeModal open={incomeModal} onClose={() => setIncomeModal(false)}
         isDeficit={summary?.isDeficit} onDone={refreshAll} />
-      <BudgetModal open={budgetModal} onClose={() => setBudgetModal(false)} onDone={refreshAll} />
+      <BudgetModal open={budgetModal} onClose={() => setBudgetModal(false)} onDone={refreshAll} categories={categoryNames} />
       <ExpenseModal open={!!expenseModal} budgetId={expenseModal}
         onClose={() => setExpenseModal(null)} onDone={refreshAll} />
       <AddFundsModal open={!!fundsModal} budgetId={fundsModal}
         onClose={() => setFundsModal(null)} onDone={refreshAll} />
       <BudgetDetailModal open={!!detailModal} budget={detailModal}
-        onClose={() => setDetailModal(null)} onDone={refreshAll} />
+        onClose={() => setDetailModal(null)} onDone={refreshAll} categories={categoryNames} />
       <IncomeListModal open={incomeListModal} incomes={incomes}
         onClose={() => setIncomeListModal(false)}
         onDelete={(id, source) => setConfirmDelete({ type: 'income', id, name: source })} />
-      {/* Password-protected delete for budgets */}
-      <Modal open={!!confirmDelete && confirmDelete?.type === 'budget'} onClose={() => setConfirmDelete(null)} title="Delete budget?">
-        <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
-          Are you sure you want to delete "{confirmDelete?.name}"? This cannot be undone.
-        </p>
-        <div className="form-group">
-          <label>Enter password to confirm</label>
-          <input type="password" placeholder="Enter 4-digit password" value={deletePassword}
-            onChange={(e) => setDeletePassword(e.target.value)} maxLength={4} />
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-outline" style={{ flex: 1 }} onClick={() => setConfirmDelete(null)}>Cancel</button>
-          <button className="btn-danger" style={{ flex: 1 }} disabled={deletePassword !== '0000'}
-            onClick={() => { handleConfirmDelete(); setConfirmDelete(null); }}>
-            Delete
-          </button>
-        </div>
-      </Modal>
-      <ConfirmModal open={!!confirmDelete && confirmDelete?.type === 'income'} onClose={() => setConfirmDelete(null)}
+      <ConfirmModal open={!!confirmDelete} onClose={() => setConfirmDelete(null)}
         onConfirm={handleConfirmDelete}
-        title="Delete income?"
+        title={`Delete ${confirmDelete?.type}?`}
         message={`Are you sure you want to delete "${confirmDelete?.name}"? This cannot be undone.`} />
     </div>
   );
@@ -271,7 +252,7 @@ function IncomeModal({ open, onClose, isDeficit, onDone }) {
   );
 }
 
-function BudgetModal({ open, onClose, onDone }) {
+function BudgetModal({ open, onClose, onDone, categories }) {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('General');
@@ -299,7 +280,7 @@ function BudgetModal({ open, onClose, onDone }) {
         <div className="form-group">
           <label>Category</label>
           <select value={category} onChange={(e) => setCategory(e.target.value)}>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div className="form-group">
@@ -388,7 +369,7 @@ function AddFundsModal({ open, budgetId, onClose, onDone }) {
   );
 }
 
-function BudgetDetailModal({ open, budget, onClose, onDone }) {
+function BudgetDetailModal({ open, budget, onClose, onDone, categories }) {
   const [expenses, setExpenses] = useState([]);
   const [funds, setFunds] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -503,7 +484,7 @@ function BudgetDetailModal({ open, budget, onClose, onDone }) {
               <div className="form-group">
                 <label>Category</label>
                 <select value={budgetCategory} onChange={(e) => setBudgetCategory(e.target.value)}>
-                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>

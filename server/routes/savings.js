@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import Savings from '../models/Savings.js';
+import AuditLog from '../models/AuditLog.js';
 import { success, error } from '../utils/response.js';
 import { rolloverPeriod } from '../utils/monthEnd.js';
 
@@ -34,6 +35,7 @@ router.post('/rollover', async (req, res, next) => {
     }
 
     const entries = await rolloverPeriod(month, year);
+    await AuditLog.create({ action: 'CREATE', entity: 'Savings', details: `Rollover for ${month}/${year}: ${entries.length} savings entries created` });
     success(res, { message: `Rollover complete. ${entries.length} savings entries created.`, entries });
   } catch (err) { next(err); }
 });

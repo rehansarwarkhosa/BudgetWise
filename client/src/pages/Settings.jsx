@@ -4,8 +4,8 @@ import toast from 'react-hot-toast';
 import { useSettings } from '../context/SettingsContext';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
-import { IoSunny, IoMoon } from 'react-icons/io5';
-import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails, getAuditLogs, clearAuditLogs } from '../api';
+import { IoSunny, IoMoon, IoTrash, IoAdd } from 'react-icons/io5';
+import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails, getAuditLogs, clearAuditLogs, getBudgetCategories, addBudgetCategory, deleteBudgetCategory } from '../api';
 import { formatDate } from '../utils/format';
 
 export default function Settings() {
@@ -31,6 +31,10 @@ export default function Settings() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [confirmClearAudit, setConfirmClearAudit] = useState(false);
+  const [categories, setCategories] = useState([]);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [categoryLoading, setCategoryLoading] = useState(false);
+  const [confirmDeleteCategory, setConfirmDeleteCategory] = useState(null);
 
   useEffect(() => {
     if (settings && !initialized) {
@@ -60,6 +64,39 @@ export default function Settings() {
       setAuditLogs([]);
       setAuditTotal(0);
       toast.success('Audit logs cleared');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const res = await getBudgetCategories();
+      setCategories(res.data);
+    } catch (err) { toast.error(err.message); }
+  };
+
+  useEffect(() => {
+    if (settings) fetchCategories();
+  }, [settings]);
+
+  const handleAddCategory = async (e) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    setCategoryLoading(true);
+    try {
+      await addBudgetCategory({ name: newCategoryName.trim() });
+      toast.success('Category added');
+      setNewCategoryName('');
+      fetchCategories();
+    } catch (err) { toast.error(err.message); }
+    finally { setCategoryLoading(false); }
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!confirmDeleteCategory) return;
+    try {
+      await deleteBudgetCategory(confirmDeleteCategory._id);
+      toast.success('Category deleted');
+      fetchCategories();
     } catch (err) { toast.error(err.message); }
   };
 
@@ -193,6 +230,40 @@ export default function Settings() {
           {saving ? 'Saving...' : 'Save Settings'}
         </button>
       </div>
+
+      {/* Budget Categories */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Budget Categories</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Add or remove categories that appear when creating budgets.
+        </p>
+        <form onSubmit={handleAddCategory} style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <input type="text" placeholder="New category name" value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)} style={{ flex: 1 }} />
+          <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '10px 16px' }} disabled={categoryLoading}>
+            <IoAdd size={18} />
+          </button>
+        </form>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {categories.map((cat) => (
+            <div key={cat._id} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', borderRadius: 20,
+              background: 'var(--bg-input)', fontSize: 13, fontWeight: 500,
+            }}>
+              {cat.name}
+              <button className="btn-ghost" style={{ padding: 2 }} onClick={() => setConfirmDeleteCategory(cat)}>
+                <IoTrash size={12} color="var(--danger)" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <ConfirmModal open={!!confirmDeleteCategory} onClose={() => setConfirmDeleteCategory(null)}
+        onConfirm={handleDeleteCategory}
+        title="Delete category?"
+        message={`Delete budget category "${confirmDeleteCategory?.name}"? Existing budgets with this category will not be affected.`} />
 
       {/* Guide */}
       <div className="card" style={{ marginBottom: 16, cursor: 'pointer' }} onClick={() => navigate('/guide')}>

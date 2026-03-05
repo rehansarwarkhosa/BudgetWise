@@ -13,6 +13,7 @@ import Note from '../models/Note.js';
 import Trail from '../models/Trail.js';
 import FundEntry from '../models/FundEntry.js';
 import AuditLog from '../models/AuditLog.js';
+import BudgetCategory from '../models/BudgetCategory.js';
 import { success, error } from '../utils/response.js';
 import { getCurrentPeriod } from '../utils/monthEnd.js';
 
@@ -69,7 +70,7 @@ router.put('/', async (req, res, next) => {
 // Export all data
 router.get('/export', async (req, res, next) => {
   try {
-    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs] = await Promise.all([
+    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs, budgetCategories] = await Promise.all([
       Settings.findOne(),
       Income.find(),
       Budget.find(),
@@ -84,11 +85,12 @@ router.get('/export', async (req, res, next) => {
       Trail.find(),
       FundEntry.find(),
       AuditLog.find(),
+      BudgetCategory.find(),
     ]);
     success(res, {
       exportDate: new Date().toISOString(),
       version: 1,
-      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs,
+      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs, budgetCategories,
     });
   } catch (err) { next(err); }
 });
@@ -114,6 +116,7 @@ router.post('/import', async (req, res, next) => {
       trails: await Trail.find().lean(),
       fundEntries: await FundEntry.find().lean(),
       auditLogs: await AuditLog.find().lean(),
+      budgetCategories: await BudgetCategory.find().lean(),
       settings: await Settings.findOne().lean(),
     };
 
@@ -123,7 +126,7 @@ router.post('/import', async (req, res, next) => {
         Income.deleteMany({}), Budget.deleteMany({}), Expense.deleteMany({}),
         Routine.deleteMany({}), RoutineEntry.deleteMany({}), Savings.deleteMany({}),
         Tag.deleteMany({}), Topic.deleteMany({}), SubTopic.deleteMany({}), Note.deleteMany({}),
-        Trail.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}),
+        Trail.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
       ]);
 
       // Restore from import file — sequential to catch failures early
@@ -140,6 +143,7 @@ router.post('/import', async (req, res, next) => {
       if (data.trails?.length) await Trail.insertMany(data.trails);
       if (data.fundEntries?.length) await FundEntry.insertMany(data.fundEntries);
       if (data.auditLogs?.length) await AuditLog.insertMany(data.auditLogs);
+      if (data.budgetCategories?.length) await BudgetCategory.insertMany(data.budgetCategories);
 
       if (data.settings) {
         await Settings.findOneAndUpdate({}, {
@@ -158,7 +162,7 @@ router.post('/import', async (req, res, next) => {
         Income.deleteMany({}), Budget.deleteMany({}), Expense.deleteMany({}),
         Routine.deleteMany({}), RoutineEntry.deleteMany({}), Savings.deleteMany({}),
         Tag.deleteMany({}), Topic.deleteMany({}), SubTopic.deleteMany({}), Note.deleteMany({}),
-        Trail.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}),
+        Trail.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
       ]);
       if (snapshot.incomes.length) await Income.insertMany(snapshot.incomes);
       if (snapshot.budgets.length) await Budget.insertMany(snapshot.budgets);
@@ -173,6 +177,7 @@ router.post('/import', async (req, res, next) => {
       if (snapshot.trails.length) await Trail.insertMany(snapshot.trails);
       if (snapshot.fundEntries.length) await FundEntry.insertMany(snapshot.fundEntries);
       if (snapshot.auditLogs.length) await AuditLog.insertMany(snapshot.auditLogs);
+      if (snapshot.budgetCategories.length) await BudgetCategory.insertMany(snapshot.budgetCategories);
       if (snapshot.settings) {
         await Settings.findOneAndUpdate({}, snapshot.settings, { upsert: true });
       }
@@ -198,6 +203,7 @@ router.delete('/all-data', async (req, res, next) => {
       Trail.deleteMany({}),
       FundEntry.deleteMany({}),
       AuditLog.deleteMany({}),
+      BudgetCategory.deleteMany({}),
     ]);
     const period = getCurrentPeriod();
     const settings = await Settings.findOneAndUpdate(
@@ -206,6 +212,46 @@ router.delete('/all-data', async (req, res, next) => {
       { new: true, upsert: true }
     );
     success(res, { message: 'All data deleted', settings });
+  } catch (err) { next(err); }
+});
+
+// ─── Budget Categories ───
+
+const DEFAULT_CATEGORIES = ['General', 'Food', 'Transport', 'Shopping', 'Bills', 'Health', 'Education', 'Entertainment', 'Other'];
+
+// Get all budget categories (seed defaults if none exist)
+router.get('/budget-categories', async (req, res, next) => {
+  try {
+    let categories = await BudgetCategory.find().sort({ name: 1 });
+    if (categories.length === 0) {
+      const docs = DEFAULT_CATEGORIES.map(name => ({ name }));
+      categories = await BudgetCategory.insertMany(docs);
+      categories = categories.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    success(res, categories);
+  } catch (err) { next(err); }
+});
+
+// Add a budget category
+router.post('/budget-categories', async (req, res, next) => {
+  try {
+    const { name } = req.body;
+    if (!name?.trim()) return error(res, 'Category name is required');
+    const existing = await BudgetCategory.findOne({ name: name.trim() });
+    if (existing) return error(res, 'Category already exists');
+    const category = await BudgetCategory.create({ name: name.trim() });
+    await AuditLog.create({ action: 'CREATE', entity: 'BudgetCategory', entityId: category._id, details: `Created budget category "${name.trim()}"` });
+    success(res, category, 201);
+  } catch (err) { next(err); }
+});
+
+// Delete a budget category
+router.delete('/budget-categories/:id', async (req, res, next) => {
+  try {
+    const category = await BudgetCategory.findByIdAndDelete(req.params.id);
+    if (!category) return error(res, 'Category not found', 404);
+    await AuditLog.create({ action: 'DELETE', entity: 'BudgetCategory', entityId: category._id, details: `Deleted budget category "${category.name}"` });
+    success(res, { message: 'Category deleted' });
   } catch (err) { next(err); }
 });
 

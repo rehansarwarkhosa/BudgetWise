@@ -2,6 +2,7 @@ import { Router } from 'express';
 import Topic from '../models/Topic.js';
 import SubTopic from '../models/SubTopic.js';
 import Note from '../models/Note.js';
+import AuditLog from '../models/AuditLog.js';
 import { success, error } from '../utils/response.js';
 
 const router = Router();
@@ -26,6 +27,7 @@ router.post('/topics', async (req, res, next) => {
     const { name } = req.body;
     if (!name) return error(res, 'Name is required');
     const topic = await Topic.create({ name });
+    await AuditLog.create({ action: 'CREATE', entity: 'Topic', entityId: topic._id, details: `Created topic "${name}"` });
     success(res, topic, 201);
   } catch (err) { next(err); }
 });
@@ -35,8 +37,10 @@ router.put('/topics/:id', async (req, res, next) => {
     const { name } = req.body;
     const topic = await Topic.findById(req.params.id);
     if (!topic) return error(res, 'Topic not found', 404);
+    const oldName = topic.name;
     if (name) topic.name = name;
     await topic.save();
+    if (name && name !== oldName) await AuditLog.create({ action: 'UPDATE', entity: 'Topic', entityId: topic._id, details: `Renamed topic "${oldName}" -> "${name}"` });
     success(res, topic);
   } catch (err) { next(err); }
 });
@@ -49,6 +53,7 @@ router.delete('/topics/:id', async (req, res, next) => {
     const subIds = subs.map(s => s._id);
     await Note.deleteMany({ subTopicId: { $in: subIds } });
     await SubTopic.deleteMany({ topicId: topic._id });
+    await AuditLog.create({ action: 'DELETE', entity: 'Topic', entityId: topic._id, details: `Deleted topic "${topic.name}" and all subtopics/notes` });
     success(res, { message: 'Topic and all contents deleted' });
   } catch (err) { next(err); }
 });
@@ -73,6 +78,7 @@ router.post('/topics/:topicId/subtopics', async (req, res, next) => {
     const topic = await Topic.findById(req.params.topicId);
     if (!topic) return error(res, 'Topic not found', 404);
     const sub = await SubTopic.create({ topicId: req.params.topicId, name });
+    await AuditLog.create({ action: 'CREATE', entity: 'SubTopic', entityId: sub._id, details: `Created subtopic "${name}" in "${topic.name}"` });
     success(res, sub, 201);
   } catch (err) { next(err); }
 });
@@ -82,8 +88,10 @@ router.put('/subtopics/:id', async (req, res, next) => {
     const { name } = req.body;
     const sub = await SubTopic.findById(req.params.id);
     if (!sub) return error(res, 'SubTopic not found', 404);
+    const oldName = sub.name;
     if (name) sub.name = name;
     await sub.save();
+    if (name && name !== oldName) await AuditLog.create({ action: 'UPDATE', entity: 'SubTopic', entityId: sub._id, details: `Renamed subtopic "${oldName}" -> "${name}"` });
     success(res, sub);
   } catch (err) { next(err); }
 });
@@ -93,6 +101,7 @@ router.delete('/subtopics/:id', async (req, res, next) => {
     const sub = await SubTopic.findByIdAndDelete(req.params.id);
     if (!sub) return error(res, 'SubTopic not found', 404);
     await Note.deleteMany({ subTopicId: sub._id });
+    await AuditLog.create({ action: 'DELETE', entity: 'SubTopic', entityId: sub._id, details: `Deleted subtopic "${sub.name}" and all notes` });
     success(res, { message: 'SubTopic and notes deleted' });
   } catch (err) { next(err); }
 });
@@ -121,6 +130,7 @@ router.post('/subtopics/:subTopicId/notes', async (req, res, next) => {
       tags: tags || [],
     });
     const populated = await note.populate('tags');
+    await AuditLog.create({ action: 'CREATE', entity: 'Note', entityId: note._id, details: `Created note "${title}"` });
     success(res, populated, 201);
   } catch (err) { next(err); }
 });
@@ -143,6 +153,7 @@ router.put('/note/:id', async (req, res, next) => {
     if (tags !== undefined) note.tags = tags;
     await note.save();
     const populated = await note.populate('tags');
+    await AuditLog.create({ action: 'UPDATE', entity: 'Note', entityId: note._id, details: `Updated note "${note.title}"` });
     success(res, populated);
   } catch (err) { next(err); }
 });
@@ -151,6 +162,7 @@ router.delete('/note/:id', async (req, res, next) => {
   try {
     const note = await Note.findByIdAndDelete(req.params.id);
     if (!note) return error(res, 'Note not found', 404);
+    await AuditLog.create({ action: 'DELETE', entity: 'Note', entityId: note._id, details: `Deleted note "${note.title}"` });
     success(res, { message: 'Note deleted' });
   } catch (err) { next(err); }
 });

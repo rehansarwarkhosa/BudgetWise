@@ -626,6 +626,7 @@ function TagManagerModal({ open, tags, onClose, onDone }) {
   const [color, setColor] = useState('#6C63FF');
   const [loading, setLoading] = useState(false);
   const [editingTag, setEditingTag] = useState(null);
+  const [confirmDeleteTag, setConfirmDeleteTag] = useState(null);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -646,9 +647,10 @@ function TagManagerModal({ open, tags, onClose, onDone }) {
     finally { setLoading(false); }
   };
 
-  const handleDelete = async (id) => {
+  const handleDeleteTag = async () => {
+    if (!confirmDeleteTag) return;
     try {
-      await deleteTag(id);
+      await deleteTag(confirmDeleteTag._id);
       toast.success('Tag deleted');
       onDone();
     } catch (err) { toast.error(err.message); }
@@ -691,7 +693,7 @@ function TagManagerModal({ open, tags, onClose, onDone }) {
             <button className="btn-ghost" style={{ padding: 4 }} onClick={() => startEdit(tag)}>
               <IoCreate size={14} color="var(--text-muted)" />
             </button>
-            <button className="btn-ghost" style={{ padding: 4 }} onClick={() => handleDelete(tag._id)}>
+            <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setConfirmDeleteTag(tag)}>
               <IoTrash size={14} color="var(--danger)" />
             </button>
           </div>
@@ -700,6 +702,11 @@ function TagManagerModal({ open, tags, onClose, onDone }) {
           <EmptyState title="No tags" subtitle="Create your first tag above" />
         )}
       </div>
+
+      <ConfirmModal open={!!confirmDeleteTag} onClose={() => setConfirmDeleteTag(null)}
+        onConfirm={handleDeleteTag}
+        title="Delete tag?"
+        message={`Delete tag "${confirmDeleteTag?.name}"? It will be removed from all notes.`} />
     </Modal>
   );
 }

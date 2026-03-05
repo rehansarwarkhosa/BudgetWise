@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import Trail from '../models/Trail.js';
+import AuditLog from '../models/AuditLog.js';
 import { success, error } from '../utils/response.js';
 
 const router = Router();
@@ -31,6 +32,7 @@ router.post('/', async (req, res, next) => {
     const { text } = req.body;
     if (!text?.trim()) return error(res, 'Text is required');
     const entry = await Trail.create({ text: text.trim() });
+    await AuditLog.create({ action: 'CREATE', entity: 'Trail', entityId: entry._id, details: `Created trail entry "${text.trim().slice(0, 50)}"` });
     success(res, entry, 201);
   } catch (err) { next(err); }
 });
@@ -40,6 +42,7 @@ router.delete('/:id', async (req, res, next) => {
   try {
     const entry = await Trail.findByIdAndDelete(req.params.id);
     if (!entry) return error(res, 'Trail entry not found', 404);
+    await AuditLog.create({ action: 'DELETE', entity: 'Trail', entityId: entry._id, details: `Deleted trail entry "${entry.text.slice(0, 50)}"` });
     success(res, { message: 'Deleted' });
   } catch (err) { next(err); }
 });
@@ -48,6 +51,7 @@ router.delete('/:id', async (req, res, next) => {
 router.delete('/', async (req, res, next) => {
   try {
     await Trail.deleteMany({});
+    await AuditLog.create({ action: 'DELETE', entity: 'Trail', details: 'Deleted all trail entries' });
     success(res, { message: 'All trail entries deleted' });
   } catch (err) { next(err); }
 });
