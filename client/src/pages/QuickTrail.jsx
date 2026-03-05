@@ -1,13 +1,26 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { IoSend, IoTrash, IoCopy, IoSearch, IoClose } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
+import { useSettings } from '../context/SettingsContext';
 import { getTrails, createTrail, deleteTrail } from '../api';
 import { formatDateTime } from '../utils/format';
 
+function getEntryHighlight(text, highlights) {
+  if (!highlights?.length) return null;
+  const lower = text.toLowerCase();
+  for (const h of highlights) {
+    if (lower.includes(h.keyword.toLowerCase())) return h.color;
+  }
+  return null;
+}
+
 export default function QuickTrail() {
+  const { settings } = useSettings();
+  const trailBold = settings?.trailBoldText || false;
+  const trailHighlights = useMemo(() => settings?.trailHighlights || [], [settings?.trailHighlights]);
   const [entries, setEntries] = useState([]);
   const [text, setText] = useState('');
   const [page, setPage] = useState(1);
@@ -138,9 +151,14 @@ export default function QuickTrail() {
         <EmptyState icon={searchMode ? "🔍" : "⚡"} title={searchMode ? "No results" : "No entries yet"} subtitle={searchMode ? `Nothing found for "${searchQuery}"` : "Type something and hit send"} />
       ) : (
         <div style={{ display: 'grid', gap: 10 }}>
-          {entries.map((entry) => (
-            <div key={entry._id} className="card" style={{ position: 'relative' }}>
-              <p style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 8, whiteSpace: 'pre-wrap' }}>
+          {entries.map((entry) => {
+            const hlColor = getEntryHighlight(entry.text, trailHighlights);
+            return (
+            <div key={entry._id} className="card" style={{
+              position: 'relative',
+              ...(hlColor ? { background: hlColor + '20', borderLeft: `3px solid ${hlColor}` } : {}),
+            }}>
+              <p style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 8, whiteSpace: 'pre-wrap', ...(trailBold ? { fontWeight: 700 } : {}) }}>
                 {entry.text}
               </p>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -157,7 +175,8 @@ export default function QuickTrail() {
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
 
           {page < totalPages && (
             <button className="btn-outline" onClick={handleLoadMore} disabled={loadingMore}

@@ -9,6 +9,11 @@ const settingsSchema = new mongoose.Schema({
   },
   notificationEmail: { type: String, default: '' },
   theme: { type: String, enum: ['dark', 'light'], default: 'dark' },
+  trailBoldText: { type: Boolean, default: false },
+  trailHighlights: [{
+    keyword: { type: String, required: true },
+    color: { type: String, required: true },
+  }],
 }, { timestamps: true });
 
 export default mongoose.model('Settings', settingsSchema);

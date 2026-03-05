@@ -38,7 +38,7 @@ router.get('/', async (req, res, next) => {
 // Update settings
 router.put('/', async (req, res, next) => {
   try {
-    const { mode, negativeLimit, currentPeriod, notificationEmail, theme } = req.body;
+    const { mode, negativeLimit, currentPeriod, notificationEmail, theme, trailBoldText, trailHighlights } = req.body;
     let settings = await Settings.findOne();
     if (!settings) {
       const period = getCurrentPeriod();
@@ -54,6 +54,9 @@ router.put('/', async (req, res, next) => {
     else if (notificationEmail !== undefined) settings.notificationEmail = notificationEmail;
     if (theme !== undefined && theme !== settings.theme) { changes.push(`theme: "${settings.theme}" -> "${theme}"`); settings.theme = theme; }
     else if (theme !== undefined) settings.theme = theme;
+    if (trailBoldText !== undefined && trailBoldText !== settings.trailBoldText) { changes.push(`trailBoldText: ${settings.trailBoldText} -> ${trailBoldText}`); settings.trailBoldText = trailBoldText; }
+    else if (trailBoldText !== undefined) settings.trailBoldText = trailBoldText;
+    if (trailHighlights !== undefined) { settings.trailHighlights = trailHighlights; changes.push(`trailHighlights updated (${trailHighlights.length} rules)`); }
     await settings.save();
 
     if (changes.length) {

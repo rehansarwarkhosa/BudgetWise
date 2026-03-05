@@ -35,6 +35,10 @@ export default function Settings() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState(null);
+  const [trailBoldText, setTrailBoldText] = useState(false);
+  const [trailHighlights, setTrailHighlights] = useState([]);
+  const [newKeyword, setNewKeyword] = useState('');
+  const [newColor, setNewColor] = useState('#ef4444');
 
   useEffect(() => {
     if (settings && !initialized) {
@@ -42,6 +46,8 @@ export default function Settings() {
       setNegativeLimit(settings.negativeLimit ?? 0);
       setNotificationEmail(settings.notificationEmail || '');
       setTheme(settings.theme || 'dark');
+      setTrailBoldText(settings.trailBoldText || false);
+      setTrailHighlights(settings.trailHighlights || []);
       setInitialized(true);
     }
   }, [settings, initialized]);
@@ -97,6 +103,41 @@ export default function Settings() {
       await deleteBudgetCategory(confirmDeleteCategory._id);
       toast.success('Category deleted');
       fetchCategories();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleToggleTrailBold = async () => {
+    const next = !trailBoldText;
+    setTrailBoldText(next);
+    try {
+      await updateSettings({ trailBoldText: next });
+      await refetchSettings();
+      setInitialized(false);
+    } catch (err) { toast.error(err.message); setTrailBoldText(!next); }
+  };
+
+  const handleAddHighlight = async (e) => {
+    e.preventDefault();
+    if (!newKeyword.trim()) return;
+    const updated = [...trailHighlights, { keyword: newKeyword.trim().toLowerCase(), color: newColor }];
+    setTrailHighlights(updated);
+    setNewKeyword('');
+    try {
+      await updateSettings({ trailHighlights: updated });
+      await refetchSettings();
+      setInitialized(false);
+      toast.success('Highlight rule added');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleRemoveHighlight = async (index) => {
+    const updated = trailHighlights.filter((_, i) => i !== index);
+    setTrailHighlights(updated);
+    try {
+      await updateSettings({ trailHighlights: updated });
+      await refetchSettings();
+      setInitialized(false);
+      toast.success('Highlight rule removed');
     } catch (err) { toast.error(err.message); }
   };
 
@@ -264,6 +305,64 @@ export default function Settings() {
         onConfirm={handleDeleteCategory}
         title="Delete category?"
         message={`Delete budget category "${confirmDeleteCategory?.name}"? Existing budgets with this category will not be affected.`} />
+
+      {/* Trail Settings */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Trail Formatting</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Customize how trail entries look.
+        </p>
+
+        {/* Bold toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <span style={{ fontSize: 14 }}>Bold entry text</span>
+          <button onClick={handleToggleTrailBold} style={{
+            width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+            background: trailBoldText ? 'var(--primary)' : 'var(--bg-input)',
+            position: 'relative', transition: 'background 0.2s',
+          }}>
+            <span style={{
+              position: 'absolute', top: 2, left: trailBoldText ? 22 : 2,
+              width: 20, height: 20, borderRadius: '50%', background: 'white',
+              transition: 'left 0.2s',
+            }} />
+          </button>
+        </div>
+
+        {/* Keyword highlights */}
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, display: 'block' }}>
+            Keyword Color Highlights
+          </label>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+            If a trail entry contains a keyword, its background changes to the chosen color.
+          </p>
+          <form onSubmit={handleAddHighlight} style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <input type="text" placeholder="Keyword (e.g. milk)" value={newKeyword}
+              onChange={(e) => setNewKeyword(e.target.value)} style={{ flex: 1 }} />
+            <input type="color" value={newColor} onChange={(e) => setNewColor(e.target.value)}
+              style={{ width: 40, height: 40, padding: 2, border: '2px solid var(--border)', borderRadius: 8, cursor: 'pointer', background: 'transparent' }} />
+            <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '10px 16px' }}>
+              <IoAdd size={18} />
+            </button>
+          </form>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {trailHighlights.map((h, i) => (
+              <div key={i} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px', borderRadius: 20, fontSize: 13, fontWeight: 500,
+                background: h.color + '25', border: `1px solid ${h.color}50`,
+              }}>
+                <span style={{ width: 12, height: 12, borderRadius: '50%', background: h.color, display: 'inline-block' }} />
+                {h.keyword}
+                <button className="btn-ghost" style={{ padding: 2 }} onClick={() => handleRemoveHighlight(i)}>
+                  <IoTrash size={12} color="var(--danger)" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {/* Guide */}
       <div className="card" style={{ marginBottom: 16, cursor: 'pointer' }} onClick={() => navigate('/guide')}>
