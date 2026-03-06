@@ -5,7 +5,7 @@ import { useSettings } from '../context/SettingsContext';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
 import { IoSunny, IoMoon, IoTrash, IoAdd } from 'react-icons/io5';
-import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails, getAuditLogs, clearAuditLogs, getBudgetCategories, addBudgetCategory, updateBudgetCategory, deleteBudgetCategory } from '../api';
+import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails, getAuditLogs, clearAuditLogs, getBudgetCategories, addBudgetCategory, updateBudgetCategory, deleteBudgetCategory, sendTestEmail } from '../api';
 import { formatDate } from '../utils/format';
 
 const PRESET_COLORS = [
@@ -304,6 +304,7 @@ export default function Settings() {
   const [confirmDeleteTrails, setConfirmDeleteTrails] = useState(false);
   const [deletingTrails, setDeletingTrails] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [sendingTest, setSendingTest] = useState(false);
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
@@ -607,9 +608,23 @@ export default function Settings() {
           </button>
         </div>
 
-        <button className="btn-primary" onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving...' : 'Save Settings'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-primary" style={{ flex: 1 }} onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Settings'}
+          </button>
+          <button className="btn-outline" style={{ flex: 'none', padding: '10px 14px' }}
+            disabled={sendingTest}
+            onClick={async () => {
+              setSendingTest(true);
+              try {
+                await sendTestEmail();
+                toast.success('Test email sent! Check your inbox.');
+              } catch (err) { toast.error(err.response?.data?.error || err.message); }
+              finally { setSendingTest(false); }
+            }}>
+            {sendingTest ? 'Sending...' : 'Test Email'}
+          </button>
+        </div>
       </div>
 
       {/* Budget Categories */}

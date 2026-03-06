@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import sgMail from '@sendgrid/mail';
 import Settings from '../models/Settings.js';
 import Income from '../models/Income.js';
 import Budget from '../models/Budget.js';
@@ -70,6 +71,50 @@ router.put('/', async (req, res, next) => {
 
     success(res, settings);
   } catch (err) { next(err); }
+});
+
+// Test email
+router.post('/test-email', async (req, res, next) => {
+  try {
+    if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) {
+      return error(res, 'SendGrid is not configured (SENDGRID_API_KEY / SENDGRID_FROM_EMAIL missing)');
+    }
+    const settings = await Settings.findOne();
+    const toEmail = settings?.notificationEmail;
+    if (!toEmail) return error(res, 'No notification email set in settings');
+
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    const timeStr = new Date().toLocaleString('en-US', {
+      timeZone: 'Asia/Karachi',
+      day: 'numeric', month: 'short', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true,
+    });
+
+    await sgMail.send({
+      to: toEmail,
+      from: process.env.SENDGRID_FROM_EMAIL,
+      subject: 'BudgetWise — Test Email',
+      html: `
+        <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #6C63FF; margin-bottom: 4px;">Test Email</h2>
+          <p style="color: #666; font-size: 13px; margin-bottom: 16px;">${timeStr} (PKT)</p>
+          <p style="line-height: 1.6;">This is a test email from BudgetWise. If you received this, your email notifications are configured correctly.</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+          <p style="color: #999; font-size: 12px;">Sent by BudgetWise</p>
+        </div>
+      `,
+    });
+
+    await AuditLog.create({
+      action: 'NOTIFY', entity: 'Settings',
+      details: `Test email sent to ${toEmail}`,
+    });
+
+    success(res, { message: 'Test email sent successfully' });
+  } catch (err) {
+    console.error('Test email error:', err.message);
+    return error(res, 'Failed to send test email: ' + (err.message || 'Unknown error'));
+  }
 });
 
 // Export all data

@@ -78,11 +78,13 @@ export default function Notes() {
     finally { setTreeLoading(false); }
   }, []);
 
+  const recentFetched = useRef(false);
   const fetchRecent = useCallback(async () => {
-    setRecentLoading(true);
+    if (!recentFetched.current) setRecentLoading(true);
     try {
       const res = await getRecentNotes();
       setRecentNotes(res.data);
+      recentFetched.current = true;
     } catch (err) { toast.error(err.message); }
     finally { setRecentLoading(false); }
   }, []);
@@ -330,7 +332,7 @@ export default function Notes() {
                       <form onSubmit={(e) => { e.preventDefault(); handleRename(); }} style={{ flex: 1, display: 'flex', gap: 6 }}>
                         <input type="text" value={editItem.name} autoFocus
                           onChange={(e) => setEditItem({ ...editItem, name: e.target.value })}
-                          style={{ flex: 1, fontSize: 13, padding: '4px 8px' }} />
+                          style={{ flex: 1, padding: '4px 8px' }} />
                         <button type="submit" className="btn-ghost" style={{ color: 'var(--primary)', fontSize: 11 }}>Save</button>
                         <button type="button" className="btn-ghost" onClick={() => setEditItem(null)} style={{ fontSize: 11 }}>Cancel</button>
                       </form>
@@ -389,7 +391,7 @@ export default function Notes() {
                               <form onSubmit={(e) => { e.preventDefault(); handleRename(); }} style={{ flex: 1, display: 'flex', gap: 6 }}>
                                 <input type="text" value={editItem.name} autoFocus
                                   onChange={(e) => setEditItem({ ...editItem, name: e.target.value })}
-                                  style={{ flex: 1, fontSize: 12, padding: '3px 6px' }} />
+                                  style={{ flex: 1, padding: '3px 6px' }} />
                                 <button type="submit" className="btn-ghost" style={{ color: 'var(--primary)', fontSize: 11 }}>Save</button>
                                 <button type="button" className="btn-ghost" onClick={() => setEditItem(null)} style={{ fontSize: 11 }}>Cancel</button>
                               </form>

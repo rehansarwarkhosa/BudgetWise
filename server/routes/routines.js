@@ -10,6 +10,13 @@ const router = Router();
 
 const getNowKarachi = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
 
+// Format a real Date to PKT string (no double conversion)
+const formatPKT = (date) => date.toLocaleString('en-US', {
+  timeZone: 'Asia/Karachi',
+  day: 'numeric', month: 'short', year: 'numeric',
+  hour: 'numeric', minute: '2-digit', hour12: true,
+});
+
 // Get all routines
 router.get('/', async (req, res, next) => {
   try {
@@ -111,11 +118,8 @@ router.get('/check-reminders', async (req, res, next) => {
           `<li><strong>${t.routineName}</strong> — scheduled at ${t.reminderTime}</li>`
         ).join('');
 
-        const timeStr = now.toLocaleString('en-US', {
-          timeZone: 'Asia/Karachi',
-          day: 'numeric', month: 'short', year: 'numeric',
-          hour: 'numeric', minute: '2-digit', hour12: true,
-        });
+        // Use fresh Date() with timezone to avoid double-conversion from getNowKarachi()
+        const timeStr = formatPKT(new Date());
 
         try {
           await sgMail.send({
@@ -133,8 +137,17 @@ router.get('/check-reminders', async (req, res, next) => {
             `,
           });
           emailSent = true;
+
+          await AuditLog.create({
+            action: 'NOTIFY', entity: 'Routine',
+            details: `Email sent to ${toEmail}: ${triggered.map(t => `"${t.routineName}" at ${t.reminderTime}`).join(', ')}`,
+          });
         } catch (emailErr) {
           console.error('SendGrid error:', emailErr.message);
+          await AuditLog.create({
+            action: 'ERROR', entity: 'Routine',
+            details: `Email failed to ${toEmail}: ${emailErr.message}`,
+          });
         }
       }
     }
