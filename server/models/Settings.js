@@ -8,6 +8,7 @@ const settingsSchema = new mongoose.Schema({
     year: { type: Number, required: true },
   },
   notificationEmail: { type: String, default: '' },
+  emailNotificationsEnabled: { type: Boolean, default: true },
   theme: { type: String, enum: ['dark', 'light'], default: 'dark' },
   trailBoldText: { type: Boolean, default: false },
   trailHighlights: [{

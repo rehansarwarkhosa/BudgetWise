@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { IoAdd, IoTrash, IoCheckmarkCircle, IoCloseCircle, IoChevronForward, IoCreate, IoCopy, IoFlash } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
@@ -178,6 +178,54 @@ function ReminderEditor({ reminders, setReminders }) {
   );
 }
 
+function calcEntriesFromReminders(dueDate, reminders) {
+  if (!dueDate || reminders.length === 0) return 0;
+  const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate + 'T23:59:59');
+  if (due < today) return 0;
+
+  let total = 0;
+  for (const rem of reminders) {
+    if (!rem.enabled) continue;
+    switch (rem.type) {
+      case 'daily': {
+        const days = Math.floor((due - today) / 86400000) + 1;
+        total += days;
+        break;
+      }
+      case 'weekdays': {
+        let d = new Date(today);
+        while (d <= due) {
+          const dow = d.getDay();
+          if (dow >= 1 && dow <= 5) total++;
+          d.setDate(d.getDate() + 1);
+        }
+        break;
+      }
+      case 'custom_days': {
+        if (!rem.days?.length) break;
+        let d = new Date(today);
+        while (d <= due) {
+          if (rem.days.includes(d.getDay())) total++;
+          d.setDate(d.getDate() + 1);
+        }
+        break;
+      }
+      case 'custom_dates': {
+        if (!rem.dates?.length) break;
+        for (const dateStr of rem.dates) {
+          const cd = new Date(dateStr);
+          cd.setHours(0, 0, 0, 0);
+          if (cd >= today && cd <= due) total++;
+        }
+        break;
+      }
+    }
+  }
+  return total;
+}
+
 function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed }) {
   const [name, setName] = useState('');
   const [dueDate, setDueDate] = useState('');
@@ -186,6 +234,18 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
   const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const skipAutoCalcRef = useRef(false);
+
+  const autoCalc = calcEntriesFromReminders(dueDate, reminders);
+
+  // Auto-fill target entries when dueDate or reminders change
+  const remindersKey = JSON.stringify(reminders.map(r => ({ type: r.type, days: r.days, dates: r.dates, enabled: r.enabled })));
+  useEffect(() => {
+    if (!initialized || skipAutoCalcRef.current) return;
+    if (autoCalc > 0) {
+      setTargetEntries(String(autoCalc));
+    }
+  }, [dueDate, remindersKey]);
 
   // Initialize from clone source
   if (open && cloneSource && !initialized) {
@@ -198,6 +258,7 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
       dates: [...(r.dates || [])], enabled: r.enabled ?? true,
     })) || []);
     setInitialized(true);
+    skipAutoCalcRef.current = true; // Don't override clone's target
     onCloneUsed?.();
   }
 
@@ -208,7 +269,7 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
   if (!open && initialized) {
     setTimeout(() => {
       setName(''); setDueDate(''); setTargetEntries(''); setFields([]); setReminders([]);
-      setInitialized(false);
+      setInitialized(false); skipAutoCalcRef.current = false;
     }, 0);
   }
 
@@ -266,6 +327,12 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
           <label>Target Entries</label>
           <input type="number" placeholder="e.g., 30" value={targetEntries}
             onChange={(e) => setTargetEntries(e.target.value)} required min="1" />
+          {autoCalc > 0 && (
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+              Calculated from reminders: <strong style={{ color: 'var(--primary)' }}>{autoCalc}</strong> entries
+              {String(targetEntries) !== String(autoCalc) && <span style={{ color: 'var(--warning)' }}> (modified)</span>}
+            </p>
+          )}
         </div>
 
         <ReminderEditor reminders={reminders} setReminders={setReminders} />

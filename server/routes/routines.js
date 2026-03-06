@@ -99,6 +99,9 @@ router.get('/check-reminders', async (req, res, next) => {
     let emailSent = false;
     if (triggered.length > 0 && process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM_EMAIL) {
       const settings = await Settings.findOne();
+      if (settings?.emailNotificationsEnabled === false) {
+        return success(res, { triggered, emailSent: false, count: triggered.length, skipped: 'notifications disabled' });
+      }
       const toEmail = settings?.notificationEmail || process.env.NOTIFICATION_EMAIL;
 
       if (toEmail) {

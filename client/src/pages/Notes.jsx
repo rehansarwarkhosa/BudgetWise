@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import {
-  IoAdd, IoTrash, IoChevronForward, IoSearch, IoArrowBack,
-  IoClose, IoPricetag, IoCreate, IoColorPalette,
+  IoAdd, IoTrash, IoChevronForward, IoChevronDown, IoSearch, IoArrowBack,
+  IoClose, IoPricetag, IoCreate, IoColorPalette, IoTime,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -13,31 +13,33 @@ import {
   getSubTopics, createSubTopic, updateSubTopic, deleteSubTopic,
   getNotes, createNote, updateNote, deleteNote,
   getTags, createTag, updateTag, deleteTag,
-  searchNotes,
+  searchNotes, getRecentNotes, getNotesTree,
 } from '../api';
+import { formatDateTime } from '../utils/format';
 
 // ─── Main Page ───
 
 export default function Notes() {
-  // Navigation state: 'topics' | 'subtopics' | 'notes'
-  const [view, setView] = useState('topics');
-  const [selectedTopic, setSelectedTopic] = useState(null);
-  const [selectedSubTopic, setSelectedSubTopic] = useState(null);
+  // Tab: 'tree' | 'recent' | 'search'
+  const [tab, setTab] = useState('tree');
 
-  // Data
-  const [topics, setTopics] = useState([]);
-  const [subTopics, setSubTopics] = useState([]);
-  const [notes, setNotes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Tree data
+  const [tree, setTree] = useState([]);
+  const [treeLoading, setTreeLoading] = useState(true);
+  const [expandedTopics, setExpandedTopics] = useState({});
+  const [expandedSubs, setExpandedSubs] = useState({});
+
+  // Recent
+  const [recentNotes, setRecentNotes] = useState([]);
+  const [recentLoading, setRecentLoading] = useState(false);
 
   // Modals
   const [createTopicModal, setCreateTopicModal] = useState(false);
-  const [createSubTopicModal, setCreateSubTopicModal] = useState(false);
-  const [noteEditorModal, setNoteEditorModal] = useState(null); // null | 'new' | noteObj
+  const [createSubTopicModal, setCreateSubTopicModal] = useState(null); // topicId
+  const [noteEditorModal, setNoteEditorModal] = useState(null); // null | { note, subTopicId }
   const [tagManagerModal, setTagManagerModal] = useState(false);
 
   // Search
-  const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchTag, setSearchTag] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -45,37 +47,26 @@ export default function Notes() {
   const [allTags, setAllTags] = useState([]);
 
   // Edit state
-  const [editItem, setEditItem] = useState(null); // { type, id, name }
-  const [confirmDelete, setConfirmDelete] = useState(null); // { type, id, name }
+  const [editItem, setEditItem] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
-  const fetchTopics = useCallback(async () => {
-    setLoading(true);
+  const fetchTree = useCallback(async () => {
+    setTreeLoading(true);
     try {
-      const res = await getTopics();
-      setTopics(res.data);
+      const res = await getNotesTree();
+      setTree(res.data);
     } catch (err) { toast.error(err.message); }
-    finally { setLoading(false); }
+    finally { setTreeLoading(false); }
   }, []);
 
-  const fetchSubTopics = useCallback(async () => {
-    if (!selectedTopic) return;
-    setLoading(true);
+  const fetchRecent = useCallback(async () => {
+    setRecentLoading(true);
     try {
-      const res = await getSubTopics(selectedTopic._id);
-      setSubTopics(res.data);
+      const res = await getRecentNotes();
+      setRecentNotes(res.data);
     } catch (err) { toast.error(err.message); }
-    finally { setLoading(false); }
-  }, [selectedTopic]);
-
-  const fetchNotes = useCallback(async () => {
-    if (!selectedSubTopic) return;
-    setLoading(true);
-    try {
-      const res = await getNotes(selectedSubTopic._id);
-      setNotes(res.data);
-    } catch (err) { toast.error(err.message); }
-    finally { setLoading(false); }
-  }, [selectedSubTopic]);
+    finally { setRecentLoading(false); }
+  }, []);
 
   const fetchTags = useCallback(async () => {
     try {
@@ -84,29 +75,18 @@ export default function Notes() {
     } catch (err) { /* silent */ }
   }, []);
 
-  useEffect(() => { fetchTopics(); fetchTags(); }, []);
+  useEffect(() => { fetchTree(); fetchTags(); }, []);
 
   useEffect(() => {
-    if (view === 'subtopics' && selectedTopic) fetchSubTopics();
-  }, [view, selectedTopic]);
+    if (tab === 'recent') fetchRecent();
+  }, [tab]);
 
-  useEffect(() => {
-    if (view === 'notes' && selectedSubTopic) fetchNotes();
-  }, [view, selectedSubTopic]);
-
-  const navigateToSubTopics = (topic) => {
-    setSelectedTopic(topic);
-    setView('subtopics');
+  const toggleTopic = (topicId) => {
+    setExpandedTopics(prev => ({ ...prev, [topicId]: !prev[topicId] }));
   };
 
-  const navigateToNotes = (sub) => {
-    setSelectedSubTopic(sub);
-    setView('notes');
-  };
-
-  const goBack = () => {
-    if (view === 'notes') { setView('subtopics'); setNotes([]); }
-    else if (view === 'subtopics') { setView('topics'); setSubTopics([]); fetchTopics(); }
+  const toggleSub = (subId) => {
+    setExpandedSubs(prev => ({ ...prev, [subId]: !prev[subId] }));
   };
 
   // Search
@@ -124,11 +104,11 @@ export default function Notes() {
   };
 
   useEffect(() => {
-    if (searchMode) {
+    if (tab === 'search') {
       const timer = setTimeout(doSearch, 400);
       return () => clearTimeout(timer);
     }
-  }, [searchQuery, searchTag, searchMode]);
+  }, [searchQuery, searchTag, tab]);
 
   // Edit inline
   const handleRename = async () => {
@@ -136,12 +116,11 @@ export default function Notes() {
     try {
       if (editItem.type === 'topic') {
         await updateTopic(editItem.id, { name: editItem.name });
-        fetchTopics();
       } else if (editItem.type === 'subtopic') {
         await updateSubTopic(editItem.id, { name: editItem.name });
-        fetchSubTopics();
       }
       toast.success('Renamed');
+      fetchTree();
     } catch (err) { toast.error(err.message); }
     setEditItem(null);
   };
@@ -153,20 +132,20 @@ export default function Notes() {
       if (confirmDelete.type === 'topic') {
         await deleteTopic(confirmDelete.id);
         toast.success('Topic deleted');
-        fetchTopics();
       } else if (confirmDelete.type === 'subtopic') {
         await deleteSubTopic(confirmDelete.id);
         toast.success('SubTopic deleted');
-        fetchSubTopics();
       } else if (confirmDelete.type === 'note') {
         await deleteNote(confirmDelete.id);
         toast.success('Note deleted');
-        fetchNotes();
       }
+      fetchTree();
     } catch (err) { toast.error(err.message); }
   };
 
-  if (loading && !searchMode && topics.length === 0) return (
+  const refreshAll = () => { fetchTree(); fetchTags(); if (tab === 'recent') fetchRecent(); };
+
+  if (treeLoading && tree.length === 0) return (
     <div className="page"><h1 className="page-title">Notes</h1><Spinner /></div>
   );
 
@@ -174,49 +153,43 @@ export default function Notes() {
     <div className="page">
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        {(view !== 'topics' || searchMode) && (
+        {tab === 'search' && (
           <button className="btn-ghost" style={{ padding: 4 }}
-            onClick={() => { if (searchMode) { setSearchMode(false); setSearchResults([]); setSearchQuery(''); setSearchTag(''); } else goBack(); }}>
+            onClick={() => { setTab('tree'); setSearchResults([]); setSearchQuery(''); setSearchTag(''); }}>
             <IoArrowBack size={20} />
           </button>
         )}
         <h1 className="page-title" style={{ margin: 0, flex: 1 }}>
-          {searchMode ? 'Search Notes' : 'Notes'}
+          {tab === 'search' ? 'Search Notes' : 'Notes'}
         </h1>
         <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setTagManagerModal(true)}>
           <IoPricetag size={18} />
         </button>
         <button className="btn-ghost" style={{ padding: 4 }}
-          onClick={() => { setSearchMode(!searchMode); if (searchMode) { setSearchResults([]); setSearchQuery(''); setSearchTag(''); } }}>
+          onClick={() => { setTab(tab === 'search' ? 'tree' : 'search'); if (tab === 'search') { setSearchResults([]); setSearchQuery(''); setSearchTag(''); } }}>
           <IoSearch size={18} />
         </button>
       </div>
 
-      {/* Breadcrumb */}
-      {!searchMode && view !== 'topics' && (
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-          <span style={{ cursor: 'pointer', color: 'var(--primary)' }}
-            onClick={() => { setView('topics'); setSubTopics([]); fetchTopics(); }}>Topics</span>
-          {selectedTopic && (
-            <>
-              <span>/</span>
-              <span style={{ cursor: view === 'notes' ? 'pointer' : 'default', color: view === 'notes' ? 'var(--primary)' : 'var(--text-secondary)' }}
-                onClick={() => { if (view === 'notes') { setView('subtopics'); setNotes([]); } }}>
-                {selectedTopic.name}
-              </span>
-            </>
-          )}
-          {selectedSubTopic && view === 'notes' && (
-            <>
-              <span>/</span>
-              <span style={{ color: 'var(--text-secondary)' }}>{selectedSubTopic.name}</span>
-            </>
-          )}
+      {/* Tab bar (tree / recent) */}
+      {tab !== 'search' && (
+        <div style={{ display: 'flex', gap: 0, marginBottom: 14, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+          {[{ key: 'tree', label: 'All Notes' }, { key: 'recent', label: 'Recent' }].map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)} style={{
+              flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+              background: tab === t.key ? 'var(--primary)' : 'transparent',
+              color: tab === t.key ? 'white' : 'var(--text-secondary)',
+              transition: 'all 0.2s',
+            }}>
+              {t.key === 'recent' && <IoTime size={13} style={{ marginRight: 4, verticalAlign: -2 }} />}
+              {t.label}
+            </button>
+          ))}
         </div>
       )}
 
       {/* Search UI */}
-      {searchMode && (
+      {tab === 'search' && (
         <div style={{ marginBottom: 16 }}>
           <input type="text" placeholder="Search notes..." value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -239,7 +212,7 @@ export default function Notes() {
             <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
               {searchResults.map((note) => (
                 <div key={note._id} className="card" style={{ cursor: 'pointer' }}
-                  onClick={() => { setNoteEditorModal(note); }}>
+                  onClick={() => setNoteEditorModal({ note, subTopicId: note.subTopicId?._id })}>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
                     {note.subTopicId?.topicId?.name || '?'} / {note.subTopicId?.name || '?'}
                   </div>
@@ -263,117 +236,35 @@ export default function Notes() {
         </div>
       )}
 
-      {/* Topic List */}
-      {!searchMode && view === 'topics' && (
+      {/* Recent Notes */}
+      {tab === 'recent' && (
         <>
-          {topics.length === 0 ? (
-            <EmptyState icon="📝" title="No topics yet" subtitle="Create a topic to organize your notes" />
+          {recentLoading ? <Spinner /> : recentNotes.length === 0 ? (
+            <EmptyState icon="🕐" title="No recent notes" subtitle="Notes you edit will appear here" />
           ) : (
-            <div style={{ display: 'grid', gap: 10 }}>
-              {topics.map((t) => (
-                <div key={t._id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {editItem?.type === 'topic' && editItem.id === t._id ? (
-                    <form onSubmit={(e) => { e.preventDefault(); handleRename(); }} style={{ flex: 1, display: 'flex', gap: 6 }}>
-                      <input type="text" value={editItem.name} autoFocus
-                        onChange={(e) => setEditItem({ ...editItem, name: e.target.value })}
-                        style={{ flex: 1, fontSize: 14 }} />
-                      <button type="submit" className="btn-ghost" style={{ color: 'var(--primary)', fontSize: 12 }}>Save</button>
-                      <button type="button" className="btn-ghost" onClick={() => setEditItem(null)} style={{ fontSize: 12 }}>Cancel</button>
-                    </form>
-                  ) : (
-                    <>
-                      <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => navigateToSubTopics(t)}>
-                        <h3 style={{ fontSize: 15, fontWeight: 600 }}>{t.name}</h3>
-                        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                          {t.subCount} subtopic{t.subCount !== 1 ? 's' : ''} &middot; {t.noteCount} note{t.noteCount !== 1 ? 's' : ''}
-                        </p>
-                      </div>
-                      <button className="btn-ghost" style={{ padding: 4 }}
-                        onClick={() => setEditItem({ type: 'topic', id: t._id, name: t.name })}>
-                        <IoCreate size={16} color="var(--text-muted)" />
-                      </button>
-                      <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setConfirmDelete({ type: 'topic', id: t._id, name: t.name })}>
-                        <IoTrash size={16} color="var(--danger)" />
-                      </button>
-                      <IoChevronForward size={16} color="var(--text-muted)" style={{ cursor: 'pointer' }}
-                        onClick={() => navigateToSubTopics(t)} />
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* SubTopic List */}
-      {!searchMode && view === 'subtopics' && (
-        <>
-          {loading ? <Spinner /> : subTopics.length === 0 ? (
-            <EmptyState icon="📂" title="No subtopics yet" subtitle="Create a subtopic to start adding notes" />
-          ) : (
-            <div style={{ display: 'grid', gap: 10 }}>
-              {subTopics.map((s) => (
-                <div key={s._id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {editItem?.type === 'subtopic' && editItem.id === s._id ? (
-                    <form onSubmit={(e) => { e.preventDefault(); handleRename(); }} style={{ flex: 1, display: 'flex', gap: 6 }}>
-                      <input type="text" value={editItem.name} autoFocus
-                        onChange={(e) => setEditItem({ ...editItem, name: e.target.value })}
-                        style={{ flex: 1, fontSize: 14 }} />
-                      <button type="submit" className="btn-ghost" style={{ color: 'var(--primary)', fontSize: 12 }}>Save</button>
-                      <button type="button" className="btn-ghost" onClick={() => setEditItem(null)} style={{ fontSize: 12 }}>Cancel</button>
-                    </form>
-                  ) : (
-                    <>
-                      <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => navigateToNotes(s)}>
-                        <h3 style={{ fontSize: 15, fontWeight: 600 }}>{s.name}</h3>
-                        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                          {s.noteCount} note{s.noteCount !== 1 ? 's' : ''}
-                        </p>
-                      </div>
-                      <button className="btn-ghost" style={{ padding: 4 }}
-                        onClick={() => setEditItem({ type: 'subtopic', id: s._id, name: s.name })}>
-                        <IoCreate size={16} color="var(--text-muted)" />
-                      </button>
-                      <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setConfirmDelete({ type: 'subtopic', id: s._id, name: s.name })}>
-                        <IoTrash size={16} color="var(--danger)" />
-                      </button>
-                      <IoChevronForward size={16} color="var(--text-muted)" style={{ cursor: 'pointer' }}
-                        onClick={() => navigateToNotes(s)} />
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Note List */}
-      {!searchMode && view === 'notes' && (
-        <>
-          {loading ? <Spinner /> : notes.length === 0 ? (
-            <EmptyState icon="📄" title="No notes yet" subtitle="Create your first note" />
-          ) : (
-            <div style={{ display: 'grid', gap: 10 }}>
-              {notes.map((n) => (
-                <div key={n._id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setNoteEditorModal(n)}>
-                    <h3 style={{ fontSize: 15, fontWeight: 600 }}>{n.title}</h3>
-                    {n.tags?.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
-                        {n.tags.map((tag) => (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {recentNotes.map((note) => (
+                <div key={note._id} className="card" style={{ cursor: 'pointer', padding: '10px 14px' }}
+                  onClick={() => setNoteEditorModal({ note, subTopicId: note.subTopicId?._id })}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>
+                    {note.subTopicId?.topicId?.name || '?'} / {note.subTopicId?.name || '?'}
+                  </div>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>{note.title}</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                      {formatDateTime(note.updatedAt)}
+                    </span>
+                    {note.tags?.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                        {note.tags.map((tag) => (
                           <span key={tag._id} style={{
-                            padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600,
+                            padding: '1px 6px', borderRadius: 8, fontSize: 9, fontWeight: 600,
                             background: tag.color + '33', color: tag.color,
                           }}>{tag.name}</span>
                         ))}
                       </div>
                     )}
                   </div>
-                  <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setConfirmDelete({ type: 'note', id: n._id, name: n.title })}>
-                    <IoTrash size={16} color="var(--danger)" />
-                  </button>
                 </div>
               ))}
             </div>
@@ -381,29 +272,171 @@ export default function Notes() {
         </>
       )}
 
-      {/* FAB */}
-      {!searchMode && (
-        <button className="fab" onClick={() => {
-          if (view === 'topics') setCreateTopicModal(true);
-          else if (view === 'subtopics') setCreateSubTopicModal(true);
-          else if (view === 'notes') setNoteEditorModal('new');
-        }}>
-          <IoAdd />
-        </button>
+      {/* Tree View */}
+      {tab === 'tree' && (
+        <>
+          {tree.length === 0 ? (
+            <EmptyState icon="📝" title="No topics yet" subtitle="Create a topic to organize your notes" />
+          ) : (
+            <div style={{ display: 'grid', gap: 0 }}>
+              {tree.map((topic) => (
+                <div key={topic._id}>
+                  {/* Topic row */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '10px 0',
+                    borderBottom: '1px solid var(--border)',
+                  }}>
+                    <button className="btn-ghost" style={{ padding: 2 }} onClick={() => toggleTopic(topic._id)}>
+                      {expandedTopics[topic._id]
+                        ? <IoChevronDown size={16} color="var(--primary)" />
+                        : <IoChevronForward size={16} color="var(--text-muted)" />}
+                    </button>
+
+                    {editItem?.type === 'topic' && editItem.id === topic._id ? (
+                      <form onSubmit={(e) => { e.preventDefault(); handleRename(); }} style={{ flex: 1, display: 'flex', gap: 6 }}>
+                        <input type="text" value={editItem.name} autoFocus
+                          onChange={(e) => setEditItem({ ...editItem, name: e.target.value })}
+                          style={{ flex: 1, fontSize: 13, padding: '4px 8px' }} />
+                        <button type="submit" className="btn-ghost" style={{ color: 'var(--primary)', fontSize: 11 }}>Save</button>
+                        <button type="button" className="btn-ghost" onClick={() => setEditItem(null)} style={{ fontSize: 11 }}>Cancel</button>
+                      </form>
+                    ) : (
+                      <>
+                        <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => toggleTopic(topic._id)}>
+                          <span style={{ fontSize: 14, fontWeight: 600 }}>{topic.name}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>
+                            {topic.subTopics.length} sub &middot; {topic.subTopics.reduce((a, s) => a + s.notes.length, 0)} notes
+                          </span>
+                        </div>
+                        <button className="btn-ghost" style={{ padding: 2 }}
+                          onClick={() => setCreateSubTopicModal(topic._id)} title="Add subtopic">
+                          <IoAdd size={15} color="var(--primary)" />
+                        </button>
+                        <button className="btn-ghost" style={{ padding: 2 }}
+                          onClick={() => setEditItem({ type: 'topic', id: topic._id, name: topic.name })}>
+                          <IoCreate size={14} color="var(--text-muted)" />
+                        </button>
+                        <button className="btn-ghost" style={{ padding: 2 }}
+                          onClick={() => setConfirmDelete({ type: 'topic', id: topic._id, name: topic.name })}>
+                          <IoTrash size={14} color="var(--danger)" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* SubTopics (expanded) */}
+                  {expandedTopics[topic._id] && (
+                    <div style={{ paddingLeft: 20 }}>
+                      {topic.subTopics.length === 0 ? (
+                        <div style={{ padding: '8px 0', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                          No subtopics
+                        </div>
+                      ) : topic.subTopics.map((sub) => (
+                        <div key={sub._id}>
+                          {/* SubTopic row */}
+                          <div style={{
+                            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0',
+                            borderBottom: '1px solid var(--border)',
+                          }}>
+                            <button className="btn-ghost" style={{ padding: 2 }} onClick={() => toggleSub(sub._id)}>
+                              {expandedSubs[sub._id]
+                                ? <IoChevronDown size={14} color="var(--primary)" />
+                                : <IoChevronForward size={14} color="var(--text-muted)" />}
+                            </button>
+
+                            {editItem?.type === 'subtopic' && editItem.id === sub._id ? (
+                              <form onSubmit={(e) => { e.preventDefault(); handleRename(); }} style={{ flex: 1, display: 'flex', gap: 6 }}>
+                                <input type="text" value={editItem.name} autoFocus
+                                  onChange={(e) => setEditItem({ ...editItem, name: e.target.value })}
+                                  style={{ flex: 1, fontSize: 12, padding: '3px 6px' }} />
+                                <button type="submit" className="btn-ghost" style={{ color: 'var(--primary)', fontSize: 11 }}>Save</button>
+                                <button type="button" className="btn-ghost" onClick={() => setEditItem(null)} style={{ fontSize: 11 }}>Cancel</button>
+                              </form>
+                            ) : (
+                              <>
+                                <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => toggleSub(sub._id)}>
+                                  <span style={{ fontSize: 13, fontWeight: 500 }}>{sub.name}</span>
+                                  <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 6 }}>
+                                    {sub.notes.length} note{sub.notes.length !== 1 ? 's' : ''}
+                                  </span>
+                                </div>
+                                <button className="btn-ghost" style={{ padding: 2 }}
+                                  onClick={() => setNoteEditorModal({ note: null, subTopicId: sub._id })} title="Add note">
+                                  <IoAdd size={14} color="var(--primary)" />
+                                </button>
+                                <button className="btn-ghost" style={{ padding: 2 }}
+                                  onClick={() => setEditItem({ type: 'subtopic', id: sub._id, name: sub.name })}>
+                                  <IoCreate size={13} color="var(--text-muted)" />
+                                </button>
+                                <button className="btn-ghost" style={{ padding: 2 }}
+                                  onClick={() => setConfirmDelete({ type: 'subtopic', id: sub._id, name: sub.name })}>
+                                  <IoTrash size={13} color="var(--danger)" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Notes (expanded) */}
+                          {expandedSubs[sub._id] && (
+                            <div style={{ paddingLeft: 20 }}>
+                              {sub.notes.length === 0 ? (
+                                <div style={{ padding: '6px 0', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                  No notes
+                                </div>
+                              ) : sub.notes.map((note) => (
+                                <div key={note._id} style={{
+                                  display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0',
+                                  borderBottom: '1px solid var(--border)', cursor: 'pointer',
+                                }} onClick={() => setNoteEditorModal({ note, subTopicId: sub._id })}>
+                                  <div style={{ flex: 1 }}>
+                                    <span style={{ fontSize: 13, fontWeight: 500 }}>{note.title}</span>
+                                    {note.tags?.length > 0 && (
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 3 }}>
+                                        {note.tags.map((tag) => (
+                                          <span key={tag._id} style={{
+                                            padding: '1px 6px', borderRadius: 8, fontSize: 9, fontWeight: 600,
+                                            background: tag.color + '33', color: tag.color,
+                                          }}>{tag.name}</span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <button className="btn-ghost" style={{ padding: 2 }}
+                                    onClick={(e) => { e.stopPropagation(); setConfirmDelete({ type: 'note', id: note._id, name: note.title }); }}>
+                                    <IoTrash size={12} color="var(--danger)" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* FAB */}
+          <button className="fab" onClick={() => setCreateTopicModal(true)}>
+            <IoAdd />
+          </button>
+        </>
       )}
 
       {/* Modals */}
       <CreateTopicModal open={createTopicModal} onClose={() => setCreateTopicModal(false)}
-        onDone={fetchTopics} />
-      <CreateSubTopicModal open={createSubTopicModal} topicId={selectedTopic?._id}
-        onClose={() => setCreateSubTopicModal(false)} onDone={fetchSubTopics} />
+        onDone={refreshAll} />
+      <CreateSubTopicModal open={!!createSubTopicModal} topicId={createSubTopicModal}
+        onClose={() => setCreateSubTopicModal(null)} onDone={refreshAll} />
       {noteEditorModal && (
         <NoteEditorModal
-          note={noteEditorModal === 'new' ? null : noteEditorModal}
-          subTopicId={selectedSubTopic?._id}
+          note={noteEditorModal.note}
+          subTopicId={noteEditorModal.subTopicId}
           allTags={allTags}
           onClose={() => setNoteEditorModal(null)}
-          onDone={() => { fetchNotes(); fetchTags(); }}
+          onDone={refreshAll}
           onTagsChanged={fetchTags}
         />
       )}

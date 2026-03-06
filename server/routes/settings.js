@@ -38,7 +38,7 @@ router.get('/', async (req, res, next) => {
 // Update settings
 router.put('/', async (req, res, next) => {
   try {
-    const { mode, negativeLimit, currentPeriod, notificationEmail, theme, trailBoldText, trailHighlights } = req.body;
+    const { mode, negativeLimit, currentPeriod, notificationEmail, emailNotificationsEnabled, theme, trailBoldText, trailHighlights } = req.body;
     let settings = await Settings.findOne();
     if (!settings) {
       const period = getCurrentPeriod();
@@ -52,6 +52,8 @@ router.put('/', async (req, res, next) => {
     if (currentPeriod) { if (currentPeriod.month !== settings.currentPeriod?.month || currentPeriod.year !== settings.currentPeriod?.year) changes.push(`period: ${settings.currentPeriod?.month}/${settings.currentPeriod?.year} -> ${currentPeriod.month}/${currentPeriod.year}`); settings.currentPeriod = currentPeriod; }
     if (notificationEmail !== undefined && notificationEmail !== settings.notificationEmail) { changes.push(`email: "${settings.notificationEmail}" -> "${notificationEmail}"`); settings.notificationEmail = notificationEmail; }
     else if (notificationEmail !== undefined) settings.notificationEmail = notificationEmail;
+    if (emailNotificationsEnabled !== undefined && emailNotificationsEnabled !== settings.emailNotificationsEnabled) { changes.push(`emailNotifications: ${settings.emailNotificationsEnabled} -> ${emailNotificationsEnabled}`); settings.emailNotificationsEnabled = emailNotificationsEnabled; }
+    else if (emailNotificationsEnabled !== undefined) settings.emailNotificationsEnabled = emailNotificationsEnabled;
     if (theme !== undefined && theme !== settings.theme) { changes.push(`theme: "${settings.theme}" -> "${theme}"`); settings.theme = theme; }
     else if (theme !== undefined) settings.theme = theme;
     if (trailBoldText !== undefined && trailBoldText !== settings.trailBoldText) { changes.push(`trailBoldText: ${settings.trailBoldText} -> ${trailBoldText}`); settings.trailBoldText = trailBoldText; }
@@ -154,6 +156,7 @@ router.post('/import', async (req, res, next) => {
           negativeLimit: data.settings.negativeLimit,
           currentPeriod: data.settings.currentPeriod,
           notificationEmail: data.settings.notificationEmail || '',
+          emailNotificationsEnabled: data.settings.emailNotificationsEnabled ?? true,
           theme: data.settings.theme || 'dark',
         }, { upsert: true });
       }

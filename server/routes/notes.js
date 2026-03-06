@@ -167,6 +167,41 @@ router.delete('/note/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ─── Recent Notes ───
+
+router.get('/recent', async (req, res, next) => {
+  try {
+    const notes = await Note.find()
+      .populate('tags')
+      .populate({
+        path: 'subTopicId',
+        populate: { path: 'topicId' },
+      })
+      .sort({ updatedAt: -1 })
+      .limit(10);
+    success(res, notes);
+  } catch (err) { next(err); }
+});
+
+// ─── Tree (all topics with subtopics and note counts) ───
+
+router.get('/tree', async (req, res, next) => {
+  try {
+    const topics = await Topic.find().sort({ name: 1 });
+    const tree = await Promise.all(topics.map(async (t) => {
+      const subs = await SubTopic.find({ topicId: t._id }).sort({ name: 1 });
+      const subsWithNotes = await Promise.all(subs.map(async (s) => {
+        const notes = await Note.find({ subTopicId: s._id })
+          .populate('tags')
+          .sort({ updatedAt: -1 });
+        return { ...s.toObject(), notes };
+      }));
+      return { ...t.toObject(), subTopics: subsWithNotes };
+    }));
+    success(res, tree);
+  } catch (err) { next(err); }
+});
+
 // ─── Search ───
 
 router.get('/search', async (req, res, next) => {

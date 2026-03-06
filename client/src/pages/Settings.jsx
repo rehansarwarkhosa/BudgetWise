@@ -8,6 +8,144 @@ import { IoSunny, IoMoon, IoTrash, IoAdd } from 'react-icons/io5';
 import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails, getAuditLogs, clearAuditLogs, getBudgetCategories, addBudgetCategory, deleteBudgetCategory } from '../api';
 import { formatDate } from '../utils/format';
 
+const PRESET_COLORS = [
+  { name: 'Red', hex: '#ef4444' },
+  { name: 'Orange', hex: '#f97316' },
+  { name: 'Amber', hex: '#f59e0b' },
+  { name: 'Green', hex: '#22c55e' },
+  { name: 'Teal', hex: '#14b8a6' },
+  { name: 'Blue', hex: '#3b82f6' },
+  { name: 'Purple', hex: '#8b5cf6' },
+  { name: 'Pink', hex: '#ec4899' },
+];
+
+function HighlightEditor({ highlights, newKeyword, setNewKeyword, newColor, setNewColor, onAdd, onRemove }) {
+  const [hexInput, setHexInput] = useState(newColor);
+  const colorPickerRef = useRef(null);
+
+  // Keep hexInput in sync when newColor changes (from presets or native picker)
+  useEffect(() => {
+    setHexInput(newColor);
+  }, [newColor]);
+
+  const handleHexInputChange = (val) => {
+    setHexInput(val);
+    // Auto-apply if valid hex
+    const clean = val.startsWith('#') ? val : '#' + val;
+    if (/^#[0-9A-Fa-f]{6}$/.test(clean)) {
+      setNewColor(clean.toLowerCase());
+    }
+  };
+
+  const handlePresetClick = (hex) => {
+    setNewColor(hex);
+    setHexInput(hex);
+  };
+
+  const handleNativeColorChange = (e) => {
+    const c = e.target.value.toLowerCase();
+    setNewColor(c);
+    setHexInput(c);
+  };
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, display: 'block' }}>
+        Keyword Color Highlights
+      </label>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+        If a trail entry contains a keyword, its background changes to the chosen color.
+      </p>
+
+      {/* Keyword input */}
+      <div style={{ marginBottom: 8 }}>
+        <input type="text" placeholder="Keyword (e.g. milk)" value={newKeyword}
+          onChange={(e) => setNewKeyword(e.target.value)} style={{ width: '100%' }} />
+      </div>
+
+      {/* Preset colors */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        {PRESET_COLORS.map((p) => (
+          <button key={p.hex} type="button" onClick={() => handlePresetClick(p.hex)}
+            style={{
+              width: 28, height: 28, borderRadius: '50%', border: newColor === p.hex ? '3px solid var(--text-primary)' : '2px solid var(--border)',
+              background: p.hex, cursor: 'pointer', transition: 'border 0.15s',
+              outline: newColor === p.hex ? '2px solid var(--primary)' : 'none',
+              outlineOffset: 1,
+            }}
+            title={`${p.name} (${p.hex})`}
+          />
+        ))}
+      </div>
+
+      {/* Color picker + hex input row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ position: 'relative' }}>
+          <input ref={colorPickerRef} type="color" value={newColor} onChange={handleNativeColorChange}
+            style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }} />
+          <button type="button" onClick={() => colorPickerRef.current?.click()}
+            style={{
+              width: 36, height: 36, borderRadius: 8, border: '2px solid var(--border)',
+              background: newColor, cursor: 'pointer', transition: 'background 0.15s',
+            }}
+            title="Custom color" />
+        </div>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 0,
+          background: 'var(--bg-input)', borderRadius: 8, border: '1px solid var(--border)',
+          overflow: 'hidden', flex: 1,
+        }}>
+          <span style={{
+            padding: '8px 8px 8px 10px', fontSize: 13, color: 'var(--text-muted)',
+            fontFamily: 'monospace', userSelect: 'none',
+          }}>#</span>
+          <input type="text" value={hexInput.replace('#', '')}
+            onChange={(e) => handleHexInputChange('#' + e.target.value.replace('#', ''))}
+            maxLength={6}
+            placeholder="ef4444"
+            style={{
+              flex: 1, border: 'none', background: 'transparent', padding: '8px 10px 8px 0',
+              fontSize: 13, fontFamily: 'monospace', letterSpacing: 1,
+              outline: 'none', color: 'var(--text-primary)',
+            }} />
+        </div>
+        <div style={{
+          width: 16, height: 16, borderRadius: 4, background: newColor,
+          border: '1px solid var(--border)', flexShrink: 0,
+        }} />
+      </div>
+
+      {/* Add button */}
+      <form onSubmit={onAdd} style={{ marginBottom: 12 }}>
+        <button type="submit" className="btn-primary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+          <IoAdd size={18} /> Add Highlight
+        </button>
+      </form>
+
+      {/* Saved highlights */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {highlights.map((h, i) => (
+          <div key={i} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '6px 12px', borderRadius: 20, fontSize: 13, fontWeight: 500,
+            background: h.color + '25', border: `1px solid ${h.color}50`,
+          }}>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: h.color, display: 'inline-block', flexShrink: 0 }} />
+            {h.keyword}
+            <span style={{
+              fontSize: 10, fontFamily: 'monospace', color: h.color, opacity: 0.8,
+              letterSpacing: 0.5,
+            }}>{h.color}</span>
+            <button className="btn-ghost" style={{ padding: 2 }} onClick={() => onRemove(i)}>
+              <IoTrash size={12} color="var(--danger)" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   const { settings, loading, refetchSettings } = useSettings();
   const [saving, setSaving] = useState(false);
@@ -35,6 +173,7 @@ export default function Settings() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState(null);
+  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
   const [trailBoldText, setTrailBoldText] = useState(false);
   const [trailHighlights, setTrailHighlights] = useState([]);
   const [newKeyword, setNewKeyword] = useState('');
@@ -46,6 +185,7 @@ export default function Settings() {
       setNegativeLimit(settings.negativeLimit ?? 0);
       setNotificationEmail(settings.notificationEmail || '');
       setTheme(settings.theme || 'dark');
+      setEmailNotificationsEnabled(settings.emailNotificationsEnabled ?? true);
       setTrailBoldText(settings.trailBoldText || false);
       setTrailHighlights(settings.trailHighlights || []);
       setInitialized(true);
@@ -267,6 +407,35 @@ export default function Settings() {
           </p>
         </div>
 
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div>
+            <span style={{ fontSize: 14, fontWeight: 500 }}>Email Notifications</span>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+              {emailNotificationsEnabled ? 'Routine reminders are active' : 'All email notifications are paused'}
+            </p>
+          </div>
+          <button type="button" onClick={async () => {
+            const next = !emailNotificationsEnabled;
+            setEmailNotificationsEnabled(next);
+            try {
+              await updateSettings({ emailNotificationsEnabled: next });
+              await refetchSettings();
+              setInitialized(false);
+              toast.success(next ? 'Notifications enabled' : 'Notifications disabled');
+            } catch (err) { toast.error(err.message); setEmailNotificationsEnabled(!next); }
+          }} style={{
+            width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+            background: emailNotificationsEnabled ? 'var(--success)' : 'var(--bg-input)',
+            position: 'relative', transition: 'background 0.2s',
+          }}>
+            <span style={{
+              position: 'absolute', top: 2, left: emailNotificationsEnabled ? 22 : 2,
+              width: 20, height: 20, borderRadius: '50%', background: 'white',
+              transition: 'left 0.2s',
+            }} />
+          </button>
+        </div>
+
         <button className="btn-primary" onClick={handleSave} disabled={saving}>
           {saving ? 'Saving...' : 'Save Settings'}
         </button>
@@ -330,38 +499,15 @@ export default function Settings() {
         </div>
 
         {/* Keyword highlights */}
-        <div style={{ marginBottom: 8 }}>
-          <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, display: 'block' }}>
-            Keyword Color Highlights
-          </label>
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
-            If a trail entry contains a keyword, its background changes to the chosen color.
-          </p>
-          <form onSubmit={handleAddHighlight} style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <input type="text" placeholder="Keyword (e.g. milk)" value={newKeyword}
-              onChange={(e) => setNewKeyword(e.target.value)} style={{ flex: 1 }} />
-            <input type="color" value={newColor} onChange={(e) => setNewColor(e.target.value)}
-              style={{ width: 40, height: 40, padding: 2, border: '2px solid var(--border)', borderRadius: 8, cursor: 'pointer', background: 'transparent' }} />
-            <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '10px 16px' }}>
-              <IoAdd size={18} />
-            </button>
-          </form>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {trailHighlights.map((h, i) => (
-              <div key={i} style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '6px 12px', borderRadius: 20, fontSize: 13, fontWeight: 500,
-                background: h.color + '25', border: `1px solid ${h.color}50`,
-              }}>
-                <span style={{ width: 12, height: 12, borderRadius: '50%', background: h.color, display: 'inline-block' }} />
-                {h.keyword}
-                <button className="btn-ghost" style={{ padding: 2 }} onClick={() => handleRemoveHighlight(i)}>
-                  <IoTrash size={12} color="var(--danger)" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+        <HighlightEditor
+          highlights={trailHighlights}
+          newKeyword={newKeyword}
+          setNewKeyword={setNewKeyword}
+          newColor={newColor}
+          setNewColor={setNewColor}
+          onAdd={handleAddHighlight}
+          onRemove={handleRemoveHighlight}
+        />
       </div>
 
       {/* Guide */}
