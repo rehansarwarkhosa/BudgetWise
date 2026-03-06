@@ -24,9 +24,9 @@ router.get('/topics', async (req, res, next) => {
 
 router.post('/topics', async (req, res, next) => {
   try {
-    const { name } = req.body;
+    const { name, color } = req.body;
     if (!name) return error(res, 'Name is required');
-    const topic = await Topic.create({ name });
+    const topic = await Topic.create({ name, ...(color ? { color } : {}) });
     await AuditLog.create({ action: 'CREATE', entity: 'Topic', entityId: topic._id, details: `Created topic "${name}"` });
     success(res, topic, 201);
   } catch (err) { next(err); }
@@ -34,13 +34,15 @@ router.post('/topics', async (req, res, next) => {
 
 router.put('/topics/:id', async (req, res, next) => {
   try {
-    const { name } = req.body;
+    const { name, color } = req.body;
     const topic = await Topic.findById(req.params.id);
     if (!topic) return error(res, 'Topic not found', 404);
+    const changes = [];
     const oldName = topic.name;
-    if (name) topic.name = name;
+    if (name) { topic.name = name; if (name !== oldName) changes.push(`name: "${oldName}" -> "${name}"`); }
+    if (color !== undefined && color !== topic.color) { changes.push(`color: "${topic.color}" -> "${color}"`); topic.color = color; }
     await topic.save();
-    if (name && name !== oldName) await AuditLog.create({ action: 'UPDATE', entity: 'Topic', entityId: topic._id, details: `Renamed topic "${oldName}" -> "${name}"` });
+    if (changes.length) await AuditLog.create({ action: 'UPDATE', entity: 'Topic', entityId: topic._id, details: `Updated topic "${topic.name}": ${changes.join(', ')}` });
     success(res, topic);
   } catch (err) { next(err); }
 });

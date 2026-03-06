@@ -50,6 +50,25 @@ export default function Notes() {
   const [editItem, setEditItem] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
+  // Topic color editing
+  const topicColorRef = useRef(null);
+  const [editingTopicColor, setEditingTopicColor] = useState(null);
+
+  const handleTopicColorClick = (topicId) => {
+    setEditingTopicColor(topicId);
+    setTimeout(() => topicColorRef.current?.click(), 0);
+  };
+
+  const handleTopicColorChange = async (e) => {
+    const color = e.target.value;
+    if (!editingTopicColor) return;
+    try {
+      await updateTopic(editingTopicColor, { color });
+      setTree(prev => prev.map(t => t._id === editingTopicColor ? { ...t, color } : t));
+    } catch (err) { toast.error(err.message); }
+    setEditingTopicColor(null);
+  };
+
   const fetchTree = useCallback(async () => {
     setTreeLoading(true);
     try {
@@ -210,8 +229,13 @@ export default function Notes() {
           </div>
           {searchLoading ? <Spinner /> : searchResults.length > 0 ? (
             <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-              {searchResults.map((note) => (
-                <div key={note._id} className="card" style={{ cursor: 'pointer' }}
+              {searchResults.map((note) => {
+                const topicColor = note.subTopicId?.topicId?.color;
+                return (
+                <div key={note._id} className="card" style={{
+                  cursor: 'pointer',
+                  ...(topicColor ? { background: topicColor + '0D', borderLeft: `3px solid ${topicColor}40` } : {}),
+                }}
                   onClick={() => setNoteEditorModal({ note, subTopicId: note.subTopicId?._id })}>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
                     {note.subTopicId?.topicId?.name || '?'} / {note.subTopicId?.name || '?'}
@@ -228,7 +252,8 @@ export default function Notes() {
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (searchQuery || searchTag) ? (
             <EmptyState title="No results" subtitle="Try different search terms" />
@@ -243,8 +268,13 @@ export default function Notes() {
             <EmptyState icon="🕐" title="No recent notes" subtitle="Notes you edit will appear here" />
           ) : (
             <div style={{ display: 'grid', gap: 8 }}>
-              {recentNotes.map((note) => (
-                <div key={note._id} className="card" style={{ cursor: 'pointer', padding: '10px 14px' }}
+              {recentNotes.map((note) => {
+                const topicColor = note.subTopicId?.topicId?.color;
+                return (
+                <div key={note._id} className="card" style={{
+                  cursor: 'pointer', padding: '10px 14px',
+                  ...(topicColor ? { background: topicColor + '0D', borderLeft: `3px solid ${topicColor}40` } : {}),
+                }}
                   onClick={() => setNoteEditorModal({ note, subTopicId: note.subTopicId?._id })}>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>
                     {note.subTopicId?.topicId?.name || '?'} / {note.subTopicId?.name || '?'}
@@ -266,7 +296,8 @@ export default function Notes() {
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>
@@ -283,12 +314,15 @@ export default function Notes() {
                 <div key={topic._id}>
                   {/* Topic row */}
                   <div style={{
-                    display: 'flex', alignItems: 'center', gap: 6, padding: '10px 0',
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '10px 8px',
                     borderBottom: '1px solid var(--border)',
+                    background: topic.color ? topic.color + '0D' : 'transparent',
+                    borderLeft: topic.color ? `3px solid ${topic.color}40` : 'none',
+                    borderRadius: 4,
                   }}>
                     <button className="btn-ghost" style={{ padding: 2 }} onClick={() => toggleTopic(topic._id)}>
                       {expandedTopics[topic._id]
-                        ? <IoChevronDown size={16} color="var(--primary)" />
+                        ? <IoChevronDown size={16} color={topic.color || 'var(--primary)'} />
                         : <IoChevronForward size={16} color="var(--text-muted)" />}
                     </button>
 
@@ -302,6 +336,11 @@ export default function Notes() {
                       </form>
                     ) : (
                       <>
+                        <span onClick={() => handleTopicColorClick(topic._id)}
+                          title="Change color" style={{
+                            width: 14, height: 14, borderRadius: '50%', background: topic.color || '#6C63FF',
+                            border: '1px solid var(--border)', cursor: 'pointer', flexShrink: 0,
+                          }} />
                         <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => toggleTopic(topic._id)}>
                           <span style={{ fontSize: 14, fontWeight: 600 }}>{topic.name}</span>
                           <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>
@@ -335,8 +374,10 @@ export default function Notes() {
                         <div key={sub._id}>
                           {/* SubTopic row */}
                           <div style={{
-                            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0',
+                            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 6px',
                             borderBottom: '1px solid var(--border)',
+                            background: topic.color ? topic.color + '08' : 'transparent',
+                            borderRadius: 3,
                           }}>
                             <button className="btn-ghost" style={{ padding: 2 }} onClick={() => toggleSub(sub._id)}>
                               {expandedSubs[sub._id]
@@ -385,8 +426,10 @@ export default function Notes() {
                                 </div>
                               ) : sub.notes.map((note) => (
                                 <div key={note._id} style={{
-                                  display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0',
+                                  display: 'flex', alignItems: 'center', gap: 6, padding: '6px 6px',
                                   borderBottom: '1px solid var(--border)', cursor: 'pointer',
+                                  background: topic.color ? topic.color + '06' : 'transparent',
+                                  borderRadius: 3,
                                 }} onClick={() => setNoteEditorModal({ note, subTopicId: sub._id })}>
                                   <div style={{ flex: 1 }}>
                                     <span style={{ fontSize: 13, fontWeight: 500 }}>{note.title}</span>
@@ -425,6 +468,12 @@ export default function Notes() {
         </>
       )}
 
+      {/* Hidden color picker for topic color editing */}
+      <input ref={topicColorRef} type="color"
+        value={tree.find(t => t._id === editingTopicColor)?.color || '#6C63FF'}
+        onChange={handleTopicColorChange}
+        style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
+
       {/* Modals */}
       <CreateTopicModal open={createTopicModal} onClose={() => setCreateTopicModal(false)}
         onDone={refreshAll} />
@@ -450,19 +499,45 @@ export default function Notes() {
   );
 }
 
+// ─── Preset Colors ───
+
+const PRESET_COLORS = [
+  { name: 'Purple', hex: '#6C63FF' },
+  { name: 'Green', hex: '#22c55e' },
+  { name: 'Blue', hex: '#3b82f6' },
+  { name: 'Amber', hex: '#f59e0b' },
+  { name: 'Red', hex: '#ef4444' },
+  { name: 'Teal', hex: '#14b8a6' },
+  { name: 'Violet', hex: '#8b5cf6' },
+  { name: 'Pink', hex: '#ec4899' },
+];
+
 // ─── Create Topic Modal ───
 
 function CreateTopicModal({ open, onClose, onDone }) {
   const [name, setName] = useState('');
+  const [color, setColor] = useState('#6C63FF');
+  const [hexInput, setHexInput] = useState('#6C63FF');
   const [loading, setLoading] = useState(false);
+  const colorPickerRef = useRef(null);
+
+  const handleColorChange = (c) => {
+    setColor(c);
+    setHexInput(c);
+  };
+
+  const handleHexInput = (val) => {
+    setHexInput(val);
+    if (/^#[0-9A-Fa-f]{6}$/.test(val)) setColor(val);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await createTopic({ name });
+      await createTopic({ name, color });
       toast.success('Topic created');
-      setName('');
+      setName(''); setColor('#6C63FF'); setHexInput('#6C63FF');
       onClose(); onDone();
     } catch (err) { toast.error(err.message); }
     finally { setLoading(false); }
@@ -475,6 +550,31 @@ function CreateTopicModal({ open, onClose, onDone }) {
           <label>Topic Name</label>
           <input type="text" placeholder="e.g., Computer Science" value={name}
             onChange={(e) => setName(e.target.value)} required />
+        </div>
+        <div className="form-group">
+          <label>Topic Color</label>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+            {PRESET_COLORS.map((p) => (
+              <button key={p.hex} type="button" onClick={() => handleColorChange(p.hex)}
+                title={p.name} style={{
+                  width: 28, height: 28, borderRadius: '50%', border: color === p.hex ? '3px solid var(--text-primary)' : '2px solid var(--border)',
+                  background: p.hex, cursor: 'pointer', padding: 0,
+                }} />
+            ))}
+            <button type="button" onClick={() => colorPickerRef.current?.click()}
+              title="Custom color" style={{
+                width: 28, height: 28, borderRadius: '50%', border: '2px dashed var(--border)',
+                background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--text-muted)', fontSize: 16, padding: 0,
+              }}>+</button>
+            <input ref={colorPickerRef} type="color" value={color} onChange={(e) => handleColorChange(e.target.value)}
+              style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 20, height: 20, borderRadius: '50%', background: color, flexShrink: 0, border: '1px solid var(--border)' }} />
+            <input type="text" value={hexInput} onChange={(e) => handleHexInput(e.target.value)}
+              placeholder="#6C63FF" style={{ flex: 1, fontSize: 13, fontFamily: 'monospace', padding: '4px 8px' }} />
+          </div>
         </div>
         <button type="submit" className="btn-primary" disabled={loading}>
           {loading ? 'Creating...' : 'Create Topic'}
