@@ -158,6 +158,8 @@ router.post('/import', async (req, res, next) => {
           notificationEmail: data.settings.notificationEmail || '',
           emailNotificationsEnabled: data.settings.emailNotificationsEnabled ?? true,
           theme: data.settings.theme || 'dark',
+          trailBoldText: data.settings.trailBoldText ?? false,
+          trailHighlights: data.settings.trailHighlights || [],
         }, { upsert: true });
       }
 
@@ -214,7 +216,11 @@ router.delete('/all-data', async (req, res, next) => {
     const period = getCurrentPeriod();
     const settings = await Settings.findOneAndUpdate(
       {},
-      { mode: 'monthly', negativeLimit: 0, currentPeriod: period },
+      {
+        mode: 'monthly', negativeLimit: 0, currentPeriod: period,
+        notificationEmail: '', emailNotificationsEnabled: true,
+        theme: 'dark', trailBoldText: false, trailHighlights: [],
+      },
       { new: true, upsert: true }
     );
     success(res, { message: 'All data deleted', settings });
