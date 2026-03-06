@@ -20,6 +20,8 @@ export default function Budget() {
   const { data: incomes, refetch: refetchIncomes } = useFetch(getIncomes);
   const { data: categoriesData } = useFetch(getBudgetCategories);
   const categoryNames = categoriesData?.map(c => c.name) || ['General'];
+  const categoryColorMap = {};
+  categoriesData?.forEach(c => { categoryColorMap[c.name] = c.color || '#6C63FF'; });
 
   const [incomeModal, setIncomeModal] = useState(false);
   const [budgetModal, setBudgetModal] = useState(false);
@@ -96,30 +98,41 @@ export default function Budget() {
       {budgets?.length === 0 ? (
         <EmptyState icon={<IoWallet />} title="No budgets yet" subtitle="Tap + to create your first budget" />
       ) : (
-        categories.map((cat) => (
-          <div key={cat} style={{ marginBottom: 16 }}>
-            <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              {cat}
-            </h3>
-            <div style={{ display: 'grid', gap: 12 }}>
-              {grouped[cat].map((b) => {
-                const globalIdx = budgets.findIndex(gb => gb._id === b._id);
-                return (
-                  <BudgetCard key={b._id} budget={b}
-                    onExpense={() => setExpenseModal(b._id)}
-                    onAddFunds={() => setFundsModal(b._id)}
-                    onDetail={() => setDetailModal(b)}
-                    onDelete={() => setConfirmDelete({ type: 'budget', id: b._id, name: b.name })}
-                    onMoveUp={() => handleReorder(b._id, 'up')}
-                    onMoveDown={() => handleReorder(b._id, 'down')}
-                    isFirst={globalIdx === 0}
-                    isLast={globalIdx === budgets.length - 1}
-                  />
-                );
-              })}
+        categories.map((cat) => {
+          const catColor = categoryColorMap[cat] || '#6C63FF';
+          return (
+            <div key={cat} style={{ marginBottom: 16 }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8,
+              }}>
+                <span style={{
+                  width: 10, height: 10, borderRadius: '50%', background: catColor,
+                  display: 'inline-block', flexShrink: 0,
+                }} />
+                <h3 style={{ fontSize: 13, fontWeight: 600, color: catColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  {cat}
+                </h3>
+              </div>
+              <div style={{ display: 'grid', gap: 12 }}>
+                {grouped[cat].map((b) => {
+                  const globalIdx = budgets.findIndex(gb => gb._id === b._id);
+                  return (
+                    <BudgetCard key={b._id} budget={b} catColor={catColor}
+                      onExpense={() => setExpenseModal(b._id)}
+                      onAddFunds={() => setFundsModal(b._id)}
+                      onDetail={() => setDetailModal(b)}
+                      onDelete={() => setConfirmDelete({ type: 'budget', id: b._id, name: b.name })}
+                      onMoveUp={() => handleReorder(b._id, 'up')}
+                      onMoveDown={() => handleReorder(b._id, 'down')}
+                      isFirst={globalIdx === 0}
+                      isLast={globalIdx === budgets.length - 1}
+                    />
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))
+          );
+        })
       )}
 
       {/* FAB */}
@@ -134,7 +147,7 @@ export default function Budget() {
       <AddFundsModal open={!!fundsModal} budgetId={fundsModal}
         onClose={() => setFundsModal(null)} onDone={refreshAll} />
       <BudgetDetailModal open={!!detailModal} budget={detailModal}
-        onClose={() => setDetailModal(null)} onDone={refreshAll} categories={categoryNames} />
+        onClose={() => setDetailModal(null)} onDone={refreshAll} categories={categoryNames} categoryColorMap={categoryColorMap} />
       <IncomeListModal open={incomeListModal} incomes={incomes}
         onClose={() => setIncomeListModal(false)}
         onDelete={(id, source) => setConfirmDelete({ type: 'income', id, name: source })} />
@@ -146,13 +159,17 @@ export default function Budget() {
   );
 }
 
-function BudgetCard({ budget, onExpense, onAddFunds, onDetail, onDelete, onMoveUp, onMoveDown, isFirst, isLast }) {
+function BudgetCard({ budget, catColor, onExpense, onAddFunds, onDetail, onDelete, onMoveUp, onMoveDown, isFirst, isLast }) {
   const pct = budget.allocatedAmount > 0
     ? ((budget.allocatedAmount - budget.remainingAmount) / budget.allocatedAmount) * 100 : 0;
   const isExhausted = budget.remainingAmount <= 0;
 
   return (
-    <div className="card" onClick={onDetail} style={{ cursor: 'pointer' }}>
+    <div className="card" onClick={onDetail} style={{
+      cursor: 'pointer',
+      background: catColor ? `${catColor}0D` : undefined,
+      borderLeft: catColor ? `3px solid ${catColor}40` : undefined,
+    }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h3 style={{ fontSize: 16, fontWeight: 600 }}>{budget.name}</h3>
@@ -369,7 +386,7 @@ function AddFundsModal({ open, budgetId, onClose, onDone }) {
   );
 }
 
-function BudgetDetailModal({ open, budget, onClose, onDone, categories }) {
+function BudgetDetailModal({ open, budget, onClose, onDone, categories, categoryColorMap }) {
   const [expenses, setExpenses] = useState([]);
   const [funds, setFunds] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -467,13 +484,23 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories }) {
             </button>
           </div>
 
-          {budget?.category && (
-            <div style={{ marginBottom: 12 }}>
-              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: 'var(--bg-input)', color: 'var(--text-muted)' }}>
-                {budget.category}
-              </span>
-            </div>
-          )}
+          {budget?.category && (() => {
+            const cc = categoryColorMap?.[budget.category];
+            return (
+              <div style={{ marginBottom: 12 }}>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                  background: cc ? cc + '25' : 'var(--bg-input)',
+                  color: cc || 'var(--text-muted)',
+                  border: cc ? `1px solid ${cc}50` : undefined,
+                }}>
+                  {cc && <span style={{ width: 8, height: 8, borderRadius: '50%', background: cc, display: 'inline-block' }} />}
+                  {budget.category}
+                </span>
+              </div>
+            );
+          })()}
 
           {editingBudget && (
             <div style={{ background: 'var(--bg-input)', borderRadius: 8, padding: 12, marginBottom: 12 }}>

@@ -146,6 +146,125 @@ function HighlightEditor({ highlights, newKeyword, setNewKeyword, newColor, setN
   );
 }
 
+function CategoryColorEditor({ categories, newName, setNewName, newColor, setNewColor, onAdd, onDelete, loading }) {
+  const [hexInput, setHexInput] = useState(newColor);
+  const colorPickerRef = useRef(null);
+
+  useEffect(() => {
+    setHexInput(newColor);
+  }, [newColor]);
+
+  const handleHexInputChange = (val) => {
+    setHexInput(val);
+    const clean = val.startsWith('#') ? val : '#' + val;
+    if (/^#[0-9A-Fa-f]{6}$/.test(clean)) {
+      setNewColor(clean.toLowerCase());
+    }
+  };
+
+  const handlePresetClick = (hex) => {
+    setNewColor(hex);
+    setHexInput(hex);
+  };
+
+  const handleNativeColorChange = (e) => {
+    const c = e.target.value.toLowerCase();
+    setNewColor(c);
+    setHexInput(c);
+  };
+
+  return (
+    <div>
+      {/* Name input */}
+      <div style={{ marginBottom: 8 }}>
+        <input type="text" placeholder="Category name (e.g. Travel)" value={newName}
+          onChange={(e) => setNewName(e.target.value)} style={{ width: '100%' }} />
+      </div>
+
+      {/* Preset colors */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        {PRESET_COLORS.map((p) => (
+          <button key={p.hex} type="button" onClick={() => handlePresetClick(p.hex)}
+            style={{
+              width: 28, height: 28, borderRadius: '50%', border: newColor === p.hex ? '3px solid var(--text-primary)' : '2px solid var(--border)',
+              background: p.hex, cursor: 'pointer', transition: 'border 0.15s',
+              outline: newColor === p.hex ? '2px solid var(--primary)' : 'none',
+              outlineOffset: 1,
+            }}
+            title={`${p.name} (${p.hex})`}
+          />
+        ))}
+      </div>
+
+      {/* Color picker + hex input */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ position: 'relative' }}>
+          <input ref={colorPickerRef} type="color" value={newColor} onChange={handleNativeColorChange}
+            style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }} />
+          <button type="button" onClick={() => colorPickerRef.current?.click()}
+            style={{
+              width: 36, height: 36, borderRadius: 8, border: '2px solid var(--border)',
+              background: newColor, cursor: 'pointer', transition: 'background 0.15s',
+            }}
+            title="Custom color" />
+        </div>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 0,
+          background: 'var(--bg-input)', borderRadius: 8, border: '1px solid var(--border)',
+          overflow: 'hidden', flex: 1,
+        }}>
+          <span style={{
+            padding: '8px 8px 8px 10px', fontSize: 13, color: 'var(--text-muted)',
+            fontFamily: 'monospace', userSelect: 'none',
+          }}>#</span>
+          <input type="text" value={hexInput.replace('#', '')}
+            onChange={(e) => handleHexInputChange('#' + e.target.value.replace('#', ''))}
+            maxLength={6}
+            placeholder="6C63FF"
+            style={{
+              flex: 1, border: 'none', background: 'transparent', padding: '8px 10px 8px 0',
+              fontSize: 13, fontFamily: 'monospace', letterSpacing: 1,
+              outline: 'none', color: 'var(--text-primary)',
+            }} />
+        </div>
+        <div style={{
+          width: 16, height: 16, borderRadius: 4, background: newColor,
+          border: '1px solid var(--border)', flexShrink: 0,
+        }} />
+      </div>
+
+      {/* Add button */}
+      <form onSubmit={onAdd} style={{ marginBottom: 12 }}>
+        <button type="submit" className="btn-primary" disabled={loading}
+          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+          <IoAdd size={18} /> Add Category
+        </button>
+      </form>
+
+      {/* Saved categories */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {categories.map((cat) => (
+          <div key={cat._id} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '6px 12px', borderRadius: 20, fontSize: 13, fontWeight: 500,
+            background: (cat.color || '#6C63FF') + '25', border: `1px solid ${cat.color || '#6C63FF'}50`,
+          }}>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: cat.color || '#6C63FF', display: 'inline-block', flexShrink: 0 }} />
+            {cat.name}
+            <span style={{
+              fontSize: 10, fontFamily: 'monospace', color: cat.color || '#6C63FF', opacity: 0.8,
+              letterSpacing: 0.5,
+            }}>{cat.color || '#6C63FF'}</span>
+            <button className="btn-ghost" style={{ padding: 2 }} onClick={() => onDelete(cat)}>
+              <IoTrash size={12} color="var(--danger)" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   const { settings, loading, refetchSettings } = useSettings();
   const [saving, setSaving] = useState(false);
@@ -171,6 +290,7 @@ export default function Settings() {
   const [confirmClearAudit, setConfirmClearAudit] = useState(false);
   const [categories, setCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryColor, setNewCategoryColor] = useState('#6C63FF');
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState(null);
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
@@ -229,9 +349,10 @@ export default function Settings() {
     if (!newCategoryName.trim()) return;
     setCategoryLoading(true);
     try {
-      await addBudgetCategory({ name: newCategoryName.trim() });
+      await addBudgetCategory({ name: newCategoryName.trim(), color: newCategoryColor });
       toast.success('Category added');
       setNewCategoryName('');
+      setNewCategoryColor('#6C63FF');
       fetchCategories();
     } catch (err) { toast.error(err.message); }
     finally { setCategoryLoading(false); }
@@ -445,29 +566,18 @@ export default function Settings() {
       <div className="card" style={{ marginBottom: 16 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Budget Categories</h3>
         <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
-          Add or remove categories that appear when creating budgets.
+          Add or remove categories with colors. Budget groups use these colors.
         </p>
-        <form onSubmit={handleAddCategory} style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-          <input type="text" placeholder="New category name" value={newCategoryName}
-            onChange={(e) => setNewCategoryName(e.target.value)} style={{ flex: 1 }} />
-          <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '10px 16px' }} disabled={categoryLoading}>
-            <IoAdd size={18} />
-          </button>
-        </form>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {categories.map((cat) => (
-            <div key={cat._id} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '6px 12px', borderRadius: 20,
-              background: 'var(--bg-input)', fontSize: 13, fontWeight: 500,
-            }}>
-              {cat.name}
-              <button className="btn-ghost" style={{ padding: 2 }} onClick={() => setConfirmDeleteCategory(cat)}>
-                <IoTrash size={12} color="var(--danger)" />
-              </button>
-            </div>
-          ))}
-        </div>
+        <CategoryColorEditor
+          categories={categories}
+          newName={newCategoryName}
+          setNewName={setNewCategoryName}
+          newColor={newCategoryColor}
+          setNewColor={setNewCategoryColor}
+          onAdd={handleAddCategory}
+          onDelete={(cat) => setConfirmDeleteCategory(cat)}
+          loading={categoryLoading}
+        />
       </div>
 
       <ConfirmModal open={!!confirmDeleteCategory} onClose={() => setConfirmDeleteCategory(null)}

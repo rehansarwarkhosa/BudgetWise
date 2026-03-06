@@ -223,15 +223,24 @@ router.delete('/all-data', async (req, res, next) => {
 
 // ─── Budget Categories ───
 
-const DEFAULT_CATEGORIES = ['General', 'Food', 'Transport', 'Shopping', 'Bills', 'Health', 'Education', 'Entertainment', 'Other'];
+const DEFAULT_CATEGORIES = [
+  { name: 'General', color: '#6C63FF' },
+  { name: 'Food', color: '#22c55e' },
+  { name: 'Transport', color: '#3b82f6' },
+  { name: 'Shopping', color: '#f59e0b' },
+  { name: 'Bills', color: '#ef4444' },
+  { name: 'Health', color: '#14b8a6' },
+  { name: 'Education', color: '#8b5cf6' },
+  { name: 'Entertainment', color: '#ec4899' },
+  { name: 'Other', color: '#6b7280' },
+];
 
 // Get all budget categories (seed defaults if none exist)
 router.get('/budget-categories', async (req, res, next) => {
   try {
     let categories = await BudgetCategory.find().sort({ name: 1 });
     if (categories.length === 0) {
-      const docs = DEFAULT_CATEGORIES.map(name => ({ name }));
-      categories = await BudgetCategory.insertMany(docs);
+      categories = await BudgetCategory.insertMany(DEFAULT_CATEGORIES);
       categories = categories.sort((a, b) => a.name.localeCompare(b.name));
     }
     success(res, categories);
@@ -241,11 +250,11 @@ router.get('/budget-categories', async (req, res, next) => {
 // Add a budget category
 router.post('/budget-categories', async (req, res, next) => {
   try {
-    const { name } = req.body;
+    const { name, color } = req.body;
     if (!name?.trim()) return error(res, 'Category name is required');
     const existing = await BudgetCategory.findOne({ name: name.trim() });
     if (existing) return error(res, 'Category already exists');
-    const category = await BudgetCategory.create({ name: name.trim() });
+    const category = await BudgetCategory.create({ name: name.trim(), color: color || '#6C63FF' });
     await AuditLog.create({ action: 'CREATE', entity: 'BudgetCategory', entityId: category._id, details: `Created budget category "${name.trim()}"` });
     success(res, category, 201);
   } catch (err) { next(err); }
