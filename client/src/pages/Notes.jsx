@@ -474,7 +474,7 @@ export default function Notes() {
       <input ref={topicColorRef} type="color"
         value={tree.find(t => t._id === editingTopicColor)?.color || '#6C63FF'}
         onChange={handleTopicColorChange}
-        style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
+        style={{ position: 'fixed', top: -100, left: -100, width: 0, height: 0, opacity: 0, pointerEvents: 'none' }} />
 
       {/* Modals */}
       <CreateTopicModal open={createTopicModal} onClose={() => setCreateTopicModal(false)}
@@ -570,7 +570,7 @@ function CreateTopicModal({ open, onClose, onDone }) {
                 color: 'var(--text-muted)', fontSize: 16, padding: 0,
               }}>+</button>
             <input ref={colorPickerRef} type="color" value={color} onChange={(e) => handleColorChange(e.target.value)}
-              style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
+              style={{ position: 'fixed', top: -100, left: -100, width: 0, height: 0, opacity: 0, pointerEvents: 'none' }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ width: 20, height: 20, borderRadius: '50%', background: color, flexShrink: 0, border: '1px solid var(--border)' }} />

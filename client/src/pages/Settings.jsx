@@ -125,7 +125,7 @@ function HighlightEditor({ highlights, newKeyword, setNewKeyword, newColor, setN
       </form>
 
       {/* Hidden color picker for editing existing highlights */}
-      <input ref={editPickerRef} type="color" style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
+      <input ref={editPickerRef} type="color" style={{ position: 'fixed', top: -100, left: -100, opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
         onChange={(e) => {
           if (editingIdx !== null) onUpdateColor(editingIdx, e.target.value.toLowerCase());
         }} />
@@ -258,7 +258,7 @@ function CategoryColorEditor({ categories, newName, setNewName, newColor, setNew
       </form>
 
       {/* Hidden color picker for editing existing categories */}
-      <input ref={editPickerRef} type="color" style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
+      <input ref={editPickerRef} type="color" style={{ position: 'fixed', top: -100, left: -100, opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
         onChange={(e) => {
           if (editingCatId) onUpdateColor(editingCatId, e.target.value.toLowerCase());
         }} />

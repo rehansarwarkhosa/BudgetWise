@@ -21,7 +21,7 @@ const formatPKT = (date) => date.toLocaleString('en-US', {
 router.get('/', async (req, res, next) => {
   try {
     const routines = await Routine.find().sort({ createdAt: -1 });
-    const now = getNowKarachi();
+    const now = new Date();
     const routinesWithCounts = await Promise.all(
       routines.map(async (r) => {
         const entryCount = await RoutineEntry.countDocuments({ routineId: r._id });
@@ -41,16 +41,22 @@ router.get('/', async (req, res, next) => {
 
 router.get('/check-reminders', async (req, res, next) => {
   try {
-    const now = getNowKarachi();
-    const currentDay = now.getDay();
-    const currentHour = now.getHours();
-    const currentMin = now.getMinutes();
-    const todayStr = now.toISOString().split('T')[0];
+    // Use real UTC time for DB queries (MongoDB stores dates in UTC)
+    const realNow = new Date();
 
-    // notifyKey = "YYYY-MM-DD|HH:mm" — unique per day + scheduled time
-    const notifyKey = `${todayStr}|${String(currentHour).padStart(2, '0')}:${String(currentMin).padStart(2, '0')}`;
+    // Use PKT-shifted date for hour/minute/day-of-week calculations
+    const pkt = getNowKarachi();
+    const currentDay = pkt.getDay();
+    const currentHour = pkt.getHours();
+    const currentMin = pkt.getMinutes();
 
-    const routines = await Routine.find({ dueDate: { $gte: now } });
+    // PKT date string for dedup keys
+    const pktYear = pkt.getFullYear();
+    const pktMonth = String(pkt.getMonth() + 1).padStart(2, '0');
+    const pktDate = String(pkt.getDate()).padStart(2, '0');
+    const todayStr = `${pktYear}-${pktMonth}-${pktDate}`;
+
+    const routines = await Routine.find({ dueDate: { $gte: realNow } });
     const triggered = [];
 
     for (const routine of routines) {
@@ -104,55 +110,70 @@ router.get('/check-reminders', async (req, res, next) => {
 
     // Send email notifications via SendGrid
     let emailSent = false;
-    if (triggered.length > 0 && process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM_EMAIL) {
-      const settings = await Settings.findOne();
-      if (settings?.emailNotificationsEnabled === false) {
-        return success(res, { triggered, emailSent: false, count: triggered.length, skipped: 'notifications disabled' });
-      }
-      const toEmail = settings?.notificationEmail || process.env.NOTIFICATION_EMAIL;
+    let emailSkipReason = null;
 
-      if (toEmail) {
-        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    if (triggered.length > 0) {
+      // Log that reminders triggered (always, even if email fails)
+      await AuditLog.create({
+        action: 'NOTIFY', entity: 'Routine',
+        details: `${triggered.length} reminder(s) triggered: ${triggered.map(t => `"${t.routineName}" at ${t.reminderTime}`).join(', ')}`,
+      });
 
-        const reminderList = triggered.map(t =>
-          `<li><strong>${t.routineName}</strong> — scheduled at ${t.reminderTime}</li>`
-        ).join('');
+      if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) {
+        emailSkipReason = 'SENDGRID_API_KEY or SENDGRID_FROM_EMAIL not set in environment';
+        console.error('Email skipped:', emailSkipReason);
+      } else {
+        const settings = await Settings.findOne();
+        if (settings?.emailNotificationsEnabled === false) {
+          emailSkipReason = 'notifications disabled in settings';
+        } else {
+          const toEmail = settings?.notificationEmail || process.env.NOTIFICATION_EMAIL;
+          if (!toEmail) {
+            emailSkipReason = 'no notification email configured';
+          } else {
+            sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-        // Use fresh Date() with timezone to avoid double-conversion from getNowKarachi()
-        const timeStr = formatPKT(new Date());
+            const reminderList = triggered.map(t =>
+              `<li><strong>${t.routineName}</strong> — scheduled at ${t.reminderTime}</li>`
+            ).join('');
 
-        try {
-          await sgMail.send({
-            to: toEmail,
-            from: process.env.SENDGRID_FROM_EMAIL,
-            subject: `BudgetWise — ${triggered.length} Routine Reminder${triggered.length > 1 ? 's' : ''}`,
-            html: `
-              <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
-                <h2 style="color: #6C63FF; margin-bottom: 4px;">Routine Reminders</h2>
-                <p style="color: #666; font-size: 13px; margin-bottom: 16px;">${timeStr} (PKT)</p>
-                <ul style="padding-left: 20px; line-height: 1.8;">${reminderList}</ul>
-                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-                <p style="color: #999; font-size: 12px;">Sent by BudgetWise</p>
-              </div>
-            `,
-          });
-          emailSent = true;
+            const timeStr = formatPKT(new Date());
 
-          await AuditLog.create({
-            action: 'NOTIFY', entity: 'Routine',
-            details: `Email sent to ${toEmail}: ${triggered.map(t => `"${t.routineName}" at ${t.reminderTime}`).join(', ')}`,
-          });
-        } catch (emailErr) {
-          console.error('SendGrid error:', emailErr.message);
-          await AuditLog.create({
-            action: 'ERROR', entity: 'Routine',
-            details: `Email failed to ${toEmail}: ${emailErr.message}`,
-          });
+            try {
+              await sgMail.send({
+                to: toEmail,
+                from: process.env.SENDGRID_FROM_EMAIL,
+                subject: `BudgetWise — ${triggered.length} Routine Reminder${triggered.length > 1 ? 's' : ''}`,
+                html: `
+                  <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #6C63FF; margin-bottom: 4px;">Routine Reminders</h2>
+                    <p style="color: #666; font-size: 13px; margin-bottom: 16px;">${timeStr} (PKT)</p>
+                    <ul style="padding-left: 20px; line-height: 1.8;">${reminderList}</ul>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+                    <p style="color: #999; font-size: 12px;">Sent by BudgetWise</p>
+                  </div>
+                `,
+              });
+              emailSent = true;
+
+              await AuditLog.create({
+                action: 'NOTIFY', entity: 'Routine',
+                details: `Email sent to ${toEmail}`,
+              });
+            } catch (emailErr) {
+              emailSkipReason = emailErr.message;
+              console.error('SendGrid error:', emailErr.message);
+              await AuditLog.create({
+                action: 'ERROR', entity: 'Routine',
+                details: `Email failed to ${toEmail}: ${emailErr.message}`,
+              });
+            }
+          }
         }
       }
     }
 
-    success(res, { triggered, emailSent, count: triggered.length });
+    success(res, { triggered, emailSent, count: triggered.length, ...(emailSkipReason ? { emailSkipReason } : {}) });
   } catch (err) { next(err); }
 });
 
@@ -249,8 +270,7 @@ router.post('/:id/entries', async (req, res, next) => {
     const routine = await Routine.findById(req.params.id);
     if (!routine) return error(res, 'Routine not found', 404);
 
-    const now = getNowKarachi();
-    if (routine.dueDate && new Date(routine.dueDate) < now) {
+    if (routine.dueDate && new Date(routine.dueDate) < new Date()) {
       return error(res, 'Routine has expired, no more entries allowed', 400);
     }
 
@@ -280,8 +300,7 @@ router.post('/:id/entries/batch', async (req, res, next) => {
     const routine = await Routine.findById(req.params.id);
     if (!routine) return error(res, 'Routine not found', 404);
 
-    const now = getNowKarachi();
-    if (routine.dueDate && new Date(routine.dueDate) < now) {
+    if (routine.dueDate && new Date(routine.dueDate) < new Date()) {
       return error(res, 'Routine has expired, no more entries allowed', 400);
     }
 
