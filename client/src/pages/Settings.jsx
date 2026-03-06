@@ -5,7 +5,7 @@ import { useSettings } from '../context/SettingsContext';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
 import { IoSunny, IoMoon, IoTrash, IoAdd } from 'react-icons/io5';
-import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails, getAuditLogs, clearAuditLogs, getBudgetCategories, addBudgetCategory, deleteBudgetCategory } from '../api';
+import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails, getAuditLogs, clearAuditLogs, getBudgetCategories, addBudgetCategory, updateBudgetCategory, deleteBudgetCategory } from '../api';
 import { formatDate } from '../utils/format';
 
 const PRESET_COLORS = [
@@ -19,9 +19,11 @@ const PRESET_COLORS = [
   { name: 'Pink', hex: '#ec4899' },
 ];
 
-function HighlightEditor({ highlights, newKeyword, setNewKeyword, newColor, setNewColor, onAdd, onRemove }) {
+function HighlightEditor({ highlights, newKeyword, setNewKeyword, newColor, setNewColor, onAdd, onRemove, onUpdateColor }) {
   const [hexInput, setHexInput] = useState(newColor);
   const colorPickerRef = useRef(null);
+  const editPickerRef = useRef(null);
+  const [editingIdx, setEditingIdx] = useState(null);
 
   // Keep hexInput in sync when newColor changes (from presets or native picker)
   useEffect(() => {
@@ -122,6 +124,12 @@ function HighlightEditor({ highlights, newKeyword, setNewKeyword, newColor, setN
         </button>
       </form>
 
+      {/* Hidden color picker for editing existing highlights */}
+      <input ref={editPickerRef} type="color" style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
+        onChange={(e) => {
+          if (editingIdx !== null) onUpdateColor(editingIdx, e.target.value.toLowerCase());
+        }} />
+
       {/* Saved highlights */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {highlights.map((h, i) => (
@@ -130,7 +138,13 @@ function HighlightEditor({ highlights, newKeyword, setNewKeyword, newColor, setN
             padding: '6px 12px', borderRadius: 20, fontSize: 13, fontWeight: 500,
             background: h.color + '25', border: `1px solid ${h.color}50`,
           }}>
-            <span style={{ width: 12, height: 12, borderRadius: '50%', background: h.color, display: 'inline-block', flexShrink: 0 }} />
+            <button type="button" onClick={() => {
+              setEditingIdx(i);
+              if (editPickerRef.current) { editPickerRef.current.value = h.color; editPickerRef.current.click(); }
+            }} style={{
+              width: 14, height: 14, borderRadius: '50%', background: h.color, border: '2px solid var(--border)',
+              cursor: 'pointer', padding: 0, flexShrink: 0,
+            }} title="Change color" />
             {h.keyword}
             <span style={{
               fontSize: 10, fontFamily: 'monospace', color: h.color, opacity: 0.8,
@@ -146,9 +160,11 @@ function HighlightEditor({ highlights, newKeyword, setNewKeyword, newColor, setN
   );
 }
 
-function CategoryColorEditor({ categories, newName, setNewName, newColor, setNewColor, onAdd, onDelete, loading }) {
+function CategoryColorEditor({ categories, newName, setNewName, newColor, setNewColor, onAdd, onDelete, onUpdateColor, loading }) {
   const [hexInput, setHexInput] = useState(newColor);
   const colorPickerRef = useRef(null);
+  const editPickerRef = useRef(null);
+  const [editingCatId, setEditingCatId] = useState(null);
 
   useEffect(() => {
     setHexInput(newColor);
@@ -241,25 +257,40 @@ function CategoryColorEditor({ categories, newName, setNewName, newColor, setNew
         </button>
       </form>
 
+      {/* Hidden color picker for editing existing categories */}
+      <input ref={editPickerRef} type="color" style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
+        onChange={(e) => {
+          if (editingCatId) onUpdateColor(editingCatId, e.target.value.toLowerCase());
+        }} />
+
       {/* Saved categories */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {categories.map((cat) => (
-          <div key={cat._id} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '6px 12px', borderRadius: 20, fontSize: 13, fontWeight: 500,
-            background: (cat.color || '#6C63FF') + '25', border: `1px solid ${cat.color || '#6C63FF'}50`,
-          }}>
-            <span style={{ width: 12, height: 12, borderRadius: '50%', background: cat.color || '#6C63FF', display: 'inline-block', flexShrink: 0 }} />
-            {cat.name}
-            <span style={{
-              fontSize: 10, fontFamily: 'monospace', color: cat.color || '#6C63FF', opacity: 0.8,
-              letterSpacing: 0.5,
-            }}>{cat.color || '#6C63FF'}</span>
-            <button className="btn-ghost" style={{ padding: 2 }} onClick={() => onDelete(cat)}>
-              <IoTrash size={12} color="var(--danger)" />
-            </button>
-          </div>
-        ))}
+        {categories.map((cat) => {
+          const cc = cat.color || '#6C63FF';
+          return (
+            <div key={cat._id} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', borderRadius: 20, fontSize: 13, fontWeight: 500,
+              background: cc + '25', border: `1px solid ${cc}50`,
+            }}>
+              <button type="button" onClick={() => {
+                setEditingCatId(cat._id);
+                if (editPickerRef.current) { editPickerRef.current.value = cc; editPickerRef.current.click(); }
+              }} style={{
+                width: 14, height: 14, borderRadius: '50%', background: cc, border: '2px solid var(--border)',
+                cursor: 'pointer', padding: 0, flexShrink: 0,
+              }} title="Change color" />
+              {cat.name}
+              <span style={{
+                fontSize: 10, fontFamily: 'monospace', color: cc, opacity: 0.8,
+                letterSpacing: 0.5,
+              }}>{cc}</span>
+              <button className="btn-ghost" style={{ padding: 2 }} onClick={() => onDelete(cat)}>
+                <IoTrash size={12} color="var(--danger)" />
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -358,6 +389,14 @@ export default function Settings() {
     finally { setCategoryLoading(false); }
   };
 
+  const handleUpdateCategoryColor = async (catId, color) => {
+    try {
+      await updateBudgetCategory(catId, { color });
+      setCategories(prev => prev.map(c => c._id === catId ? { ...c, color } : c));
+      toast.success('Color updated');
+    } catch (err) { toast.error(err.message); }
+  };
+
   const handleDeleteCategory = async () => {
     if (!confirmDeleteCategory) return;
     try {
@@ -399,6 +438,17 @@ export default function Settings() {
       await refetchSettings();
       setInitialized(false);
       toast.success('Highlight rule removed');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleUpdateHighlightColor = async (index, color) => {
+    const updated = trailHighlights.map((h, i) => i === index ? { ...h, color } : h);
+    setTrailHighlights(updated);
+    try {
+      await updateSettings({ trailHighlights: updated });
+      await refetchSettings();
+      setInitialized(false);
+      toast.success('Color updated');
     } catch (err) { toast.error(err.message); }
   };
 
@@ -456,7 +506,7 @@ export default function Settings() {
     }
   };
 
-  if (loading) return <Spinner />;
+  if (loading && !settings) return <Spinner />;
 
   return (
     <div className="page">
@@ -576,6 +626,7 @@ export default function Settings() {
           setNewColor={setNewCategoryColor}
           onAdd={handleAddCategory}
           onDelete={(cat) => setConfirmDeleteCategory(cat)}
+          onUpdateColor={handleUpdateCategoryColor}
           loading={categoryLoading}
         />
       </div>
@@ -617,6 +668,7 @@ export default function Settings() {
           setNewColor={setNewColor}
           onAdd={handleAddHighlight}
           onRemove={handleRemoveHighlight}
+          onUpdateColor={handleUpdateHighlightColor}
         />
       </div>
 

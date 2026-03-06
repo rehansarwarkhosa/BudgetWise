@@ -8,6 +8,7 @@ export const exportAllData = () => api.get('/settings/export');
 export const importAllData = (data) => api.post('/settings/import', data);
 export const getBudgetCategories = () => api.get('/settings/budget-categories');
 export const addBudgetCategory = (data) => api.post('/settings/budget-categories', data);
+export const updateBudgetCategory = (id, data) => api.put(`/settings/budget-categories/${id}`, data);
 export const deleteBudgetCategory = (id) => api.delete(`/settings/budget-categories/${id}`);
 
 // Income

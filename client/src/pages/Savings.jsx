@@ -7,7 +7,7 @@ import { getSavings } from '../api';
 export default function Savings() {
   const { data, loading } = useFetch(getSavings);
 
-  if (loading) return <Spinner />;
+  if (loading && !data) return <Spinner />;
 
   const grouped = data?.grouped || {};
   const years = Object.keys(grouped).sort((a, b) => b - a);

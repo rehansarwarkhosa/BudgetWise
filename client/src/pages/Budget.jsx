@@ -58,7 +58,7 @@ export default function Budget() {
     } catch (err) { toast.error(err.message); }
   };
 
-  if (summaryLoading || budgetsLoading) return <Spinner />;
+  if ((summaryLoading && !summary) || (budgetsLoading && !budgets)) return <Spinner />;
 
   // Group budgets by category
   const grouped = {};

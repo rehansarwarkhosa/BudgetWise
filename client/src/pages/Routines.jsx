@@ -20,7 +20,7 @@ export default function Routines() {
   const [detailRoutine, setDetailRoutine] = useState(null);
   const [cloneSource, setCloneSource] = useState(null);
 
-  if (loading) return <Spinner />;
+  if (loading && !routines) return <Spinner />;
 
   return (
     <div className="page">

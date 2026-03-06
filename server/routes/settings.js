@@ -260,6 +260,25 @@ router.post('/budget-categories', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Update a budget category (color)
+router.put('/budget-categories/:id', async (req, res, next) => {
+  try {
+    const category = await BudgetCategory.findById(req.params.id);
+    if (!category) return error(res, 'Category not found', 404);
+    const { color } = req.body;
+    const changes = [];
+    if (color !== undefined && color !== category.color) {
+      changes.push(`color: "${category.color}" -> "${color}"`);
+      category.color = color;
+    }
+    await category.save();
+    if (changes.length) {
+      await AuditLog.create({ action: 'UPDATE', entity: 'BudgetCategory', entityId: category._id, details: `Updated category "${category.name}": ${changes.join(', ')}` });
+    }
+    success(res, category);
+  } catch (err) { next(err); }
+});
+
 // Delete a budget category
 router.delete('/budget-categories/:id', async (req, res, next) => {
   try {
