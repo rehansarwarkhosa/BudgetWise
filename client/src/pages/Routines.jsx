@@ -651,7 +651,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 
       {/* Action buttons */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {!isExpired && (
+        {!isExpired && !routine?.isDoneForToday && (
           <>
             <button className="btn-primary" style={{ flex: 1 }} onClick={() => setLogModal(true)}>
               Log Entry

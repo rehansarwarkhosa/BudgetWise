@@ -8,23 +8,87 @@ import { success, error } from '../utils/response.js';
 
 const router = Router();
 
-const getNowKarachi = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+// PKT is UTC+5 — all date ranges for "today" / "yesterday" in PKT must use this offset
+const PKT_OFFSET = '+05:00';
 
-// Get today's date string in PKT
+// Get today's date string in PKT (for display/dedup keys only)
 const getTodayStrPKT = () => {
-  const pkt = getNowKarachi();
-  const y = pkt.getFullYear();
-  const m = String(pkt.getMonth() + 1).padStart(2, '0');
-  const d = String(pkt.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  const now = new Date();
+  // Format in PKT timezone
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  return parts; // "2026-03-09"
 };
 
-// Format a real Date to PKT string (no double conversion)
+// Get PKT date components from a real UTC date (for time/day calculations)
+const getPKTComponents = (utcDate) => {
+  const d = utcDate || new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Karachi',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const parts = {};
+  formatter.formatToParts(d).forEach(p => { parts[p.type] = p.value; });
+  // Get day-of-week by constructing a date from the PKT date parts
+  const pktDateStr = `${parts.year}-${parts.month}-${parts.day}T12:00:00${PKT_OFFSET}`;
+  const weekday = new Date(pktDateStr).getDay();
+  return {
+    year: parseInt(parts.year),
+    month: parseInt(parts.month),
+    day: parseInt(parts.day),
+    hour: parseInt(parts.hour === '24' ? '0' : parts.hour),
+    minute: parseInt(parts.minute),
+    weekday,
+  };
+};
+
+// Convert a PKT date string to UTC date range
+const pktDayToUTCRange = (dateStr) => {
+  // dateStr is "YYYY-MM-DD" in PKT
+  const start = new Date(dateStr + 'T00:00:00' + PKT_OFFSET);
+  const end = new Date(dateStr + 'T23:59:59.999' + PKT_OFFSET);
+  return { start, end };
+};
+
+// Format a real Date to PKT string (for emails)
 const formatPKT = (date) => date.toLocaleString('en-US', {
   timeZone: 'Asia/Karachi',
   day: 'numeric', month: 'short', year: 'numeric',
   hour: 'numeric', minute: '2-digit', hour12: true,
 });
+
+// Send OneSignal push notification
+const ONESIGNAL_APP_ID = '96cfa184-fc68-404e-a6ab-4b92fb13e6b1';
+
+const sendPushNotification = async (title, message, url) => {
+  const apiKey = process.env.ONESIGNAL_REST_API_KEY;
+  if (!apiKey) return { sent: false, reason: 'ONESIGNAL_REST_API_KEY not set in environment' };
+
+  try {
+    const response = await fetch('https://onesignal.com/api/v1/notifications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${apiKey}`,
+      },
+      body: JSON.stringify({
+        app_id: ONESIGNAL_APP_ID,
+        included_segments: ['Subscribed Users'],
+        headings: { en: title },
+        contents: { en: message },
+        url: url || undefined,
+        chrome_web_badge: 'https://budgetwise-f41c.onrender.com/vite.svg',
+      }),
+    });
+    const data = await response.json();
+    if (data.errors) {
+      return { sent: false, reason: JSON.stringify(data.errors) };
+    }
+    return { sent: true, recipients: data.recipients || 0, id: data.id };
+  } catch (err) {
+    return { sent: false, reason: err.message };
+  }
+};
 
 // Get all routines
 router.get('/', async (req, res, next) => {
@@ -32,6 +96,7 @@ router.get('/', async (req, res, next) => {
     const routines = await Routine.find().sort({ createdAt: -1 });
     const now = new Date();
     const todayStr = getTodayStrPKT();
+    const { start: todayStart, end: todayEnd } = pktDayToUTCRange(todayStr);
 
     const routinesWithCounts = await Promise.all(
       routines.map(async (r) => {
@@ -42,9 +107,7 @@ router.get('/', async (req, res, next) => {
         const progress = Math.round((completedEntries / targetEntries) * 100);
         const isExpired = r.dueDate && new Date(r.dueDate) < now;
 
-        // Count today's complete entries for this routine
-        const todayStart = new Date(todayStr + 'T00:00:00');
-        const todayEnd = new Date(todayStr + 'T23:59:59.999');
+        // Count today's complete entries for this routine (using proper UTC range for PKT day)
         const todayCompleteCount = await RoutineEntry.countDocuments({
           routineId: r._id,
           status: 'complete',
@@ -64,24 +127,16 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// --- Check Reminders (cron endpoint) — sends email via SendGrid ---
+// --- Check Reminders (cron endpoint) — sends email + push notification ---
 
 router.get('/check-reminders', async (req, res, next) => {
   try {
-    // Use real UTC time for DB queries (MongoDB stores dates in UTC)
     const realNow = new Date();
-
-    // Use PKT-shifted date for hour/minute/day-of-week calculations
-    const pkt = getNowKarachi();
-    const currentDay = pkt.getDay();
-    const currentHour = pkt.getHours();
-    const currentMin = pkt.getMinutes();
-
-    // PKT date string for dedup keys
-    const pktYear = pkt.getFullYear();
-    const pktMonth = String(pkt.getMonth() + 1).padStart(2, '0');
-    const pktDate = String(pkt.getDate()).padStart(2, '0');
-    const todayStr = `${pktYear}-${pktMonth}-${pktDate}`;
+    const pkt = getPKTComponents(realNow);
+    const currentDay = pkt.weekday;
+    const currentHour = pkt.hour;
+    const currentMin = pkt.minute;
+    const todayStr = `${pkt.year}-${String(pkt.month).padStart(2, '0')}-${String(pkt.day).padStart(2, '0')}`;
 
     const routines = await Routine.find({ dueDate: { $gte: realNow } });
     const triggered = [];
@@ -95,10 +150,7 @@ router.get('/check-reminders', async (req, res, next) => {
         const timeDiff = (currentHour * 60 + currentMin) - (rh * 60 + rm);
         if (timeDiff < 0 || timeDiff >= 10) continue;
 
-        // Build the key for this specific reminder firing: date + scheduled time
         const reminderKey = `${todayStr}|${reminder.time}`;
-
-        // Skip if already notified for this date+time
         if (reminder.lastNotifiedDate === reminderKey) continue;
 
         let matches = false;
@@ -125,7 +177,6 @@ router.get('/check-reminders', async (req, res, next) => {
             reminderId: reminder._id,
             message: `Time to work on "${routine.name}"!`,
           });
-          // Mark as notified
           reminder.lastNotifiedDate = reminderKey;
           routineDirty = true;
         }
@@ -135,17 +186,17 @@ router.get('/check-reminders', async (req, res, next) => {
       }
     }
 
-    // Send email notifications via SendGrid
     let emailSent = false;
     let emailSkipReason = null;
+    let pushResult = null;
 
     if (triggered.length > 0) {
-      // Log that reminders triggered (always, even if email fails)
       await AuditLog.create({
         action: 'NOTIFY', entity: 'Routine',
         details: `${triggered.length} reminder(s) triggered: ${triggered.map(t => `"${t.routineName}" at ${t.reminderTime}`).join(', ')}`,
       });
 
+      // --- Send Email via SendGrid ---
       if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) {
         emailSkipReason = 'SENDGRID_API_KEY or SENDGRID_FROM_EMAIL not set in environment';
         console.error('Email skipped:', emailSkipReason);
@@ -198,30 +249,55 @@ router.get('/check-reminders', async (req, res, next) => {
           }
         }
       }
+
+      // --- Send Push Notification via OneSignal ---
+      const pushTitle = `BudgetWise — ${triggered.length} Reminder${triggered.length > 1 ? 's' : ''}`;
+      const pushMessage = triggered.map(t => `${t.routineName} (${t.reminderTime})`).join(', ');
+      pushResult = await sendPushNotification(
+        pushTitle,
+        pushMessage,
+        'https://budgetwise-f41c.onrender.com/routines'
+      );
+
+      if (pushResult.sent) {
+        await AuditLog.create({
+          action: 'PUSH_NOTIFY', entity: 'Routine',
+          details: `Push notification sent to ${pushResult.recipients} subscriber(s): ${pushMessage}`,
+        });
+      } else {
+        await AuditLog.create({
+          action: 'PUSH_SKIP', entity: 'Routine',
+          details: `Push notification skipped: ${pushResult.reason}`,
+        });
+      }
     }
 
-    success(res, { triggered, emailSent, count: triggered.length, ...(emailSkipReason ? { emailSkipReason } : {}) });
+    success(res, {
+      triggered, emailSent, count: triggered.length,
+      ...(emailSkipReason ? { emailSkipReason } : {}),
+      pushNotification: pushResult,
+    });
   } catch (err) { next(err); }
 });
 
 // --- Auto-incomplete: mark missing entries for yesterday ---
 router.post('/auto-incomplete', async (req, res, next) => {
   try {
-    const pkt = getNowKarachi();
+    const todayStr = getTodayStrPKT();
     // Yesterday in PKT
-    const yesterday = new Date(pkt);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-    const yStart = new Date(yStr + 'T00:00:00');
-    const yEnd = new Date(yStr + 'T23:59:59.999');
+    const todayDate = new Date(todayStr + 'T12:00:00' + PKT_OFFSET);
+    todayDate.setDate(todayDate.getDate() - 1);
+    const yStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi' }).format(todayDate);
+    const { start: yStart, end: yEnd } = pktDayToUTCRange(yStr);
 
-    const realNow = new Date();
+    // Get day-of-week for yesterday in PKT
+    const yDow = todayDate.getDay();
+
     const routines = await Routine.find({ dueDate: { $gte: yStart } });
     let totalIncomplete = 0;
 
     for (const routine of routines) {
       const maxDaily = routine.maxDailyEntries || 1;
-      // Count yesterday's complete entries
       const yesterdayCompleteCount = await RoutineEntry.countDocuments({
         routineId: routine._id,
         status: 'complete',
@@ -230,19 +306,17 @@ router.post('/auto-incomplete', async (req, res, next) => {
 
       const missing = maxDaily - yesterdayCompleteCount;
       if (missing > 0) {
-        // Check if we should count this day (based on reminders)
-        const yesterdayDay = yesterday.getDay();
         let shouldCount = false;
 
         if (routine.reminders.length === 0) {
-          shouldCount = true; // No reminders = every day
+          shouldCount = true;
         } else {
           for (const rem of routine.reminders) {
             if (!rem.enabled) continue;
             switch (rem.type) {
               case 'daily': shouldCount = true; break;
-              case 'weekdays': if (yesterdayDay >= 1 && yesterdayDay <= 5) shouldCount = true; break;
-              case 'custom_days': if (rem.days.includes(yesterdayDay)) shouldCount = true; break;
+              case 'weekdays': if (yDow >= 1 && yDow <= 5) shouldCount = true; break;
+              case 'custom_days': if (rem.days.includes(yDow)) shouldCount = true; break;
               case 'custom_dates':
                 if (rem.dates.some(d => new Date(d).toISOString().split('T')[0] === yStr)) shouldCount = true;
                 break;
@@ -252,10 +326,12 @@ router.post('/auto-incomplete', async (req, res, next) => {
         }
 
         if (shouldCount) {
+          // Store incomplete entries at end of yesterday in proper UTC
+          const incompleteDate = new Date(yStr + 'T23:59:00' + PKT_OFFSET);
           const docs = Array.from({ length: missing }, () => ({
             routineId: routine._id,
             status: 'incomplete',
-            date: new Date(yStr + 'T23:59:00'),
+            date: incompleteDate,
             fieldValues: [],
             manualDate: false,
           }));
@@ -375,9 +451,22 @@ router.post('/:id/entries', async (req, res, next) => {
       return error(res, 'Routine has expired, no more entries allowed', 400);
     }
 
-    const entryDate = manualDate && date ? new Date(date) : new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+    // Check if daily limit reached
+    const todayStr = getTodayStrPKT();
+    const { start: todayStart, end: todayEnd } = pktDayToUTCRange(todayStr);
+    const todayCompleteCount = await RoutineEntry.countDocuments({
+      routineId: routine._id,
+      status: 'complete',
+      date: { $gte: todayStart, $lte: todayEnd },
+    });
+    const maxDaily = routine.maxDailyEntries || 1;
+    if (todayCompleteCount >= maxDaily && !manualDate) {
+      return error(res, `Daily limit reached (${maxDaily}/${maxDaily}). Already done for today.`, 400);
+    }
 
-    // Always log as complete — incomplete is auto-generated
+    // Use real UTC time — frontend formats it to PKT for display
+    const entryDate = manualDate && date ? new Date(date) : new Date();
+
     const entry = await RoutineEntry.create({
       routineId: req.params.id,
       status: 'complete',
@@ -395,7 +484,7 @@ router.post('/:id/entries', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Batch log entries (quick shortcut) — always complete
+// Batch log entries — always complete
 router.post('/:id/entries/batch', async (req, res, next) => {
   try {
     const { count } = req.body;
@@ -407,7 +496,8 @@ router.post('/:id/entries/batch', async (req, res, next) => {
     }
 
     const n = Math.min(Math.max(1, parseInt(count) || 1), 50);
-    const entryDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+    // Use real UTC time
+    const entryDate = new Date();
 
     const docs = Array.from({ length: n }, () => ({
       routineId: req.params.id,
