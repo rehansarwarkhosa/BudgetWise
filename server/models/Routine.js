@@ -19,6 +19,7 @@ const routineSchema = new mongoose.Schema({
   name: { type: String, required: true },
   dueDate: { type: Date, required: true },
   targetEntries: { type: Number, required: true, min: 1 },
+  maxDailyEntries: { type: Number, default: 1, min: 1 },
   fields: [fieldSchema],
   reminders: [reminderSchema],
 }, { timestamps: true });

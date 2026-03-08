@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { IoAdd, IoTrash, IoCheckmarkCircle, IoCloseCircle, IoChevronForward, IoCreate, IoCopy, IoFlash } from 'react-icons/io5';
+import { IoAdd, IoTrash, IoCheckmarkCircle, IoCloseCircle, IoChevronForward, IoCreate, IoCopy, IoFlash, IoCheckmarkDone } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
@@ -19,31 +19,82 @@ export default function Routines() {
   const [createModal, setCreateModal] = useState(false);
   const [detailRoutine, setDetailRoutine] = useState(null);
   const [cloneSource, setCloneSource] = useState(null);
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'done_today' | 'expired'
 
   if (loading && !routines) return <Spinner />;
+
+  // Segregate routines
+  const pendingRoutines = routines?.filter(r => !r.isExpired && !r.isDoneForToday) || [];
+  const doneTodayRoutines = routines?.filter(r => !r.isExpired && r.isDoneForToday) || [];
+  const expiredRoutines = routines?.filter(r => r.isExpired) || [];
+
+  const tabs = [
+    { key: 'pending', label: 'Pending', count: pendingRoutines.length },
+    { key: 'done_today', label: 'Done Today', count: doneTodayRoutines.length },
+    { key: 'expired', label: 'Expired', count: expiredRoutines.length },
+  ];
+
+  const currentList = activeTab === 'pending' ? pendingRoutines
+    : activeTab === 'done_today' ? doneTodayRoutines
+    : expiredRoutines;
 
   return (
     <div className="page">
       <h1 className="page-title">Routines</h1>
 
-      {routines?.length === 0 ? (
-        <EmptyState icon="📋" title="No routines yet" subtitle="Create a routine to track recurring tasks" />
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid var(--border)' }}>
+        {tabs.map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            style={{
+              flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              background: 'none', border: 'none',
+              color: activeTab === tab.key ? 'var(--primary)' : 'var(--text-muted)',
+              borderBottom: activeTab === tab.key ? '2px solid var(--primary)' : '2px solid transparent',
+              marginBottom: -2,
+            }}>
+            {tab.label} ({tab.count})
+          </button>
+        ))}
+      </div>
+
+      {currentList.length === 0 ? (
+        <EmptyState
+          icon={activeTab === 'pending' ? '📋' : activeTab === 'done_today' ? '✅' : '📁'}
+          title={activeTab === 'pending' ? 'No pending routines'
+            : activeTab === 'done_today' ? 'Nothing completed today yet'
+            : 'No expired routines'}
+          subtitle={activeTab === 'pending' ? 'All caught up! Create a routine to track tasks' : undefined}
+        />
       ) : (
         <div style={{ display: 'grid', gap: 10 }}>
-          {routines?.map((r) => (
+          {currentList.map((r) => (
             <div key={r._id} className="card" style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
               onClick={() => setDetailRoutine(r)}>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <h3 style={{ fontSize: 15, fontWeight: 600 }}>{r.name}</h3>
                   {r.isExpired && <span className="badge badge-danger">Expired</span>}
+                  {r.isDoneForToday && !r.isExpired && (
+                    <span className="badge" style={{
+                      background: 'var(--success)', color: 'white', fontSize: 10, padding: '2px 6px',
+                    }}>
+                      Done
+                    </span>
+                  )}
                 </div>
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
                   {r.completedEntries}/{r.targetEntries} entries ({r.progress}%)
                   {r.lastEntry && <> &middot; Last: {formatDateTime(r.lastEntry.date)}</>}
                 </p>
-                {r.dueDate && (
-                  <p style={{ fontSize: 11, color: r.isExpired ? 'var(--danger)' : 'var(--warning)', marginTop: 2 }}>
+                {!r.isExpired && (
+                  <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    Today: {r.todayCompleteCount}/{r.maxDailyEntries} daily
+                    {r.dueDate && <> &middot; Due: <span style={{ color: 'var(--warning)' }}>{formatDate(r.dueDate)}</span></>}
+                  </p>
+                )}
+                {r.isExpired && r.dueDate && (
+                  <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 2 }}>
                     Due: {formatDate(r.dueDate)}
                   </p>
                 )}
@@ -226,17 +277,35 @@ function calcEntriesFromReminders(dueDate, reminders) {
   return total;
 }
 
+function calcDaysRemaining(dueDate) {
+  if (!dueDate) return 0;
+  const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate + 'T23:59:59');
+  if (due < today) return 0;
+  return Math.floor((due - today) / 86400000) + 1;
+}
+
+function calcMaxDailyEntries(targetEntries, dueDate) {
+  const days = calcDaysRemaining(dueDate);
+  if (days <= 0) return 1;
+  return Math.ceil(targetEntries / days);
+}
+
 function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed }) {
   const [name, setName] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [targetEntries, setTargetEntries] = useState('');
+  const [maxDailyEntries, setMaxDailyEntries] = useState('');
   const [fields, setFields] = useState([]);
   const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const skipAutoCalcRef = useRef(false);
+  const skipDailyCalcRef = useRef(false);
 
   const autoCalc = calcEntriesFromReminders(dueDate, reminders);
+  const autoDaily = calcMaxDailyEntries(Number(targetEntries) || 0, dueDate);
 
   // Auto-fill target entries when dueDate or reminders change
   const remindersKey = JSON.stringify(reminders.map(r => ({ type: r.type, days: r.days, dates: r.dates, enabled: r.enabled })));
@@ -247,18 +316,28 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
     }
   }, [dueDate, remindersKey]);
 
+  // Auto-fill max daily entries when targetEntries or dueDate change
+  useEffect(() => {
+    if (!initialized || skipDailyCalcRef.current) return;
+    if (Number(targetEntries) > 0 && dueDate) {
+      setMaxDailyEntries(String(autoDaily));
+    }
+  }, [targetEntries, dueDate]);
+
   // Initialize from clone source
   if (open && cloneSource && !initialized) {
     setName(cloneSource.name + ' (Copy)');
     setDueDate(cloneSource.dueDate ? cloneSource.dueDate.split('T')[0] : '');
     setTargetEntries(cloneSource.targetEntries || '');
+    setMaxDailyEntries(cloneSource.maxDailyEntries || '1');
     setFields(cloneSource.fields?.map(f => ({ label: f.label, type: f.type, options: [...(f.options || [])] })) || []);
     setReminders(cloneSource.reminders?.map(r => ({
       type: r.type, time: r.time, days: [...(r.days || [])],
       dates: [...(r.dates || [])], enabled: r.enabled ?? true,
     })) || []);
     setInitialized(true);
-    skipAutoCalcRef.current = true; // Don't override clone's target
+    skipAutoCalcRef.current = true;
+    skipDailyCalcRef.current = true;
     onCloneUsed?.();
   }
 
@@ -268,8 +347,9 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
 
   if (!open && initialized) {
     setTimeout(() => {
-      setName(''); setDueDate(''); setTargetEntries(''); setFields([]); setReminders([]);
-      setInitialized(false); skipAutoCalcRef.current = false;
+      setName(''); setDueDate(''); setTargetEntries(''); setMaxDailyEntries('');
+      setFields([]); setReminders([]);
+      setInitialized(false); skipAutoCalcRef.current = false; skipDailyCalcRef.current = false;
     }, 0);
   }
 
@@ -297,6 +377,7 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
         name,
         dueDate,
         targetEntries: Number(targetEntries),
+        maxDailyEntries: Number(maxDailyEntries) || 1,
         fields: validFields.map((f) => ({
           ...f,
           options: hasOptions(f.type) ? f.options.filter((o) => o.trim()) : [],
@@ -304,7 +385,8 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
         reminders,
       });
       toast.success('Routine created');
-      setName(''); setDueDate(''); setTargetEntries(''); setFields([]); setReminders([]);
+      setName(''); setDueDate(''); setTargetEntries(''); setMaxDailyEntries('');
+      setFields([]); setReminders([]);
       setInitialized(false);
       onClose(); onDone();
     } catch (err) { toast.error(err.message); }
@@ -326,11 +408,22 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
         <div className="form-group">
           <label>Target Entries</label>
           <input type="number" placeholder="e.g., 30" value={targetEntries}
-            onChange={(e) => setTargetEntries(e.target.value)} required min="1" />
+            onChange={(e) => { setTargetEntries(e.target.value); skipAutoCalcRef.current = true; }} required min="1" />
           {autoCalc > 0 && (
             <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
               Calculated from reminders: <strong style={{ color: 'var(--primary)' }}>{autoCalc}</strong> entries
               {String(targetEntries) !== String(autoCalc) && <span style={{ color: 'var(--warning)' }}> (modified)</span>}
+            </p>
+          )}
+        </div>
+        <div className="form-group">
+          <label>Max Daily Entries</label>
+          <input type="number" placeholder="e.g., 3" value={maxDailyEntries}
+            onChange={(e) => { setMaxDailyEntries(e.target.value); skipDailyCalcRef.current = true; }} required min="1" />
+          {Number(targetEntries) > 0 && dueDate && (
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+              Calculated: <strong style={{ color: 'var(--primary)' }}>{autoDaily}</strong>/day to meet target
+              {String(maxDailyEntries) !== String(autoDaily) && <span style={{ color: 'var(--warning)' }}> (modified)</span>}
             </p>
           )}
         </div>
@@ -395,6 +488,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const [editName, setEditName] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
   const [editTargetEntries, setEditTargetEntries] = useState('');
+  const [editMaxDailyEntries, setEditMaxDailyEntries] = useState('');
   const [editReminders, setEditReminders] = useState([]);
 
   const fetchEntries = async () => {
@@ -441,6 +535,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
         name: editName,
         dueDate: editDueDate || null,
         targetEntries: Number(editTargetEntries),
+        maxDailyEntries: Number(editMaxDailyEntries) || 1,
         reminders: editReminders,
       });
       toast.success('Routine updated');
@@ -451,10 +546,12 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 
   // Compute stats
   const completedCount = entries.filter(e => e.status === 'complete').length;
+  const incompleteCount = entries.filter(e => e.status === 'incomplete').length;
   const targetEntries = routine?.targetEntries || entries.length || 1;
   const progress = Math.round((completedCount / targetEntries) * 100);
   const completionRate = entries.length > 0 ? Math.round((completedCount / entries.length) * 100) : 0;
   const isExpired = routine?.isExpired;
+  const maxDailyEntries = routine?.maxDailyEntries || 1;
 
   // Streak: consecutive complete entries from most recent
   let currentStreak = 0;
@@ -479,6 +576,30 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
       {isExpired && (
         <div style={{ marginBottom: 12 }}>
           <span className="badge badge-danger" style={{ fontSize: 13, padding: '4px 12px' }}>Expired</span>
+        </div>
+      )}
+
+      {/* Done for today badge */}
+      {routine?.isDoneForToday && !isExpired && (
+        <div style={{ marginBottom: 12 }}>
+          <span className="badge" style={{
+            background: 'var(--success)', color: 'white', fontSize: 13, padding: '4px 12px',
+          }}>
+            Done for today ({routine.todayCompleteCount}/{maxDailyEntries})
+          </span>
+        </div>
+      )}
+
+      {/* Daily progress info */}
+      {!isExpired && fetched && (
+        <div style={{
+          padding: '8px 12px', background: 'var(--bg-input)', borderRadius: 8,
+          fontSize: 12, color: 'var(--text-muted)', marginBottom: 12,
+        }}>
+          Daily target: <strong>{maxDailyEntries}</strong> entries/day
+          &middot; Today: <strong style={{ color: routine?.isDoneForToday ? 'var(--success)' : 'var(--warning)' }}>
+            {routine?.todayCompleteCount || 0}/{maxDailyEntries}
+          </strong>
         </div>
       )}
 
@@ -518,6 +639,10 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Best</div>
           </div>
           <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--danger)' }}>{incompleteCount}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Missed</div>
+          </div>
+          <div style={{ flex: 1, textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 700 }}>{entries.length}</div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Total</div>
           </div>
@@ -544,6 +669,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
             setEditName(routine?.name || '');
             setEditDueDate(routine?.dueDate ? routine.dueDate.split('T')[0] : '');
             setEditTargetEntries(routine?.targetEntries || '');
+            setEditMaxDailyEntries(routine?.maxDailyEntries || '1');
             setEditReminders(routine?.reminders?.map(r => ({
               type: r.type, time: r.time, days: [...(r.days || [])],
               dates: [...(r.dates || [])], enabled: r.enabled ?? true,
@@ -576,6 +702,11 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
             <label>Target Entries</label>
             <input type="number" value={editTargetEntries} min="1"
               onChange={(e) => setEditTargetEntries(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>Max Daily Entries</label>
+            <input type="number" value={editMaxDailyEntries} min="1"
+              onChange={(e) => setEditMaxDailyEntries(e.target.value)} />
           </div>
           <ReminderEditor reminders={editReminders} setReminders={setEditReminders} />
           <div style={{ display: 'flex', gap: 8 }}>
@@ -649,7 +780,6 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 }
 
 function LogEntryModal({ open, routine, onClose, onDone }) {
-  const [status, setStatus] = useState('complete');
   const [manualDate, setManualDate] = useState(false);
   const [date, setDate] = useState('');
   const [fieldValues, setFieldValues] = useState({});
@@ -664,7 +794,6 @@ function LogEntryModal({ open, routine, onClose, onDone }) {
     setLoading(true);
     try {
       await logRoutineEntry(routine._id, {
-        status,
         manualDate,
         date: manualDate ? date : undefined,
         fieldValues: Object.values(fieldValues),
@@ -678,12 +807,12 @@ function LogEntryModal({ open, routine, onClose, onDone }) {
   return (
     <Modal open={open} onClose={onClose} title="Log Entry">
       <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label>Status</label>
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="complete">Complete</option>
-            <option value="incomplete">Incomplete</option>
-          </select>
+        <div style={{
+          padding: '8px 12px', background: 'var(--bg-input)', borderRadius: 8,
+          fontSize: 12, color: 'var(--text-muted)', marginBottom: 12,
+        }}>
+          Entry will be logged as <strong style={{ color: 'var(--success)' }}>complete</strong>.
+          Missing entries are automatically marked incomplete at end of day.
         </div>
 
         <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -761,7 +890,7 @@ function LogEntryModal({ open, routine, onClose, onDone }) {
         ))}
 
         <button type="submit" className="btn-primary" disabled={loading}>
-          {loading ? 'Logging...' : 'Log Entry'}
+          {loading ? 'Logging...' : 'Log Complete Entry'}
         </button>
       </form>
     </Modal>
@@ -769,7 +898,6 @@ function LogEntryModal({ open, routine, onClose, onDone }) {
 }
 
 function BatchLogModal({ open, routine, onClose, onDone }) {
-  const [status, setStatus] = useState('incomplete');
   const [count, setCount] = useState(1);
   const [loading, setLoading] = useState(false);
 
@@ -777,8 +905,8 @@ function BatchLogModal({ open, routine, onClose, onDone }) {
     e.preventDefault();
     setLoading(true);
     try {
-      await batchLogRoutineEntries(routine._id, { status, count });
-      toast.success(`${count} ${status} entr${count > 1 ? 'ies' : 'y'} logged`);
+      await batchLogRoutineEntries(routine._id, { count });
+      toast.success(`${count} complete entr${count > 1 ? 'ies' : 'y'} logged`);
       onClose(); onDone();
     } catch (err) { toast.error(err.message); }
     finally { setLoading(false); }
@@ -787,14 +915,6 @@ function BatchLogModal({ open, routine, onClose, onDone }) {
   return (
     <Modal open={open} onClose={onClose} title="Quick Batch Log">
       <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label>Status</label>
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="complete">Complete</option>
-            <option value="incomplete">Incomplete</option>
-          </select>
-        </div>
-
         <div className="form-group">
           <label>How many entries?</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -812,10 +932,9 @@ function BatchLogModal({ open, routine, onClose, onDone }) {
           padding: '10px 12px', background: 'var(--bg-input)', borderRadius: 8,
           fontSize: 13, color: 'var(--text-muted)', marginBottom: 16,
         }}>
-          This will log <strong style={{ color: 'var(--text-primary)' }}>{count}</strong> {status === 'complete'
-            ? <span style={{ color: 'var(--success)' }}>complete</span>
-            : <span style={{ color: 'var(--danger)' }}>incomplete</span>
-          } entr{count > 1 ? 'ies' : 'y'} right now.
+          This will log <strong style={{ color: 'var(--text-primary)' }}>{count}</strong>{' '}
+          <span style={{ color: 'var(--success)' }}>complete</span>{' '}
+          entr{count > 1 ? 'ies' : 'y'} right now.
         </div>
 
         <button type="submit" className="btn-primary" disabled={loading}>

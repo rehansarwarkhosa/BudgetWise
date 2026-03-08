@@ -29,6 +29,14 @@ export const getFundEntries = (budgetId) => api.get(`/budgets/${budgetId}/funds`
 export const deleteFundEntry = (id) => api.delete(`/budgets/funds/${id}`);
 export const reorderBudget = (id, direction) => api.put(`/budgets/${id}/reorder`, { direction });
 
+// Budget Templates
+export const getBudgetTemplates = () => api.get('/budget-templates');
+export const createBudgetTemplate = (data) => api.post('/budget-templates', data);
+export const createTemplateFromBudgets = (data) => api.post('/budget-templates/from-budgets', data);
+export const useBudgetTemplate = (id) => api.post(`/budget-templates/${id}/use`);
+export const updateBudgetTemplate = (id, data) => api.put(`/budget-templates/${id}`, data);
+export const deleteBudgetTemplate = (id) => api.delete(`/budget-templates/${id}`);
+
 // Expenses
 export const getExpenses = (budgetId) => api.get(`/expenses/budget/${budgetId}`);
 export const addExpense = (data) => api.post('/expenses', data);
@@ -46,6 +54,7 @@ export const logRoutineEntry = (id, data) => api.post(`/routines/${id}/entries`,
 export const deleteRoutineEntry = (entryId) => api.delete(`/routines/entries/${entryId}`);
 export const batchLogRoutineEntries = (id, data) => api.post(`/routines/${id}/entries/batch`, data);
 export const checkReminders = () => api.get('/routines/check-reminders');
+export const autoIncompleteRoutines = () => api.post('/routines/auto-incomplete');
 
 // Savings
 export const getSavings = () => api.get('/savings');

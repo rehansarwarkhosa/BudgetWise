@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoCreate, IoChevronUp, IoChevronDown } from 'react-icons/io5';
+import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoCreate, IoChevronUp, IoChevronDown, IoDocumentText, IoPlayCircle, IoBookmark } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
@@ -12,6 +12,8 @@ import {
   getBudgets, createBudget, updateBudget, deleteBudget, addFundsToBudget,
   getExpenses, addExpense, updateExpense, deleteExpense,
   getFundEntries, deleteFundEntry, reorderBudget, getBudgetCategories,
+  getBudgetTemplates, createBudgetTemplate, createTemplateFromBudgets,
+  useBudgetTemplate, deleteBudgetTemplate,
 } from '../api';
 
 export default function Budget() {
@@ -23,13 +25,14 @@ export default function Budget() {
   const categoryColorMap = {};
   categoriesData?.forEach(c => { categoryColorMap[c.name] = c.color || '#6C63FF'; });
 
+  const [activeView, setActiveView] = useState('budgets'); // 'budgets' or 'templates'
   const [incomeModal, setIncomeModal] = useState(false);
   const [budgetModal, setBudgetModal] = useState(false);
   const [expenseModal, setExpenseModal] = useState(null);
   const [fundsModal, setFundsModal] = useState(null);
   const [detailModal, setDetailModal] = useState(null);
   const [incomeListModal, setIncomeListModal] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(null); // { type, id, name }
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const refreshAll = () => {
     refetchSummary();
@@ -73,70 +76,98 @@ export default function Budget() {
     <div className="page">
       <h1 className="page-title">Budget</h1>
 
-      {/* Income Summary Bar */}
-      <div className="card" style={{ marginBottom: 16, cursor: 'pointer' }} onClick={() => setIncomeListModal(true)}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Income Pool</span>
-          <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); setIncomeModal(true); }}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary)', fontSize: 13 }}>
-            <IoAdd size={16} /> Add Income
-          </button>
-        </div>
-        <div style={{ fontSize: 26, fontWeight: 700 }} className="pkr">
-          {formatPKR(summary?.balance || 0)}
-        </div>
-        <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-          <span>Total: {formatPKR(summary?.totalIncome)}</span>
-          <span>Allocated: {formatPKR(summary?.totalAllocated)}</span>
-        </div>
-        {summary?.isDeficit && (
-          <div className="badge badge-danger" style={{ marginTop: 8 }}>In Deficit</div>
-        )}
+      {/* View Toggle: Budgets / Templates */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid var(--border)' }}>
+        <button onClick={() => setActiveView('budgets')}
+          style={{
+            flex: 1, padding: '10px 0', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+            background: 'none', border: 'none', color: activeView === 'budgets' ? 'var(--primary)' : 'var(--text-muted)',
+            borderBottom: activeView === 'budgets' ? '2px solid var(--primary)' : '2px solid transparent',
+            marginBottom: -2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}>
+          <IoWallet size={16} /> Budgets
+        </button>
+        <button onClick={() => setActiveView('templates')}
+          style={{
+            flex: 1, padding: '10px 0', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+            background: 'none', border: 'none', color: activeView === 'templates' ? 'var(--primary)' : 'var(--text-muted)',
+            borderBottom: activeView === 'templates' ? '2px solid var(--primary)' : '2px solid transparent',
+            marginBottom: -2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}>
+          <IoBookmark size={16} /> Templates
+        </button>
       </div>
 
-      {/* Budget Cards grouped by category */}
-      {budgets?.length === 0 ? (
-        <EmptyState icon={<IoWallet />} title="No budgets yet" subtitle="Tap + to create your first budget" />
-      ) : (
-        categories.map((cat) => {
-          const catColor = categoryColorMap[cat] || '#6C63FF';
-          return (
-            <div key={cat} style={{ marginBottom: 16 }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8,
-              }}>
-                <span style={{
-                  width: 10, height: 10, borderRadius: '50%', background: catColor,
-                  display: 'inline-block', flexShrink: 0,
-                }} />
-                <h3 style={{ fontSize: 13, fontWeight: 600, color: catColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  {cat}
-                </h3>
-              </div>
-              <div style={{ display: 'grid', gap: 12 }}>
-                {grouped[cat].map((b) => {
-                  const globalIdx = budgets.findIndex(gb => gb._id === b._id);
-                  return (
-                    <BudgetCard key={b._id} budget={b} catColor={catColor}
-                      onExpense={() => setExpenseModal(b._id)}
-                      onAddFunds={() => setFundsModal(b._id)}
-                      onDetail={() => setDetailModal(b)}
-                      onDelete={() => setConfirmDelete({ type: 'budget', id: b._id, name: b.name })}
-                      onMoveUp={() => handleReorder(b._id, 'up')}
-                      onMoveDown={() => handleReorder(b._id, 'down')}
-                      isFirst={globalIdx === 0}
-                      isLast={globalIdx === budgets.length - 1}
-                    />
-                  );
-                })}
-              </div>
+      {activeView === 'budgets' ? (
+        <>
+          {/* Income Summary Bar */}
+          <div className="card" style={{ marginBottom: 16, cursor: 'pointer' }} onClick={() => setIncomeListModal(true)}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Income Pool</span>
+              <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); setIncomeModal(true); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary)', fontSize: 13 }}>
+                <IoAdd size={16} /> Add Income
+              </button>
             </div>
-          );
-        })
-      )}
+            <div style={{ fontSize: 26, fontWeight: 700 }} className="pkr">
+              {formatPKR(summary?.balance || 0)}
+            </div>
+            <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+              <span>Total: {formatPKR(summary?.totalIncome)}</span>
+              <span>Allocated: {formatPKR(summary?.totalAllocated)}</span>
+            </div>
+            {summary?.isDeficit && (
+              <div className="badge badge-danger" style={{ marginTop: 8 }}>In Deficit</div>
+            )}
+          </div>
 
-      {/* FAB */}
-      <button className="fab" onClick={() => setBudgetModal(true)}><IoAdd /></button>
+          {/* Budget Cards grouped by category */}
+          {budgets?.length === 0 ? (
+            <EmptyState icon={<IoWallet />} title="No budgets yet" subtitle="Tap + to create your first budget" />
+          ) : (
+            categories.map((cat) => {
+              const catColor = categoryColorMap[cat] || '#6C63FF';
+              return (
+                <div key={cat} style={{ marginBottom: 16 }}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8,
+                  }}>
+                    <span style={{
+                      width: 10, height: 10, borderRadius: '50%', background: catColor,
+                      display: 'inline-block', flexShrink: 0,
+                    }} />
+                    <h3 style={{ fontSize: 13, fontWeight: 600, color: catColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      {cat}
+                    </h3>
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {grouped[cat].map((b) => {
+                      const globalIdx = budgets.findIndex(gb => gb._id === b._id);
+                      return (
+                        <BudgetCard key={b._id} budget={b} catColor={catColor}
+                          onExpense={() => setExpenseModal(b._id)}
+                          onAddFunds={() => setFundsModal(b._id)}
+                          onDetail={() => setDetailModal(b)}
+                          onDelete={() => setConfirmDelete({ type: 'budget', id: b._id, name: b.name })}
+                          onMoveUp={() => handleReorder(b._id, 'up')}
+                          onMoveDown={() => handleReorder(b._id, 'down')}
+                          isFirst={globalIdx === 0}
+                          isLast={globalIdx === budgets.length - 1}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {/* FAB for new budget */}
+          <button className="fab" onClick={() => setBudgetModal(true)}><IoAdd /></button>
+        </>
+      ) : (
+        <TemplatesView categoryColorMap={categoryColorMap} categoryNames={categoryNames} onBudgetsChanged={refreshAll} />
+      )}
 
       {/* Modals */}
       <IncomeModal open={incomeModal} onClose={() => setIncomeModal(false)}
@@ -158,6 +189,300 @@ export default function Budget() {
     </div>
   );
 }
+
+/* ========================= TEMPLATES VIEW ========================= */
+function TemplatesView({ categoryColorMap, categoryNames, onBudgetsChanged }) {
+  const { data: templates, loading, refetch: refetchTemplates } = useFetch(getBudgetTemplates);
+  const [createModal, setCreateModal] = useState(false);
+  const [saveFromBudgetsModal, setSaveFromBudgetsModal] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmUse, setConfirmUse] = useState(null);
+  const [detailTemplate, setDetailTemplate] = useState(null);
+
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
+    try {
+      await deleteBudgetTemplate(confirmDelete._id);
+      toast.success('Template deleted');
+      setConfirmDelete(null);
+      refetchTemplates();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleUse = async () => {
+    if (!confirmUse) return;
+    try {
+      const res = await useBudgetTemplate(confirmUse._id);
+      const data = res.data;
+      toast.success(`Template applied! ${data.budgets.length} budget(s) created${data.incomeAdded > 0 ? `, PKR ${data.incomeAdded.toLocaleString()} income added` : ''}`);
+      setConfirmUse(null);
+      onBudgetsChanged();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  if (loading && !templates) return <Spinner />;
+
+  return (
+    <>
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <button className="btn-outline" style={{ flex: 1, fontSize: 13 }}
+          onClick={() => setCreateModal(true)}>
+          <IoAdd size={14} style={{ marginRight: 4, verticalAlign: -2 }} /> New Template
+        </button>
+        <button className="btn-outline" style={{ flex: 1, fontSize: 13 }}
+          onClick={() => setSaveFromBudgetsModal(true)}>
+          <IoDocumentText size={14} style={{ marginRight: 4, verticalAlign: -2 }} /> Save Current
+        </button>
+      </div>
+
+      {!templates || templates.length === 0 ? (
+        <EmptyState icon={<IoBookmark />} title="No templates yet" subtitle="Create a template or save your current budgets as a template" />
+      ) : (
+        <div style={{ display: 'grid', gap: 12 }}>
+          {templates.map((tpl) => {
+            // Group items by category for display
+            const tplGrouped = {};
+            tpl.items.forEach(item => {
+              const cat = item.category || 'General';
+              if (!tplGrouped[cat]) tplGrouped[cat] = [];
+              tplGrouped[cat].push(item);
+            });
+            const totalAllocation = tpl.items.reduce((sum, i) => sum + i.allocatedAmount, 0);
+
+            return (
+              <div key={tpl._id} className="card" style={{ cursor: 'pointer' }}
+                onClick={() => setDetailTemplate(tpl)}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <h3 style={{ fontSize: 16, fontWeight: 600 }}>{tpl.name}</h3>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                      {tpl.items.length} budget{tpl.items.length !== 1 ? 's' : ''} &middot; Total: {formatPKR(totalAllocation)}
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button className="btn-ghost" style={{ padding: 4, color: 'var(--success)' }}
+                      onClick={(e) => { e.stopPropagation(); setConfirmUse(tpl); }}
+                      title="Use Template">
+                      <IoPlayCircle size={20} />
+                    </button>
+                    <button className="btn-ghost" style={{ padding: 4, color: 'var(--danger)' }}
+                      onClick={(e) => { e.stopPropagation(); setConfirmDelete(tpl); }}>
+                      <IoTrash size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Category color dots */}
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {Object.keys(tplGrouped).sort().map(cat => {
+                    const cc = categoryColorMap[cat] || '#6C63FF';
+                    return (
+                      <span key={cat} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                        background: cc + '15', color: cc,
+                        border: `1px solid ${cc}30`,
+                      }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: cc, display: 'inline-block' }} />
+                        {cat} ({tplGrouped[cat].length})
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <CreateTemplateModal open={createModal} onClose={() => setCreateModal(false)}
+        onDone={refetchTemplates} categoryNames={categoryNames} />
+
+      <SaveFromBudgetsModal open={saveFromBudgetsModal} onClose={() => setSaveFromBudgetsModal(false)}
+        onDone={refetchTemplates} />
+
+      <TemplateDetailModal open={!!detailTemplate} template={detailTemplate}
+        onClose={() => setDetailTemplate(null)} categoryColorMap={categoryColorMap} />
+
+      <ConfirmModal open={!!confirmDelete} onClose={() => setConfirmDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete template?"
+        message={`Delete template "${confirmDelete?.name}"? This won't affect existing budgets.`} />
+
+      <ConfirmModal open={!!confirmUse} onClose={() => setConfirmUse(null)}
+        onConfirm={handleUse}
+        title="Use template?"
+        message={`Apply "${confirmUse?.name}"? This will create ${confirmUse?.items?.length} budget(s) and add the required income to your pool.`} />
+    </>
+  );
+}
+
+function CreateTemplateModal({ open, onClose, onDone, categoryNames }) {
+  const [name, setName] = useState('');
+  const [items, setItems] = useState([{ name: '', category: 'General', allocatedAmount: '' }]);
+  const [loading, setLoading] = useState(false);
+
+  const addItem = () => setItems([...items, { name: '', category: 'General', allocatedAmount: '' }]);
+  const removeItem = (idx) => setItems(items.filter((_, i) => i !== idx));
+  const updateItem = (idx, key, val) => {
+    const updated = [...items];
+    updated[idx] = { ...updated[idx], [key]: val };
+    setItems(updated);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const validItems = items.filter(i => i.name.trim() && Number(i.allocatedAmount) > 0);
+    if (validItems.length === 0) { toast.error('Add at least one valid item'); return; }
+    setLoading(true);
+    try {
+      await createBudgetTemplate({
+        name,
+        items: validItems.map(i => ({ ...i, allocatedAmount: Number(i.allocatedAmount) })),
+      });
+      toast.success('Template created');
+      setName(''); setItems([{ name: '', category: 'General', allocatedAmount: '' }]);
+      onClose(); onDone();
+    } catch (err) { toast.error(err.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Create Template">
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label>Template Name</label>
+          <input type="text" placeholder="e.g., Monthly Essentials" value={name}
+            onChange={(e) => setName(e.target.value)} required />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <label style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>Budget Items</label>
+            <button type="button" className="btn-ghost" onClick={addItem}
+              style={{ color: 'var(--primary)', fontSize: 13 }}>+ Add Item</button>
+          </div>
+          {items.map((item, idx) => (
+            <div key={idx} style={{ background: 'var(--bg-input)', borderRadius: 8, padding: 12, marginBottom: 8 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <input type="text" placeholder="Budget name" value={item.name}
+                  onChange={(e) => updateItem(idx, 'name', e.target.value)} style={{ flex: 1 }} />
+                <button type="button" className="btn-ghost" onClick={() => removeItem(idx)}
+                  style={{ color: 'var(--danger)', padding: 4 }}><IoTrash size={16} /></button>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select value={item.category} onChange={(e) => updateItem(idx, 'category', e.target.value)}
+                  style={{ flex: 1 }}>
+                  {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <input type="number" placeholder="Amount" value={item.allocatedAmount}
+                  onChange={(e) => updateItem(idx, 'allocatedAmount', e.target.value)}
+                  style={{ flex: 1 }} min="1" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {items.filter(i => i.name.trim() && Number(i.allocatedAmount) > 0).length > 0 && (
+          <div style={{
+            padding: '8px 12px', background: 'var(--bg-input)', borderRadius: 8,
+            fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, textAlign: 'center',
+          }}>
+            Total: <strong style={{ color: 'var(--primary)' }}>
+              {formatPKR(items.reduce((s, i) => s + (Number(i.allocatedAmount) || 0), 0))}
+            </strong>
+          </div>
+        )}
+
+        <button type="submit" className="btn-primary" disabled={loading}>
+          {loading ? 'Creating...' : 'Create Template'}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+function SaveFromBudgetsModal({ open, onClose, onDone }) {
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await createTemplateFromBudgets({ name });
+      toast.success('Template saved from current budgets');
+      setName('');
+      onClose(); onDone();
+    } catch (err) { toast.error(err.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Save Current Budgets as Template">
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label>Template Name</label>
+          <input type="text" placeholder="e.g., March 2026 Setup" value={name}
+            onChange={(e) => setName(e.target.value)} required />
+        </div>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+          This will save all your current budgets (names, categories, and allocations) as a reusable template.
+        </p>
+        <button type="submit" className="btn-primary" disabled={loading}>
+          {loading ? 'Saving...' : 'Save as Template'}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+function TemplateDetailModal({ open, template, onClose, categoryColorMap }) {
+  if (!template) return null;
+
+  const grouped = {};
+  template.items.forEach(item => {
+    const cat = item.category || 'General';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(item);
+  });
+  const totalAllocation = template.items.reduce((sum, i) => sum + i.allocatedAmount, 0);
+
+  return (
+    <Modal open={open} onClose={onClose} title={template.name}>
+      <div style={{ marginBottom: 12, fontSize: 14, color: 'var(--text-muted)' }}>
+        {template.items.length} items &middot; Total: <strong>{formatPKR(totalAllocation)}</strong>
+      </div>
+
+      {Object.keys(grouped).sort().map(cat => {
+        const cc = categoryColorMap[cat] || '#6C63FF';
+        return (
+          <div key={cat} style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: '50%', background: cc,
+                display: 'inline-block',
+              }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: cc, textTransform: 'uppercase' }}>{cat}</span>
+            </div>
+            {grouped[cat].map((item, i) => (
+              <div key={i} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '8px 0', borderBottom: '1px solid var(--border)',
+              }}>
+                <span style={{ fontSize: 14 }}>{item.name}</span>
+                <span className="pkr" style={{ fontSize: 14, fontWeight: 600 }}>{formatPKR(item.allocatedAmount)}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </Modal>
+  );
+}
+
+/* ========================= BUDGET COMPONENTS (unchanged) ========================= */
 
 function BudgetCard({ budget, catColor, onExpense, onAddFunds, onDetail, onDelete, onMoveUp, onMoveDown, isFirst, isLast }) {
   const pct = budget.allocatedAmount > 0

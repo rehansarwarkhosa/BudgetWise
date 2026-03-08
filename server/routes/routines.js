@@ -10,6 +10,15 @@ const router = Router();
 
 const getNowKarachi = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
 
+// Get today's date string in PKT
+const getTodayStrPKT = () => {
+  const pkt = getNowKarachi();
+  const y = pkt.getFullYear();
+  const m = String(pkt.getMonth() + 1).padStart(2, '0');
+  const d = String(pkt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 // Format a real Date to PKT string (no double conversion)
 const formatPKT = (date) => date.toLocaleString('en-US', {
   timeZone: 'Asia/Karachi',
@@ -22,6 +31,8 @@ router.get('/', async (req, res, next) => {
   try {
     const routines = await Routine.find().sort({ createdAt: -1 });
     const now = new Date();
+    const todayStr = getTodayStrPKT();
+
     const routinesWithCounts = await Promise.all(
       routines.map(async (r) => {
         const entryCount = await RoutineEntry.countDocuments({ routineId: r._id });
@@ -30,7 +41,23 @@ router.get('/', async (req, res, next) => {
         const targetEntries = r.targetEntries || entryCount || 1;
         const progress = Math.round((completedEntries / targetEntries) * 100);
         const isExpired = r.dueDate && new Date(r.dueDate) < now;
-        return { ...r.toObject(), entryCount, completedEntries, targetEntries, progress, isExpired, lastEntry };
+
+        // Count today's complete entries for this routine
+        const todayStart = new Date(todayStr + 'T00:00:00');
+        const todayEnd = new Date(todayStr + 'T23:59:59.999');
+        const todayCompleteCount = await RoutineEntry.countDocuments({
+          routineId: r._id,
+          status: 'complete',
+          date: { $gte: todayStart, $lte: todayEnd },
+        });
+        const maxDailyEntries = r.maxDailyEntries || 1;
+        const isDoneForToday = todayCompleteCount >= maxDailyEntries;
+
+        return {
+          ...r.toObject(), entryCount, completedEntries, targetEntries,
+          progress, isExpired, lastEntry,
+          todayCompleteCount, maxDailyEntries, isDoneForToday,
+        };
       })
     );
     success(res, routinesWithCounts);
@@ -177,6 +204,78 @@ router.get('/check-reminders', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// --- Auto-incomplete: mark missing entries for yesterday ---
+router.post('/auto-incomplete', async (req, res, next) => {
+  try {
+    const pkt = getNowKarachi();
+    // Yesterday in PKT
+    const yesterday = new Date(pkt);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+    const yStart = new Date(yStr + 'T00:00:00');
+    const yEnd = new Date(yStr + 'T23:59:59.999');
+
+    const realNow = new Date();
+    const routines = await Routine.find({ dueDate: { $gte: yStart } });
+    let totalIncomplete = 0;
+
+    for (const routine of routines) {
+      const maxDaily = routine.maxDailyEntries || 1;
+      // Count yesterday's complete entries
+      const yesterdayCompleteCount = await RoutineEntry.countDocuments({
+        routineId: routine._id,
+        status: 'complete',
+        date: { $gte: yStart, $lte: yEnd },
+      });
+
+      const missing = maxDaily - yesterdayCompleteCount;
+      if (missing > 0) {
+        // Check if we should count this day (based on reminders)
+        const yesterdayDay = yesterday.getDay();
+        let shouldCount = false;
+
+        if (routine.reminders.length === 0) {
+          shouldCount = true; // No reminders = every day
+        } else {
+          for (const rem of routine.reminders) {
+            if (!rem.enabled) continue;
+            switch (rem.type) {
+              case 'daily': shouldCount = true; break;
+              case 'weekdays': if (yesterdayDay >= 1 && yesterdayDay <= 5) shouldCount = true; break;
+              case 'custom_days': if (rem.days.includes(yesterdayDay)) shouldCount = true; break;
+              case 'custom_dates':
+                if (rem.dates.some(d => new Date(d).toISOString().split('T')[0] === yStr)) shouldCount = true;
+                break;
+            }
+            if (shouldCount) break;
+          }
+        }
+
+        if (shouldCount) {
+          const docs = Array.from({ length: missing }, () => ({
+            routineId: routine._id,
+            status: 'incomplete',
+            date: new Date(yStr + 'T23:59:00'),
+            fieldValues: [],
+            manualDate: false,
+          }));
+          await RoutineEntry.insertMany(docs);
+          totalIncomplete += missing;
+        }
+      }
+    }
+
+    if (totalIncomplete > 0) {
+      await AuditLog.create({
+        action: 'AUTO_INCOMPLETE', entity: 'RoutineEntry',
+        details: `Auto-marked ${totalIncomplete} missing entries as incomplete for ${yStr}`,
+      });
+    }
+
+    success(res, { date: yStr, totalIncomplete });
+  } catch (err) { next(err); }
+});
+
 // --- Delete entry (before /:id to avoid conflict) ---
 
 router.delete('/entries/:entryId', async (req, res, next) => {
@@ -204,7 +303,7 @@ router.get('/:id', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const { name, dueDate, targetEntries, fields, reminders } = req.body;
+    const { name, dueDate, targetEntries, maxDailyEntries, fields, reminders } = req.body;
     if (!name) return error(res, 'Name is required');
     if (!dueDate) return error(res, 'Due date is required');
     if (!targetEntries || targetEntries < 1) return error(res, 'Target entries is required (min 1)');
@@ -212,12 +311,13 @@ router.post('/', async (req, res, next) => {
       name,
       dueDate,
       targetEntries,
+      maxDailyEntries: maxDailyEntries || 1,
       fields: fields || [],
       reminders: reminders || [],
     });
     await AuditLog.create({
       action: 'CREATE', entity: 'Routine', entityId: routine._id,
-      details: `Created routine "${name}" (target: ${targetEntries} entries)`,
+      details: `Created routine "${name}" (target: ${targetEntries}, daily max: ${maxDailyEntries || 1})`,
     });
     success(res, routine, 201);
   } catch (err) { next(err); }
@@ -225,12 +325,13 @@ router.post('/', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
   try {
-    const { name, dueDate, targetEntries, fields, reminders } = req.body;
+    const { name, dueDate, targetEntries, maxDailyEntries, fields, reminders } = req.body;
     const routine = await Routine.findById(req.params.id);
     if (!routine) return error(res, 'Routine not found', 404);
     if (name) routine.name = name;
     if (dueDate !== undefined) routine.dueDate = dueDate;
     if (targetEntries !== undefined) routine.targetEntries = targetEntries;
+    if (maxDailyEntries !== undefined) routine.maxDailyEntries = maxDailyEntries;
     if (fields) routine.fields = fields;
     if (reminders !== undefined) routine.reminders = reminders;
     await routine.save();
@@ -266,7 +367,7 @@ router.get('/:id/entries', async (req, res, next) => {
 
 router.post('/:id/entries', async (req, res, next) => {
   try {
-    const { status, fieldValues, manualDate, date } = req.body;
+    const { fieldValues, manualDate, date } = req.body;
     const routine = await Routine.findById(req.params.id);
     if (!routine) return error(res, 'Routine not found', 404);
 
@@ -276,9 +377,10 @@ router.post('/:id/entries', async (req, res, next) => {
 
     const entryDate = manualDate && date ? new Date(date) : new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
 
+    // Always log as complete — incomplete is auto-generated
     const entry = await RoutineEntry.create({
       routineId: req.params.id,
-      status: status || 'complete',
+      status: 'complete',
       date: entryDate,
       fieldValues: fieldValues || [],
       manualDate: !!manualDate,
@@ -286,17 +388,17 @@ router.post('/:id/entries', async (req, res, next) => {
 
     await AuditLog.create({
       action: 'CREATE', entity: 'RoutineEntry', entityId: entry._id,
-      details: `Logged ${status || 'complete'} entry for "${routine.name}"`,
+      details: `Logged complete entry for "${routine.name}"`,
     });
 
     success(res, entry, 201);
   } catch (err) { next(err); }
 });
 
-// Batch log entries (quick shortcut)
+// Batch log entries (quick shortcut) — always complete
 router.post('/:id/entries/batch', async (req, res, next) => {
   try {
-    const { status, count } = req.body;
+    const { count } = req.body;
     const routine = await Routine.findById(req.params.id);
     if (!routine) return error(res, 'Routine not found', 404);
 
@@ -309,7 +411,7 @@ router.post('/:id/entries/batch', async (req, res, next) => {
 
     const docs = Array.from({ length: n }, () => ({
       routineId: req.params.id,
-      status: status || 'complete',
+      status: 'complete',
       date: entryDate,
       fieldValues: [],
       manualDate: false,
@@ -318,7 +420,7 @@ router.post('/:id/entries/batch', async (req, res, next) => {
     const entries = await RoutineEntry.insertMany(docs);
     await AuditLog.create({
       action: 'CREATE', entity: 'RoutineEntry',
-      details: `Batch logged ${n} ${status || 'complete'} entries for "${routine.name}"`,
+      details: `Batch logged ${n} complete entries for "${routine.name}"`,
     });
     success(res, entries, 201);
   } catch (err) { next(err); }
