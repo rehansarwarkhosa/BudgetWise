@@ -73,7 +73,7 @@ const sendPushNotification = async (title, message, url) => {
       },
       body: JSON.stringify({
         app_id: ONESIGNAL_APP_ID,
-        included_segments: ['Subscribed Users'],
+        included_segments: ['All'],
         headings: { en: title },
         contents: { en: message },
         url: url || undefined,
@@ -82,7 +82,7 @@ const sendPushNotification = async (title, message, url) => {
     });
     const data = await response.json();
     if (data.errors) {
-      return { sent: false, reason: JSON.stringify(data.errors) };
+      return { sent: false, reason: JSON.stringify(data.errors), raw: data };
     }
     return { sent: true, recipients: data.recipients || 0, id: data.id };
   } catch (err) {
