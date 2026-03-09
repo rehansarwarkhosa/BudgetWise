@@ -559,7 +559,7 @@ router.post('/:id/entries', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Batch log entries — always complete
+// Batch log entries — always complete, respects daily limit
 router.post('/:id/entries/batch', async (req, res, next) => {
   try {
     const { count } = req.body;
@@ -590,7 +590,39 @@ router.post('/:id/entries/batch', async (req, res, next) => {
       }
     }
 
-    const n = Math.min(Math.max(1, parseInt(count) || 1), 50);
+    // Enforce daily limit (same logic as single entry)
+    const todayStr = getTodayStrPKT();
+    const { start: todayStart, end: todayEnd } = pktDayToUTCRange(todayStr);
+    const todayCompleteCount = await RoutineEntry.countDocuments({
+      routineId: routine._id,
+      status: 'complete',
+      date: { $gte: todayStart, $lte: todayEnd },
+    });
+    let maxDaily = routine.maxDailyEntries || 1;
+
+    // On creation day, reduce daily limit for daily reminders whose time has passed
+    const createdDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(routine.createdAt));
+    if (createdDateStr === todayStr && routine.reminders?.length > 0) {
+      const pkt = getPKTComponents(new Date());
+      const nowMins = pkt.hour * 60 + pkt.minute;
+      const enabledDaily = routine.reminders.filter(r => r.enabled && r.type === 'daily');
+      if (enabledDaily.length > 0) {
+        const futureCount = enabledDaily.filter(r => {
+          const [rh, rm] = r.time.split(':').map(Number);
+          return nowMins <= (rh * 60 + rm);
+        }).length;
+        const nonDaily = routine.reminders.filter(r => r.enabled && r.type !== 'daily').length;
+        maxDaily = Math.max(1, futureCount + nonDaily);
+      }
+    }
+
+    const remaining = maxDaily - todayCompleteCount;
+    if (remaining <= 0) {
+      return error(res, `Daily limit reached (${todayCompleteCount}/${maxDaily}). Already done for today.`, 400);
+    }
+
+    // Cap batch count at remaining daily slots
+    const n = Math.min(Math.max(1, parseInt(count) || 1), remaining, 50);
     // Use real UTC time
     const entryDate = new Date();
 

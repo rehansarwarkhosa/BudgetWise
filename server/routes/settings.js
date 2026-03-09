@@ -125,7 +125,7 @@ router.post('/test-email', async (req, res, next) => {
 // Export all data
 router.get('/export', async (req, res, next) => {
   try {
-    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes] = await Promise.all([
+    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries] = await Promise.all([
       Settings.findOne(),
       Income.find(),
       Budget.find(),

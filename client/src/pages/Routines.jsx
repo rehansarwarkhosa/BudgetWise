@@ -905,11 +905,21 @@ function LogEntryModal({ open, routine, onClose, onDone }) {
 }
 
 function BatchLogModal({ open, routine, onClose, onDone }) {
-  const [count, setCount] = useState(1);
+  const maxDaily = routine?.maxDailyEntries || 1;
+  const todayDone = routine?.todayCompleteCount || 0;
+  const remaining = Math.max(0, maxDaily - todayDone);
+
+  const [count, setCount] = useState(Math.min(1, remaining));
   const [loading, setLoading] = useState(false);
+
+  // Reset count when modal opens with new remaining value
+  useEffect(() => {
+    if (open) setCount(Math.min(1, remaining));
+  }, [open]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (remaining <= 0) { toast.error('Daily limit already reached'); return; }
     setLoading(true);
     try {
       await batchLogRoutineEntries(routine._id, { count });
@@ -922,6 +932,14 @@ function BatchLogModal({ open, routine, onClose, onDone }) {
   return (
     <Modal open={open} onClose={onClose} title="Quick Batch Log">
       <form onSubmit={handleSubmit}>
+        <div style={{
+          padding: '8px 12px', background: 'var(--bg-input)', borderRadius: 8,
+          fontSize: 12, color: 'var(--text-muted)', marginBottom: 12,
+        }}>
+          Daily limit: <strong>{maxDaily}</strong> &middot; Done today: <strong>{todayDone}</strong> &middot;
+          Remaining: <strong style={{ color: remaining > 0 ? 'var(--success)' : 'var(--danger)' }}>{remaining}</strong>
+        </div>
+
         <div className="form-group">
           <label>How many entries?</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -931,7 +949,7 @@ function BatchLogModal({ open, routine, onClose, onDone }) {
             <span style={{ fontSize: 28, fontWeight: 700, minWidth: 40, textAlign: 'center' }}>{count}</span>
             <button type="button" className="btn-outline"
               style={{ width: 40, height: 40, padding: 0, fontSize: 20, fontWeight: 700 }}
-              onClick={() => setCount(c => Math.min(50, c + 1))}>+</button>
+              onClick={() => setCount(c => Math.min(remaining, c + 1))}>+</button>
           </div>
         </div>
 
@@ -944,8 +962,8 @@ function BatchLogModal({ open, routine, onClose, onDone }) {
           entr{count > 1 ? 'ies' : 'y'} right now.
         </div>
 
-        <button type="submit" className="btn-primary" disabled={loading}>
-          {loading ? 'Logging...' : `Log ${count} Entr${count > 1 ? 'ies' : 'y'}`}
+        <button type="submit" className="btn-primary" disabled={loading || remaining <= 0}>
+          {loading ? 'Logging...' : remaining <= 0 ? 'Daily Limit Reached' : `Log ${count} Entr${count > 1 ? 'ies' : 'y'}`}
         </button>
       </form>
     </Modal>
