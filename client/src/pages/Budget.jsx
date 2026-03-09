@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoCreate, IoChevronUp, IoChevronDown, IoDocumentText, IoPlayCircle, IoBookmark } from 'react-icons/io5';
+import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoCreate, IoChevronUp, IoChevronDown, IoDocumentText, IoPlayCircle, IoBookmark, IoPricetag } from 'react-icons/io5';
+import PriceList from './PriceList';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
@@ -96,9 +97,20 @@ export default function Budget() {
           }}>
           <IoBookmark size={16} /> Templates
         </button>
+        <button onClick={() => setActiveView('prices')}
+          style={{
+            flex: 1, padding: '10px 0', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+            background: 'none', border: 'none', color: activeView === 'prices' ? 'var(--primary)' : 'var(--text-muted)',
+            borderBottom: activeView === 'prices' ? '2px solid var(--primary)' : '2px solid transparent',
+            marginBottom: -2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}>
+          <IoPricetag size={16} /> Prices
+        </button>
       </div>
 
-      {activeView === 'budgets' ? (
+      {activeView === 'prices' ? (
+        <PriceList categoryNames={categoryNames} categoryColorMap={categoryColorMap} />
+      ) : activeView === 'budgets' ? (
         <>
           {/* Income Summary Bar */}
           <div className="card" style={{ marginBottom: 16, cursor: 'pointer' }} onClick={() => setIncomeListModal(true)}>

@@ -234,64 +234,45 @@ function calcEntriesFromReminders(dueDate, reminders) {
   const nowPKT = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
   const currentHour = nowPKT.getHours();
   const currentMin = nowPKT.getMinutes();
+  const nowMins = currentHour * 60 + currentMin;
   const today = new Date(nowPKT);
   today.setHours(0, 0, 0, 0);
   const due = new Date(dueDate + 'T23:59:59');
   if (due < today) return 0;
 
-  // Check if a reminder's time has already passed today
-  const isTimePastToday = (rem) => {
-    if (!rem.time) return false;
-    const [rh, rm] = rem.time.split(':').map(Number);
-    return (currentHour * 60 + currentMin) > (rh * 60 + rm);
-  };
-
-  // Check if a given date (midnight) is today
   const isToday = (d) => d.getTime() === today.getTime();
 
   let total = 0;
   for (const rem of reminders) {
     if (!rem.enabled) continue;
-    // For today, only count this reminder if its time hasn't passed yet
-    const skipToday = isTimePastToday(rem);
-    switch (rem.type) {
-      case 'daily': {
-        const days = Math.floor((due - today) / 86400000) + 1;
-        total += skipToday ? days - 1 : days;
-        break;
+
+    // Only daily reminders skip past times on creation day
+    // Weekdays, custom_days, custom_dates use natural full-day counting
+    if (rem.type === 'daily') {
+      const days = Math.floor((due - today) / 86400000) + 1;
+      const [rh, rm] = (rem.time || '00:00').split(':').map(Number);
+      const timePast = nowMins > (rh * 60 + rm);
+      total += timePast ? days - 1 : days;
+    } else if (rem.type === 'weekdays') {
+      let d = new Date(today);
+      while (d <= due) {
+        const dow = d.getDay();
+        if (dow >= 1 && dow <= 5) total++;
+        d.setDate(d.getDate() + 1);
       }
-      case 'weekdays': {
-        let d = new Date(today);
-        while (d <= due) {
-          const dow = d.getDay();
-          if (dow >= 1 && dow <= 5) {
-            if (!(isToday(d) && skipToday)) total++;
-          }
-          d.setDate(d.getDate() + 1);
-        }
-        break;
+    } else if (rem.type === 'custom_days') {
+      if (!rem.days?.length) continue;
+      let d = new Date(today);
+      while (d <= due) {
+        if (rem.days.includes(d.getDay())) total++;
+        d.setDate(d.getDate() + 1);
       }
-      case 'custom_days': {
-        if (!rem.days?.length) break;
-        let d = new Date(today);
-        while (d <= due) {
-          if (rem.days.includes(d.getDay())) {
-            if (!(isToday(d) && skipToday)) total++;
-          }
-          d.setDate(d.getDate() + 1);
-        }
-        break;
-      }
-      case 'custom_dates': {
-        if (!rem.dates?.length) break;
-        for (const dateStr of rem.dates) {
-          const cd = new Date(dateStr);
-          cd.setHours(0, 0, 0, 0);
-          if (cd >= today && cd <= due) {
-            if (!(isToday(cd) && skipToday)) total++;
-          }
-        }
-        break;
+    } else if (rem.type === 'custom_dates') {
+      if (!rem.dates?.length) continue;
+      for (const dateStr of rem.dates) {
+        const cd = new Date(dateStr);
+        cd.setHours(0, 0, 0, 0);
+        if (cd >= today && cd <= due) total++;
       }
     }
   }
@@ -307,7 +288,12 @@ function calcDaysRemaining(dueDate) {
   return Math.floor((due - today) / 86400000) + 1;
 }
 
-function calcMaxDailyEntries(targetEntries, dueDate) {
+function calcMaxDailyEntries(targetEntries, dueDate, reminders) {
+  // If reminders exist, max daily = count of enabled reminders (each = 1 entry per matching day)
+  if (reminders && reminders.length > 0) {
+    const count = reminders.filter(r => r.enabled).length;
+    if (count > 0) return count;
+  }
   const days = calcDaysRemaining(dueDate);
   if (days <= 0) return 1;
   return Math.ceil(targetEntries / days);
@@ -326,7 +312,7 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
   const skipDailyCalcRef = useRef(false);
 
   const autoCalc = calcEntriesFromReminders(dueDate, reminders);
-  const autoDaily = calcMaxDailyEntries(Number(targetEntries) || 0, dueDate);
+  const autoDaily = calcMaxDailyEntries(Number(targetEntries) || 0, dueDate, reminders);
 
   // Auto-fill target entries when dueDate or reminders change
   const remindersKey = JSON.stringify(reminders.map(r => ({ type: r.type, time: r.time, days: r.days, dates: r.dates, enabled: r.enabled })));

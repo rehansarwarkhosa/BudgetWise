@@ -18,6 +18,8 @@ import BudgetCategory from '../models/BudgetCategory.js';
 import BudgetTemplate from '../models/BudgetTemplate.js';
 import WorkOrder from '../models/WorkOrder.js';
 import WorkOrderNote from '../models/WorkOrderNote.js';
+import PriceItem from '../models/PriceItem.js';
+import PriceEntry from '../models/PriceEntry.js';
 import { success, error } from '../utils/response.js';
 import { getCurrentPeriod } from '../utils/monthEnd.js';
 
@@ -142,11 +144,13 @@ router.get('/export', async (req, res, next) => {
       BudgetTemplate.find(),
       WorkOrder.find(),
       WorkOrderNote.find(),
+      PriceItem.find(),
+      PriceEntry.find(),
     ]);
     success(res, {
       exportDate: new Date().toISOString(),
       version: 1,
-      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes,
+      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries,
     });
   } catch (err) { next(err); }
 });
@@ -176,6 +180,8 @@ router.post('/import', async (req, res, next) => {
       budgetTemplates: await BudgetTemplate.find().lean(),
       workOrders: await WorkOrder.find().lean(),
       workOrderNotes: await WorkOrderNote.find().lean(),
+      priceItems: await PriceItem.find().lean(),
+      priceEntries: await PriceEntry.find().lean(),
       settings: await Settings.findOne().lean(),
     };
 
@@ -187,6 +193,7 @@ router.post('/import', async (req, res, next) => {
         Tag.deleteMany({}), Topic.deleteMany({}), SubTopic.deleteMany({}), Note.deleteMany({}),
         Trail.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
         BudgetTemplate.deleteMany({}), WorkOrder.deleteMany({}), WorkOrderNote.deleteMany({}),
+        PriceItem.deleteMany({}), PriceEntry.deleteMany({}),
       ]);
 
       // Restore from import file — sequential to catch failures early
@@ -207,6 +214,8 @@ router.post('/import', async (req, res, next) => {
       if (data.budgetTemplates?.length) await BudgetTemplate.insertMany(data.budgetTemplates);
       if (data.workOrders?.length) await WorkOrder.insertMany(data.workOrders);
       if (data.workOrderNotes?.length) await WorkOrderNote.insertMany(data.workOrderNotes);
+      if (data.priceItems?.length) await PriceItem.insertMany(data.priceItems);
+      if (data.priceEntries?.length) await PriceEntry.insertMany(data.priceEntries);
 
       if (data.settings) {
         await Settings.findOneAndUpdate({}, {
@@ -230,6 +239,7 @@ router.post('/import', async (req, res, next) => {
         Tag.deleteMany({}), Topic.deleteMany({}), SubTopic.deleteMany({}), Note.deleteMany({}),
         Trail.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
         BudgetTemplate.deleteMany({}), WorkOrder.deleteMany({}), WorkOrderNote.deleteMany({}),
+        PriceItem.deleteMany({}), PriceEntry.deleteMany({}),
       ]);
       if (snapshot.incomes.length) await Income.insertMany(snapshot.incomes);
       if (snapshot.budgets.length) await Budget.insertMany(snapshot.budgets);
@@ -248,6 +258,8 @@ router.post('/import', async (req, res, next) => {
       if (snapshot.budgetTemplates.length) await BudgetTemplate.insertMany(snapshot.budgetTemplates);
       if (snapshot.workOrders.length) await WorkOrder.insertMany(snapshot.workOrders);
       if (snapshot.workOrderNotes.length) await WorkOrderNote.insertMany(snapshot.workOrderNotes);
+      if (snapshot.priceItems.length) await PriceItem.insertMany(snapshot.priceItems);
+      if (snapshot.priceEntries.length) await PriceEntry.insertMany(snapshot.priceEntries);
       if (snapshot.settings) {
         await Settings.findOneAndUpdate({}, snapshot.settings, { upsert: true });
       }
@@ -277,6 +289,8 @@ router.delete('/all-data', async (req, res, next) => {
       BudgetTemplate.deleteMany({}),
       WorkOrder.deleteMany({}),
       WorkOrderNote.deleteMany({}),
+      PriceItem.deleteMany({}),
+      PriceEntry.deleteMany({}),
     ]);
     const period = getCurrentPeriod();
     const settings = await Settings.findOneAndUpdate(

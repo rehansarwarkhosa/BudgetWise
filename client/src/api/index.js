@@ -107,6 +107,16 @@ export const deleteWorkOrderNote = (noteId) => api.delete(`/workorders/notes/${n
 export const logWorkOrderExpense = (id) => api.post(`/workorders/${id}/log-expense`);
 export const checkWorkOrderReminders = () => api.get('/workorders/check-reminders');
 
+// Price Items
+export const getPriceItems = (params) => api.get('/price-items', { params });
+export const createPriceItem = (data) => api.post('/price-items', data);
+export const updatePriceItem = (id, data) => api.put(`/price-items/${id}`, data);
+export const deletePriceItem = (id) => api.delete(`/price-items/${id}`);
+export const getPriceEntries = (id) => api.get(`/price-items/${id}/prices`);
+export const addPriceEntry = (id, data) => api.post(`/price-items/${id}/prices`, data);
+export const updatePriceEntry = (priceId, data) => api.put(`/price-items/prices/${priceId}`, data);
+export const deletePriceEntry = (priceId) => api.delete(`/price-items/prices/${priceId}`);
+
 // Audit Logs
 export const getAuditLogs = (page = 1) => api.get(`/audit-logs?page=${page}&limit=50`);
 export const clearAuditLogs = () => api.delete('/audit-logs');

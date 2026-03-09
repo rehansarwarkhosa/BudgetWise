@@ -110,14 +110,14 @@ router.get('/', async (req, res, next) => {
         const dueEndPKT = dueDateStr ? new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET) : null;
         let isExpired = dueEndPKT && dueEndPKT < now;
 
-        // If today IS the due date and there are enabled reminders, check if ALL
-        // reminder times have already passed — if so, mark as expired
+        // If today IS the due date, check daily reminders — if ALL daily reminder
+        // times have passed, mark as expired (only applies to 'daily' type)
         if (!isExpired && dueDateStr === todayStr && r.reminders?.length > 0) {
           const pkt = getPKTComponents(now);
           const nowMins = pkt.hour * 60 + pkt.minute;
-          const enabledReminders = r.reminders.filter(rem => rem.enabled);
-          if (enabledReminders.length > 0) {
-            const allPast = enabledReminders.every(rem => {
+          const enabledDaily = r.reminders.filter(rem => rem.enabled && rem.type === 'daily');
+          if (enabledDaily.length > 0) {
+            const allPast = enabledDaily.every(rem => {
               const [rh, rm] = rem.time.split(':').map(Number);
               return nowMins > (rh * 60 + rm);
             });
@@ -131,13 +131,30 @@ router.get('/', async (req, res, next) => {
           status: 'complete',
           date: { $gte: todayStart, $lte: todayEnd },
         });
-        const maxDailyEntries = r.maxDailyEntries || 1;
-        const isDoneForToday = todayCompleteCount >= maxDailyEntries;
+        let maxDailyEntries = r.maxDailyEntries || 1;
+
+        // On creation day, reduce effective daily limit for daily reminders whose time passed
+        const createdDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(r.createdAt));
+        let effectiveMaxDaily = maxDailyEntries;
+        if (createdDateStr === todayStr && r.reminders?.length > 0) {
+          const pkt = getPKTComponents(now);
+          const nowMins = pkt.hour * 60 + pkt.minute;
+          const enabledDaily = r.reminders.filter(rem => rem.enabled && rem.type === 'daily');
+          if (enabledDaily.length > 0) {
+            const futureCount = enabledDaily.filter(rem => {
+              const [rh, rm] = rem.time.split(':').map(Number);
+              return nowMins <= (rh * 60 + rm);
+            }).length;
+            const nonDaily = r.reminders.filter(rem => rem.enabled && rem.type !== 'daily').length;
+            effectiveMaxDaily = Math.max(1, futureCount + nonDaily);
+          }
+        }
+        const isDoneForToday = todayCompleteCount >= effectiveMaxDaily;
 
         return {
           ...r.toObject(), entryCount, completedEntries, targetEntries,
           progress, isExpired, lastEntry,
-          todayCompleteCount, maxDailyEntries, isDoneForToday,
+          todayCompleteCount, maxDailyEntries: effectiveMaxDaily, isDoneForToday,
         };
       })
     );
@@ -471,13 +488,13 @@ router.post('/:id/entries', async (req, res, next) => {
       const dueEndPKT = new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET);
       let expired = dueEndPKT < realNow;
 
-      // If today is the due date and all enabled reminder times have passed, also expired
+      // If today is the due date and all daily reminder times have passed, expired
       const currentTodayStr = getTodayStrPKT();
       if (!expired && dueDateStr === currentTodayStr && routine.reminders?.length > 0) {
         const pkt = getPKTComponents(realNow);
         const nowMins = pkt.hour * 60 + pkt.minute;
-        const enabledRems = routine.reminders.filter(r => r.enabled);
-        if (enabledRems.length > 0 && enabledRems.every(r => {
+        const enabledDaily = routine.reminders.filter(r => r.enabled && r.type === 'daily');
+        if (enabledDaily.length > 0 && enabledDaily.every(r => {
           const [rh, rm] = r.time.split(':').map(Number);
           return nowMins > (rh * 60 + rm);
         })) {
@@ -498,9 +515,28 @@ router.post('/:id/entries', async (req, res, next) => {
       status: 'complete',
       date: { $gte: todayStart, $lte: todayEnd },
     });
-    const maxDaily = routine.maxDailyEntries || 1;
+    let maxDaily = routine.maxDailyEntries || 1;
+
+    // On creation day, reduce daily limit for daily reminders whose time has passed
+    const createdDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(routine.createdAt));
+    if (createdDateStr === todayStr && routine.reminders?.length > 0) {
+      const pkt = getPKTComponents(new Date());
+      const nowMins = pkt.hour * 60 + pkt.minute;
+      const enabledDaily = routine.reminders.filter(r => r.enabled && r.type === 'daily');
+      if (enabledDaily.length > 0) {
+        const futureCount = enabledDaily.filter(r => {
+          const [rh, rm] = r.time.split(':').map(Number);
+          return nowMins <= (rh * 60 + rm);
+        }).length;
+        // On creation day, effective limit = future daily slots + non-daily reminders
+        const nonDaily = routine.reminders.filter(r => r.enabled && r.type !== 'daily').length;
+        maxDaily = futureCount + nonDaily;
+        if (maxDaily < 1) maxDaily = 1;
+      }
+    }
+
     if (todayCompleteCount >= maxDaily && !manualDate) {
-      return error(res, `Daily limit reached (${maxDaily}/${maxDaily}). Already done for today.`, 400);
+      return error(res, `Daily limit reached (${todayCompleteCount}/${maxDaily}). Already done for today.`, 400);
     }
 
     // Use real UTC time — frontend formats it to PKT for display
@@ -540,8 +576,8 @@ router.post('/:id/entries/batch', async (req, res, next) => {
       if (!expired && dueDateStr === currentTodayStr && routine.reminders?.length > 0) {
         const pkt = getPKTComponents(realNow);
         const nowMins = pkt.hour * 60 + pkt.minute;
-        const enabledRems = routine.reminders.filter(r => r.enabled);
-        if (enabledRems.length > 0 && enabledRems.every(r => {
+        const enabledDaily = routine.reminders.filter(r => r.enabled && r.type === 'daily');
+        if (enabledDaily.length > 0 && enabledDaily.every(r => {
           const [rh, rm] = r.time.split(':').map(Number);
           return nowMins > (rh * 60 + rm);
         })) {
