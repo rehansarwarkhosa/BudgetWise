@@ -105,10 +105,25 @@ router.get('/', async (req, res, next) => {
         const lastEntry = await RoutineEntry.findOne({ routineId: r._id }).sort({ date: -1 });
         const targetEntries = r.targetEntries || entryCount || 1;
         const progress = Math.round((completedEntries / targetEntries) * 100);
-        // Compare due date as end-of-day in PKT so routine doesn't expire on its due date
+        // Compare due date as end-of-day in PKT so routine doesn't expire before day ends
         const dueDateStr = r.dueDate ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(r.dueDate)) : null;
         const dueEndPKT = dueDateStr ? new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET) : null;
-        const isExpired = dueEndPKT && dueEndPKT < now;
+        let isExpired = dueEndPKT && dueEndPKT < now;
+
+        // If today IS the due date and there are enabled reminders, check if ALL
+        // reminder times have already passed — if so, mark as expired
+        if (!isExpired && dueDateStr === todayStr && r.reminders?.length > 0) {
+          const pkt = getPKTComponents(now);
+          const nowMins = pkt.hour * 60 + pkt.minute;
+          const enabledReminders = r.reminders.filter(rem => rem.enabled);
+          if (enabledReminders.length > 0) {
+            const allPast = enabledReminders.every(rem => {
+              const [rh, rm] = rem.time.split(':').map(Number);
+              return nowMins > (rh * 60 + rm);
+            });
+            if (allPast) isExpired = true;
+          }
+        }
 
         // Count today's complete entries for this routine (using proper UTC range for PKT day)
         const todayCompleteCount = await RoutineEntry.countDocuments({
@@ -451,9 +466,26 @@ router.post('/:id/entries', async (req, res, next) => {
     if (!routine) return error(res, 'Routine not found', 404);
 
     if (routine.dueDate) {
+      const realNow = new Date();
       const dueDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(routine.dueDate));
       const dueEndPKT = new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET);
-      if (dueEndPKT < new Date()) {
+      let expired = dueEndPKT < realNow;
+
+      // If today is the due date and all enabled reminder times have passed, also expired
+      const currentTodayStr = getTodayStrPKT();
+      if (!expired && dueDateStr === currentTodayStr && routine.reminders?.length > 0) {
+        const pkt = getPKTComponents(realNow);
+        const nowMins = pkt.hour * 60 + pkt.minute;
+        const enabledRems = routine.reminders.filter(r => r.enabled);
+        if (enabledRems.length > 0 && enabledRems.every(r => {
+          const [rh, rm] = r.time.split(':').map(Number);
+          return nowMins > (rh * 60 + rm);
+        })) {
+          expired = true;
+        }
+      }
+
+      if (expired) {
         return error(res, 'Routine has expired, no more entries allowed', 400);
       }
     }
@@ -499,9 +531,25 @@ router.post('/:id/entries/batch', async (req, res, next) => {
     if (!routine) return error(res, 'Routine not found', 404);
 
     if (routine.dueDate) {
+      const realNow = new Date();
       const dueDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(routine.dueDate));
       const dueEndPKT = new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET);
-      if (dueEndPKT < new Date()) {
+      let expired = dueEndPKT < realNow;
+
+      const currentTodayStr = getTodayStrPKT();
+      if (!expired && dueDateStr === currentTodayStr && routine.reminders?.length > 0) {
+        const pkt = getPKTComponents(realNow);
+        const nowMins = pkt.hour * 60 + pkt.minute;
+        const enabledRems = routine.reminders.filter(r => r.enabled);
+        if (enabledRems.length > 0 && enabledRems.every(r => {
+          const [rh, rm] = r.time.split(':').map(Number);
+          return nowMins > (rh * 60 + rm);
+        })) {
+          expired = true;
+        }
+      }
+
+      if (expired) {
         return error(res, 'Routine has expired, no more entries allowed', 400);
       }
     }

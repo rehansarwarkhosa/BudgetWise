@@ -329,7 +329,7 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
   const autoDaily = calcMaxDailyEntries(Number(targetEntries) || 0, dueDate);
 
   // Auto-fill target entries when dueDate or reminders change
-  const remindersKey = JSON.stringify(reminders.map(r => ({ type: r.type, days: r.days, dates: r.dates, enabled: r.enabled })));
+  const remindersKey = JSON.stringify(reminders.map(r => ({ type: r.type, time: r.time, days: r.days, dates: r.dates, enabled: r.enabled })));
   useEffect(() => {
     if (!initialized || skipAutoCalcRef.current) return;
     if (autoCalc > 0) {
