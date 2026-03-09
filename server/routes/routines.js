@@ -105,7 +105,10 @@ router.get('/', async (req, res, next) => {
         const lastEntry = await RoutineEntry.findOne({ routineId: r._id }).sort({ date: -1 });
         const targetEntries = r.targetEntries || entryCount || 1;
         const progress = Math.round((completedEntries / targetEntries) * 100);
-        const isExpired = r.dueDate && new Date(r.dueDate) < now;
+        // Compare due date as end-of-day in PKT so routine doesn't expire on its due date
+        const dueDateStr = r.dueDate ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(r.dueDate)) : null;
+        const dueEndPKT = dueDateStr ? new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET) : null;
+        const isExpired = dueEndPKT && dueEndPKT < now;
 
         // Count today's complete entries for this routine (using proper UTC range for PKT day)
         const todayCompleteCount = await RoutineEntry.countDocuments({
@@ -447,8 +450,12 @@ router.post('/:id/entries', async (req, res, next) => {
     const routine = await Routine.findById(req.params.id);
     if (!routine) return error(res, 'Routine not found', 404);
 
-    if (routine.dueDate && new Date(routine.dueDate) < new Date()) {
-      return error(res, 'Routine has expired, no more entries allowed', 400);
+    if (routine.dueDate) {
+      const dueDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(routine.dueDate));
+      const dueEndPKT = new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET);
+      if (dueEndPKT < new Date()) {
+        return error(res, 'Routine has expired, no more entries allowed', 400);
+      }
     }
 
     // Check if daily limit reached
@@ -491,8 +498,12 @@ router.post('/:id/entries/batch', async (req, res, next) => {
     const routine = await Routine.findById(req.params.id);
     if (!routine) return error(res, 'Routine not found', 404);
 
-    if (routine.dueDate && new Date(routine.dueDate) < new Date()) {
-      return error(res, 'Routine has expired, no more entries allowed', 400);
+    if (routine.dueDate) {
+      const dueDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(routine.dueDate));
+      const dueEndPKT = new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET);
+      if (dueEndPKT < new Date()) {
+        return error(res, 'Routine has expired, no more entries allowed', 400);
+      }
     }
 
     const n = Math.min(Math.max(1, parseInt(count) || 1), 50);

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import Expense from '../models/Expense.js';
 import Budget from '../models/Budget.js';
+import WorkOrder from '../models/WorkOrder.js';
 import AuditLog from '../models/AuditLog.js';
 import { success, error, round2 } from '../utils/response.js';
 
@@ -96,6 +97,22 @@ router.delete('/:id', async (req, res, next) => {
     }
 
     await Expense.findByIdAndDelete(req.params.id);
+
+    // Reset any work order that logged this expense back to pending
+    const linkedWO = await WorkOrder.findOne({
+      budgetId: expense.budgetId,
+      title: expense.description,
+      budgetAmount: expense.amount,
+      budgetExpenseStatus: 'completed',
+    });
+    if (linkedWO) {
+      linkedWO.budgetExpenseStatus = 'pending';
+      await linkedWO.save();
+      await AuditLog.create({
+        action: 'UPDATE', entity: 'WorkOrder', entityId: linkedWO._id,
+        details: `Expense deleted from budget — work order "${linkedWO.title}" expense status reset to pending`,
+      });
+    }
 
     await AuditLog.create({
       action: 'DELETE', entity: 'Expense', entityId: expense._id,

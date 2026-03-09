@@ -231,25 +231,42 @@ function ReminderEditor({ reminders, setReminders }) {
 
 function calcEntriesFromReminders(dueDate, reminders) {
   if (!dueDate || reminders.length === 0) return 0;
-  const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+  const nowPKT = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+  const currentHour = nowPKT.getHours();
+  const currentMin = nowPKT.getMinutes();
+  const today = new Date(nowPKT);
   today.setHours(0, 0, 0, 0);
   const due = new Date(dueDate + 'T23:59:59');
   if (due < today) return 0;
 
+  // Check if a reminder's time has already passed today
+  const isTimePastToday = (rem) => {
+    if (!rem.time) return false;
+    const [rh, rm] = rem.time.split(':').map(Number);
+    return (currentHour * 60 + currentMin) > (rh * 60 + rm);
+  };
+
+  // Check if a given date (midnight) is today
+  const isToday = (d) => d.getTime() === today.getTime();
+
   let total = 0;
   for (const rem of reminders) {
     if (!rem.enabled) continue;
+    // For today, only count this reminder if its time hasn't passed yet
+    const skipToday = isTimePastToday(rem);
     switch (rem.type) {
       case 'daily': {
         const days = Math.floor((due - today) / 86400000) + 1;
-        total += days;
+        total += skipToday ? days - 1 : days;
         break;
       }
       case 'weekdays': {
         let d = new Date(today);
         while (d <= due) {
           const dow = d.getDay();
-          if (dow >= 1 && dow <= 5) total++;
+          if (dow >= 1 && dow <= 5) {
+            if (!(isToday(d) && skipToday)) total++;
+          }
           d.setDate(d.getDate() + 1);
         }
         break;
@@ -258,7 +275,9 @@ function calcEntriesFromReminders(dueDate, reminders) {
         if (!rem.days?.length) break;
         let d = new Date(today);
         while (d <= due) {
-          if (rem.days.includes(d.getDay())) total++;
+          if (rem.days.includes(d.getDay())) {
+            if (!(isToday(d) && skipToday)) total++;
+          }
           d.setDate(d.getDate() + 1);
         }
         break;
@@ -268,7 +287,9 @@ function calcEntriesFromReminders(dueDate, reminders) {
         for (const dateStr of rem.dates) {
           const cd = new Date(dateStr);
           cd.setHours(0, 0, 0, 0);
-          if (cd >= today && cd <= due) total++;
+          if (cd >= today && cd <= due) {
+            if (!(isToday(cd) && skipToday)) total++;
+          }
         }
         break;
       }
