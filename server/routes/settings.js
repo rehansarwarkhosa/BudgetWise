@@ -15,6 +15,9 @@ import Trail from '../models/Trail.js';
 import FundEntry from '../models/FundEntry.js';
 import AuditLog from '../models/AuditLog.js';
 import BudgetCategory from '../models/BudgetCategory.js';
+import BudgetTemplate from '../models/BudgetTemplate.js';
+import WorkOrder from '../models/WorkOrder.js';
+import WorkOrderNote from '../models/WorkOrderNote.js';
 import { success, error } from '../utils/response.js';
 import { getCurrentPeriod } from '../utils/monthEnd.js';
 
@@ -120,7 +123,7 @@ router.post('/test-email', async (req, res, next) => {
 // Export all data
 router.get('/export', async (req, res, next) => {
   try {
-    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs, budgetCategories] = await Promise.all([
+    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes] = await Promise.all([
       Settings.findOne(),
       Income.find(),
       Budget.find(),
@@ -136,11 +139,14 @@ router.get('/export', async (req, res, next) => {
       FundEntry.find(),
       AuditLog.find(),
       BudgetCategory.find(),
+      BudgetTemplate.find(),
+      WorkOrder.find(),
+      WorkOrderNote.find(),
     ]);
     success(res, {
       exportDate: new Date().toISOString(),
       version: 1,
-      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs, budgetCategories,
+      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes,
     });
   } catch (err) { next(err); }
 });
@@ -167,6 +173,9 @@ router.post('/import', async (req, res, next) => {
       fundEntries: await FundEntry.find().lean(),
       auditLogs: await AuditLog.find().lean(),
       budgetCategories: await BudgetCategory.find().lean(),
+      budgetTemplates: await BudgetTemplate.find().lean(),
+      workOrders: await WorkOrder.find().lean(),
+      workOrderNotes: await WorkOrderNote.find().lean(),
       settings: await Settings.findOne().lean(),
     };
 
@@ -177,6 +186,7 @@ router.post('/import', async (req, res, next) => {
         Routine.deleteMany({}), RoutineEntry.deleteMany({}), Savings.deleteMany({}),
         Tag.deleteMany({}), Topic.deleteMany({}), SubTopic.deleteMany({}), Note.deleteMany({}),
         Trail.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
+        BudgetTemplate.deleteMany({}), WorkOrder.deleteMany({}), WorkOrderNote.deleteMany({}),
       ]);
 
       // Restore from import file — sequential to catch failures early
@@ -194,6 +204,9 @@ router.post('/import', async (req, res, next) => {
       if (data.fundEntries?.length) await FundEntry.insertMany(data.fundEntries);
       if (data.auditLogs?.length) await AuditLog.insertMany(data.auditLogs);
       if (data.budgetCategories?.length) await BudgetCategory.insertMany(data.budgetCategories);
+      if (data.budgetTemplates?.length) await BudgetTemplate.insertMany(data.budgetTemplates);
+      if (data.workOrders?.length) await WorkOrder.insertMany(data.workOrders);
+      if (data.workOrderNotes?.length) await WorkOrderNote.insertMany(data.workOrderNotes);
 
       if (data.settings) {
         await Settings.findOneAndUpdate({}, {
@@ -216,6 +229,7 @@ router.post('/import', async (req, res, next) => {
         Routine.deleteMany({}), RoutineEntry.deleteMany({}), Savings.deleteMany({}),
         Tag.deleteMany({}), Topic.deleteMany({}), SubTopic.deleteMany({}), Note.deleteMany({}),
         Trail.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
+        BudgetTemplate.deleteMany({}), WorkOrder.deleteMany({}), WorkOrderNote.deleteMany({}),
       ]);
       if (snapshot.incomes.length) await Income.insertMany(snapshot.incomes);
       if (snapshot.budgets.length) await Budget.insertMany(snapshot.budgets);
@@ -231,6 +245,9 @@ router.post('/import', async (req, res, next) => {
       if (snapshot.fundEntries.length) await FundEntry.insertMany(snapshot.fundEntries);
       if (snapshot.auditLogs.length) await AuditLog.insertMany(snapshot.auditLogs);
       if (snapshot.budgetCategories.length) await BudgetCategory.insertMany(snapshot.budgetCategories);
+      if (snapshot.budgetTemplates.length) await BudgetTemplate.insertMany(snapshot.budgetTemplates);
+      if (snapshot.workOrders.length) await WorkOrder.insertMany(snapshot.workOrders);
+      if (snapshot.workOrderNotes.length) await WorkOrderNote.insertMany(snapshot.workOrderNotes);
       if (snapshot.settings) {
         await Settings.findOneAndUpdate({}, snapshot.settings, { upsert: true });
       }
@@ -257,6 +274,9 @@ router.delete('/all-data', async (req, res, next) => {
       FundEntry.deleteMany({}),
       AuditLog.deleteMany({}),
       BudgetCategory.deleteMany({}),
+      BudgetTemplate.deleteMany({}),
+      WorkOrder.deleteMany({}),
+      WorkOrderNote.deleteMany({}),
     ]);
     const period = getCurrentPeriod();
     const settings = await Settings.findOneAndUpdate(

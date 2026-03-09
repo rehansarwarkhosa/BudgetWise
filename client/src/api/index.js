@@ -94,6 +94,19 @@ export const createTrail = (data) => api.post('/trails', data);
 export const deleteTrail = (id) => api.delete(`/trails/${id}`);
 export const deleteAllTrails = () => api.delete('/trails');
 
+// Work Orders
+export const getWorkOrders = (params) => api.get('/workorders', { params });
+export const createWorkOrder = (data) => api.post('/workorders', data);
+export const updateWorkOrder = (id, data) => api.put(`/workorders/${id}`, data);
+export const moveWorkOrder = (id, status) => api.put(`/workorders/${id}/move`, { status });
+export const deleteWorkOrder = (id) => api.delete(`/workorders/${id}`);
+export const getWorkOrderNotes = (id) => api.get(`/workorders/${id}/notes`);
+export const addWorkOrderNote = (id, data) => api.post(`/workorders/${id}/notes`, data);
+export const updateWorkOrderNote = (noteId, data) => api.put(`/workorders/notes/${noteId}`, data);
+export const deleteWorkOrderNote = (noteId) => api.delete(`/workorders/notes/${noteId}`);
+export const logWorkOrderExpense = (id) => api.post(`/workorders/${id}/log-expense`);
+export const checkWorkOrderReminders = () => api.get('/workorders/check-reminders');
+
 // Audit Logs
 export const getAuditLogs = (page = 1) => api.get(`/audit-logs?page=${page}&limit=50`);
 export const clearAuditLogs = () => api.delete('/audit-logs');
