@@ -15,10 +15,23 @@ router.get('/', async (req, res, next) => {
     const search = req.query.search?.trim();
     const filter = req.query.filter || 'all'; // 'all', 'with_reminders', 'plain'
 
+    const date = req.query.date?.trim(); // 'today' or 'YYYY-MM-DD'
+
     const query = {};
     if (search) query.text = { $regex: search, $options: 'i' };
     if (filter === 'with_reminders') query['reminders.0'] = { $exists: true };
     else if (filter === 'plain') query['reminders.0'] = { $exists: false };
+
+    if (date) {
+      let dateStr = date;
+      if (date === 'today') {
+        const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+        dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      }
+      const dayStart = new Date(dateStr + 'T00:00:00+05:00');
+      const dayEnd = new Date(dateStr + 'T23:59:59.999+05:00');
+      query.createdAt = { $gte: dayStart, $lte: dayEnd };
+    }
 
     const [entries, total] = await Promise.all([
       Trail.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),

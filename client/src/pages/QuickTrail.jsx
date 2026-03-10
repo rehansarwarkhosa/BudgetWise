@@ -20,6 +20,36 @@ function stripHtml(html) {
   return tmp.textContent || tmp.innerText || '';
 }
 
+function getDateLabel(dateStr) {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+  if (dateStr === todayStr) return 'Today';
+  if (dateStr === yesterdayStr) return 'Yesterday';
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function groupByDate(entries) {
+  const groups = [];
+  let currentDate = null;
+  let currentGroup = null;
+  for (const entry of entries) {
+    const d = new Date(new Date(entry.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (dateStr !== currentDate) {
+      currentDate = dateStr;
+      currentGroup = { date: dateStr, label: getDateLabel(dateStr), entries: [] };
+      groups.push(currentGroup);
+    }
+    currentGroup.entries.push(entry);
+  }
+  return groups;
+}
+
 function getEntryHighlight(text, highlights) {
   if (!highlights?.length) return null;
   const lower = text.toLowerCase();
@@ -44,6 +74,7 @@ export default function QuickTrail() {
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState('all'); // 'all', 'with_reminders', 'plain'
+  const [dateFilter, setDateFilter] = useState(''); // '', 'today', 'YYYY-MM-DD'
   const [showFilter, setShowFilter] = useState(false);
   const [detailEntry, setDetailEntry] = useState(null);
   const [activeTab, setActiveTab] = useState('trail');
@@ -54,9 +85,9 @@ export default function QuickTrail() {
   const searchTimeout = useRef(null);
   const lastTapRef = useRef({});
 
-  const fetchTrails = async (p = 1, append = false, search = searchQuery, filter = filterMode) => {
+  const fetchTrails = async (p = 1, append = false, search = searchQuery, filter = filterMode, date = dateFilter) => {
     try {
-      const res = await getTrails(p, search || undefined, filter);
+      const res = await getTrails(p, search || undefined, filter, date || undefined);
       const data = res.data;
       setEntries(prev => append ? [...prev, ...data.entries] : data.entries);
       setPage(data.page);
@@ -65,29 +96,35 @@ export default function QuickTrail() {
   };
 
   useEffect(() => {
-    fetchTrails(1, false, '', 'all').finally(() => setLoading(false));
+    fetchTrails(1, false, '', 'all', '').finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (!searchMode) return;
     clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(() => {
-      fetchTrails(1, false, searchQuery, filterMode);
+      fetchTrails(1, false, searchQuery, filterMode, dateFilter);
     }, 300);
     return () => clearTimeout(searchTimeout.current);
   }, [searchQuery]);
 
-  const handleFilterChange = (f) => {
+  const handleFilterChange = (f, d = dateFilter) => {
     setFilterMode(f);
     setShowFilter(false);
-    fetchTrails(1, false, searchQuery, f);
+    fetchTrails(1, false, searchQuery, f, d);
+  };
+
+  const handleDateFilter = (d) => {
+    setDateFilter(d);
+    setShowFilter(false);
+    fetchTrails(1, false, searchQuery, filterMode, d);
   };
 
   const toggleSearch = () => {
     if (searchMode) {
       setSearchMode(false);
       setSearchQuery('');
-      fetchTrails(1, false, '', filterMode);
+      fetchTrails(1, false, '', filterMode, dateFilter);
     } else {
       setSearchMode(true);
       setTimeout(() => searchRef.current?.focus(), 50);
@@ -124,7 +161,7 @@ export default function QuickTrail() {
 
   const handleLoadMore = async () => {
     setLoadingMore(true);
-    await fetchTrails(page + 1, true, searchQuery, filterMode);
+    await fetchTrails(page + 1, true, searchQuery, filterMode, dateFilter);
     setLoadingMore(false);
   };
 
@@ -154,15 +191,16 @@ export default function QuickTrail() {
           <div style={{ display: 'flex', gap: 4 }}>
             <div style={{ position: 'relative' }}>
               <button className="btn-ghost" onClick={() => setShowFilter(!showFilter)}
-                style={{ padding: 6, borderRadius: 8, background: filterMode !== 'all' ? 'var(--bg-input)' : 'transparent' }}>
-                <IoFilter size={18} color={filterMode !== 'all' ? 'var(--primary)' : undefined} />
+                style={{ padding: 6, borderRadius: 8, background: (filterMode !== 'all' || dateFilter) ? 'var(--bg-input)' : 'transparent' }}>
+                <IoFilter size={18} color={(filterMode !== 'all' || dateFilter) ? 'var(--primary)' : undefined} />
               </button>
               {showFilter && (
                 <div style={{
                   position: 'absolute', top: '100%', right: 0, zIndex: 20,
                   background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderRadius: 8, padding: 4, minWidth: 150, boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                  borderRadius: 8, padding: 6, minWidth: 180, boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
                 }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', padding: '4px 8px', textTransform: 'uppercase' }}>Type</div>
                   {[
                     { key: 'all', label: 'All Items' },
                     { key: 'with_reminders', label: 'With Reminders' },
@@ -170,7 +208,7 @@ export default function QuickTrail() {
                   ].map(f => (
                     <button key={f.key} onClick={() => handleFilterChange(f.key)}
                       style={{
-                        display: 'block', width: '100%', padding: '8px 12px', border: 'none',
+                        display: 'block', width: '100%', padding: '7px 10px', border: 'none',
                         background: filterMode === f.key ? 'var(--primary)' : 'transparent',
                         color: filterMode === f.key ? 'white' : 'var(--text-primary)',
                         fontSize: 13, textAlign: 'left', cursor: 'pointer', borderRadius: 6,
@@ -178,6 +216,37 @@ export default function QuickTrail() {
                       {f.label}
                     </button>
                   ))}
+                  <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0' }} />
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', padding: '4px 8px', textTransform: 'uppercase' }}>Date</div>
+                  {[
+                    { key: '', label: 'All Dates' },
+                    { key: 'today', label: 'Today' },
+                  ].map(d => (
+                    <button key={d.key} onClick={() => handleDateFilter(d.key)}
+                      style={{
+                        display: 'block', width: '100%', padding: '7px 10px', border: 'none',
+                        background: dateFilter === d.key ? 'var(--primary)' : 'transparent',
+                        color: dateFilter === d.key ? 'white' : 'var(--text-primary)',
+                        fontSize: 13, textAlign: 'left', cursor: 'pointer', borderRadius: 6,
+                      }}>
+                      {d.label}
+                    </button>
+                  ))}
+                  <div style={{ padding: '4px 8px' }}>
+                    <input type="date" value={dateFilter && dateFilter !== 'today' ? dateFilter : ''}
+                      onChange={e => handleDateFilter(e.target.value)}
+                      style={{ width: '100%', fontSize: 12, padding: '5px 6px', borderRadius: 6 }} />
+                  </div>
+                  {dateFilter && (
+                    <button onClick={() => handleDateFilter('')}
+                      style={{
+                        display: 'block', width: '100%', padding: '7px 10px', border: 'none',
+                        background: 'transparent', color: 'var(--danger)',
+                        fontSize: 12, textAlign: 'center', cursor: 'pointer', borderRadius: 6,
+                      }}>
+                      Clear Date Filter
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -234,48 +303,83 @@ export default function QuickTrail() {
           </button>
         </form>
 
-        {/* Entries */}
+        {/* Active filter badges */}
+        {(filterMode !== 'all' || dateFilter) && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+            {filterMode !== 'all' && (
+              <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 12, background: 'var(--primary)', color: 'white', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {filterMode === 'with_reminders' ? 'Reminders' : 'Plain'}
+                <button onClick={() => handleFilterChange('all')} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1 }}>×</button>
+              </span>
+            )}
+            {dateFilter && (
+              <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 12, background: 'var(--primary)', color: 'white', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {dateFilter === 'today' ? 'Today' : dateFilter}
+                <button onClick={() => handleDateFilter('')} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1 }}>×</button>
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Entries grouped by date */}
         {entries.length === 0 ? (
           <EmptyState icon={searchMode ? "🔍" : "⚡"} title={searchMode ? "No results" : "No entries yet"} subtitle={searchMode ? `Nothing found for "${searchQuery}"` : "Type something and hit send"} />
         ) : (
-          <div style={{ display: 'grid', gap: 10 }}>
-            {entries.map((entry) => {
-              const hlColor = getEntryHighlight(entry.text, trailHighlights);
-              const hasReminders = entry.reminders?.length > 0;
-              return (
-              <div key={entry._id} className="card" style={{
-                position: 'relative',
-                ...(hlColor ? { background: hlColor + '20', borderLeft: `3px solid ${hlColor}` } : {}),
-              }}
-                onClick={() => handleDoubleTap(entry)}
-              >
-                <p style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 8, whiteSpace: 'pre-wrap', ...(trailBold ? { fontWeight: 700 } : {}) }}>
-                  {entry.text}
-                </p>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      {formatDateTime(entry.createdAt)}
-                    </span>
-                    {hasReminders && (
-                      <IoAlarm size={12} color="var(--primary)" title="Has reminders" />
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setDetailEntry(entry); }}>
-                      <IoDocumentText size={14} color="var(--text-muted)" />
-                    </button>
-                    <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); handleCopy(entry); }}>
-                      <IoCopy size={14} color="var(--text-muted)" />
-                    </button>
-                    <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setConfirmDelete(entry); }}>
-                      <IoTrash size={14} color="var(--danger)" />
-                    </button>
-                  </div>
+          <div>
+            {groupByDate(entries).map(group => (
+              <div key={group.date}>
+                <div style={{
+                  fontSize: 12, fontWeight: 700, color: 'var(--primary)',
+                  padding: '8px 0 6px', position: 'sticky', top: 56, zIndex: 5,
+                  background: 'var(--bg-page)',
+                  borderBottom: '1px solid var(--border)', marginBottom: 8,
+                }}>
+                  {group.label}
+                  <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>
+                    {group.entries.length} item{group.entries.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
+                  {group.entries.map((entry) => {
+                    const hlColor = getEntryHighlight(entry.text, trailHighlights);
+                    const hasReminders = entry.reminders?.length > 0;
+                    return (
+                    <div key={entry._id} className="card" style={{
+                      position: 'relative',
+                      ...(hlColor ? { background: hlColor + '20', borderLeft: `3px solid ${hlColor}` } : {}),
+                    }}
+                      onClick={() => handleDoubleTap(entry)}
+                    >
+                      <p style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 8, whiteSpace: 'pre-wrap', ...(trailBold ? { fontWeight: 700 } : {}) }}>
+                        {entry.text}
+                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            {formatDateTime(entry.createdAt)}
+                          </span>
+                          {hasReminders && (
+                            <IoAlarm size={12} color="var(--primary)" title="Has reminders" />
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setDetailEntry(entry); }}>
+                            <IoDocumentText size={14} color="var(--text-muted)" />
+                          </button>
+                          <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); handleCopy(entry); }}>
+                            <IoCopy size={14} color="var(--text-muted)" />
+                          </button>
+                          <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setConfirmDelete(entry); }}>
+                            <IoTrash size={14} color="var(--danger)" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    );
+                  })}
                 </div>
               </div>
-              );
-            })}
+            ))}
 
             {page < totalPages && (
               <button className="btn-outline" onClick={handleLoadMore} disabled={loadingMore}
