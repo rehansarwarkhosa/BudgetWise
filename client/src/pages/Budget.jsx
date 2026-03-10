@@ -812,7 +812,8 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories, category
   return (
     <Modal open={open} onClose={handleClose} title={budget?.name}>
       {loading ? <Spinner /> : (
-        <div onTouchStart={budgetSwipe.onTouchStart} onTouchEnd={budgetSwipe.onTouchEnd}>
+        <div onTouchStart={e => { e.stopPropagation(); budgetSwipe.onTouchStart(e); }}
+          onTouchEnd={e => { e.stopPropagation(); budgetSwipe.onTouchEnd(e); }}>
           {/* Budget edit */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div style={{ fontSize: 14 }}>

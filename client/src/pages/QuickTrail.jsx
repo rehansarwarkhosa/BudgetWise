@@ -414,7 +414,8 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
   return (
     <div style={modalBackdrop} onClick={onClose}>
       <div style={{ ...modalContent, maxHeight: '85vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}
-        onTouchStart={detailSwipe.onTouchStart} onTouchEnd={detailSwipe.onTouchEnd}>
+        onTouchStart={e => { e.stopPropagation(); detailSwipe.onTouchStart(e); }}
+        onTouchEnd={e => { e.stopPropagation(); detailSwipe.onTouchEnd(e); }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div style={{ flex: 1 }}>
