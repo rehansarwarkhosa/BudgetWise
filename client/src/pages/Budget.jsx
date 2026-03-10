@@ -28,6 +28,7 @@ export default function Budget() {
   categoriesData?.forEach(c => { categoryColorMap[c.name] = c.color || '#6C63FF'; });
 
   const [activeView, setActiveView] = useState('budgets'); // 'budgets' or 'templates'
+  const mainSwipe = useSwipeTabs(['budgets', 'templates', 'prices'], activeView, setActiveView);
   const [incomeModal, setIncomeModal] = useState(false);
   const [budgetModal, setBudgetModal] = useState(false);
   const [expenseModal, setExpenseModal] = useState(null);
@@ -73,8 +74,6 @@ export default function Budget() {
     grouped[cat].push(b);
   });
   const categories = Object.keys(grouped).sort();
-
-  const mainSwipe = useSwipeTabs(['budgets', 'templates', 'prices'], activeView, setActiveView);
 
   return (
     <div className="page" onTouchStart={mainSwipe.onTouchStart} onTouchEnd={mainSwipe.onTouchEnd}>
