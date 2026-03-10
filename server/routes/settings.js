@@ -44,7 +44,7 @@ router.get('/', async (req, res, next) => {
 // Update settings
 router.put('/', async (req, res, next) => {
   try {
-    const { mode, negativeLimit, currentPeriod, notificationEmail, emailNotificationsEnabled, theme, trailBoldText, trailHighlights, kanbanDueDateColors } = req.body;
+    const { mode, negativeLimit, currentPeriod, notificationEmail, emailNotificationsEnabled, theme, trailBoldText, trailHighlights, kanbanDueDateColors, menuSwipeEnabled } = req.body;
     let settings = await Settings.findOne();
     if (!settings) {
       const period = getCurrentPeriod();
@@ -66,6 +66,8 @@ router.put('/', async (req, res, next) => {
     else if (trailBoldText !== undefined) settings.trailBoldText = trailBoldText;
     if (trailHighlights !== undefined) { settings.trailHighlights = trailHighlights; changes.push(`trailHighlights updated (${trailHighlights.length} rules)`); }
     if (kanbanDueDateColors !== undefined) { settings.kanbanDueDateColors = kanbanDueDateColors; changes.push('kanbanDueDateColors updated'); }
+    if (menuSwipeEnabled !== undefined && menuSwipeEnabled !== settings.menuSwipeEnabled) { changes.push(`menuSwipeEnabled: ${settings.menuSwipeEnabled} -> ${menuSwipeEnabled}`); settings.menuSwipeEnabled = menuSwipeEnabled; }
+    else if (menuSwipeEnabled !== undefined) settings.menuSwipeEnabled = menuSwipeEnabled;
     await settings.save();
 
     if (changes.length) {
@@ -229,6 +231,7 @@ router.post('/import', async (req, res, next) => {
           trailBoldText: data.settings.trailBoldText ?? false,
           trailHighlights: data.settings.trailHighlights || [],
           kanbanDueDateColors: data.settings.kanbanDueDateColors || undefined,
+          menuSwipeEnabled: data.settings.menuSwipeEnabled ?? true,
         }, { upsert: true });
       }
 
@@ -302,6 +305,7 @@ router.delete('/all-data', async (req, res, next) => {
         notificationEmail: '', emailNotificationsEnabled: true,
         theme: 'dark', trailBoldText: false, trailHighlights: [],
         kanbanDueDateColors: { rules: [{ days: 3, color: '#f59e0b', label: 'Warning' }, { days: 1, color: '#ef4444', label: 'Danger' }], overdueColor: '#dc2626' },
+        menuSwipeEnabled: true,
       },
       { new: true, upsert: true }
     );

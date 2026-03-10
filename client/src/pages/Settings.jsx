@@ -340,6 +340,7 @@ export default function Settings() {
     { days: 1, color: '#ef4444', label: 'Danger' },
   ]);
   const [kanbanOverdueColor, setKanbanOverdueColor] = useState('#dc2626');
+  const [menuSwipeEnabled, setMenuSwipeEnabled] = useState(true);
 
   useEffect(() => {
     if (settings && !initialized) {
@@ -361,6 +362,7 @@ export default function Settings() {
         ]);
       }
       setKanbanOverdueColor(kdc.overdueColor || '#dc2626');
+      setMenuSwipeEnabled(settings.menuSwipeEnabled ?? true);
       setInitialized(true);
     }
   }, [settings, initialized]);
@@ -477,7 +479,7 @@ export default function Settings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateSettings({ mode, negativeLimit: Number(negativeLimit), notificationEmail, theme });
+      await updateSettings({ mode, negativeLimit: Number(negativeLimit), notificationEmail, theme, menuSwipeEnabled });
       await refetchSettings();
       setInitialized(false);
       toast.success('Settings saved');
@@ -561,6 +563,37 @@ export default function Settings() {
               </button>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Menu Swipe */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <span style={{ fontSize: 14, fontWeight: 500 }}>Menu Swipe Navigation</span>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Swipe between menus when at the edge of tabs</p>
+          </div>
+          <label style={{ position: 'relative', display: 'inline-block', width: 44, height: 24, flexShrink: 0 }}>
+            <input type="checkbox" checked={menuSwipeEnabled} onChange={async (e) => {
+              const val = e.target.checked;
+              setMenuSwipeEnabled(val);
+              try {
+                await updateSettings({ menuSwipeEnabled: val });
+                await refetchSettings();
+                setInitialized(false);
+              } catch {}
+            }} style={{ opacity: 0, width: 0, height: 0 }} />
+            <span style={{
+              position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+              background: menuSwipeEnabled ? 'var(--primary)' : 'var(--bg-input)',
+              borderRadius: 24, transition: '0.2s',
+            }}>
+              <span style={{
+                position: 'absolute', height: 18, width: 18, left: menuSwipeEnabled ? 22 : 3, bottom: 3,
+                background: 'white', borderRadius: '50%', transition: '0.2s',
+              }} />
+            </span>
+          </label>
         </div>
       </div>
 

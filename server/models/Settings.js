@@ -23,6 +23,7 @@ const settingsSchema = new mongoose.Schema({
     }],
     overdueColor: { type: String, default: '#dc2626' },
   },
+  menuSwipeEnabled: { type: Boolean, default: true },
 }, { timestamps: true });
 
 export default mongoose.model('Settings', settingsSchema);
