@@ -3,12 +3,17 @@ import toast from 'react-hot-toast';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
+import useSwipeTabs from '../hooks/useSwipeTabs';
+import useMenuSwipe from '../hooks/useMenuSwipe';
 import { formatPKR, monthName } from '../utils/format';
 import { getBudgetsByPeriod, getExpenses, triggerRollover } from '../api';
 import { useSettings } from '../context/SettingsContext';
 
 export default function History() {
   const { settings } = useSettings();
+  const [dummy] = useState('main');
+  const onOverflow = useMenuSwipe();
+  const swipe = useSwipeTabs(['main'], dummy, () => {}, onOverflow);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [budgets, setBudgets] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -55,7 +60,7 @@ export default function History() {
   };
 
   return (
-    <div className="page">
+    <div className="page" onTouchStart={swipe.onTouchStart} onTouchEnd={swipe.onTouchEnd}>
       <h1 className="page-title">History</h1>
 
       {/* Rollover Section */}

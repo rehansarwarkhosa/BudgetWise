@@ -6,6 +6,7 @@ import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
 import { useSettings } from '../context/SettingsContext';
 import useSwipeTabs from '../hooks/useSwipeTabs';
+import useMenuSwipe from '../hooks/useMenuSwipe';
 import { getTrails, createTrail, deleteTrail } from '../api';
 import { formatDateTime } from '../utils/format';
 import KanbanBoard from './KanbanBoard';
@@ -34,7 +35,8 @@ export default function QuickTrail() {
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('trail');
-  const swipe = useSwipeTabs(['trail', 'board'], activeTab, setActiveTab);
+  const onOverflow = useMenuSwipe();
+  const swipe = useSwipeTabs(['trail', 'board'], activeTab, setActiveTab, onOverflow);
   const inputRef = useRef(null);
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);

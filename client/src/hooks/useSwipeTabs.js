@@ -1,6 +1,6 @@
 import { useRef, useCallback } from 'react';
 
-export default function useSwipeTabs(tabKeys, activeTab, setActiveTab) {
+export default function useSwipeTabs(tabKeys, activeTab, setActiveTab, onOverflow) {
   const touchStartRef = useRef(null);
   const touchStartYRef = useRef(null);
 
@@ -26,8 +26,15 @@ export default function useSwipeTabs(tabKeys, activeTab, setActiveTab) {
       setActiveTab(tabKeys[currentIdx + 1]);
     } else if (diffX < 0 && currentIdx > 0) {
       setActiveTab(tabKeys[currentIdx - 1]);
+    } else if (onOverflow) {
+      // At edge of tabs — trigger menu navigation
+      if (diffX > 0 && currentIdx === tabKeys.length - 1) {
+        onOverflow('right');
+      } else if (diffX < 0 && currentIdx === 0) {
+        onOverflow('left');
+      }
     }
-  }, [tabKeys, activeTab, setActiveTab]);
+  }, [tabKeys, activeTab, setActiveTab, onOverflow]);
 
   return { onTouchStart, onTouchEnd };
 }

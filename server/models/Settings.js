@@ -16,10 +16,11 @@ const settingsSchema = new mongoose.Schema({
     color: { type: String, required: true },
   }],
   kanbanDueDateColors: {
-    warningDays: { type: Number, default: 3 },
-    warningColor: { type: String, default: '#f59e0b' },
-    dangerDays: { type: Number, default: 1 },
-    dangerColor: { type: String, default: '#ef4444' },
+    rules: [{
+      days: { type: Number, required: true },
+      color: { type: String, required: true },
+      label: { type: String, default: '' },
+    }],
     overdueColor: { type: String, default: '#dc2626' },
   },
 }, { timestamps: true });

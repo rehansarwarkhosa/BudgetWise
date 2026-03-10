@@ -301,7 +301,7 @@ router.delete('/all-data', async (req, res, next) => {
         mode: 'monthly', negativeLimit: 0, currentPeriod: period,
         notificationEmail: '', emailNotificationsEnabled: true,
         theme: 'dark', trailBoldText: false, trailHighlights: [],
-        kanbanDueDateColors: { warningDays: 3, warningColor: '#f59e0b', dangerDays: 1, dangerColor: '#ef4444', overdueColor: '#dc2626' },
+        kanbanDueDateColors: { rules: [{ days: 3, color: '#f59e0b', label: 'Warning' }, { days: 1, color: '#ef4444', label: 'Danger' }], overdueColor: '#dc2626' },
       },
       { new: true, upsert: true }
     );

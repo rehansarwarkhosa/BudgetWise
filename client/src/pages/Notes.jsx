@@ -17,13 +17,15 @@ import {
 } from '../api';
 import { formatDateTime } from '../utils/format';
 import useSwipeTabs from '../hooks/useSwipeTabs';
+import useMenuSwipe from '../hooks/useMenuSwipe';
 
 // ─── Main Page ───
 
 export default function Notes() {
   // Tab: 'tree' | 'recent' | 'search'
   const [tab, setTab] = useState('tree');
-  const swipe = useSwipeTabs(['tree', 'recent'], tab, setTab);
+  const onOverflow = useMenuSwipe();
+  const swipe = useSwipeTabs(['tree', 'recent'], tab, setTab, onOverflow);
 
   // Tree data
   const [tree, setTree] = useState([]);

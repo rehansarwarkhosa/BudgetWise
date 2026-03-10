@@ -8,6 +8,7 @@ import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import useFetch from '../hooks/useFetch';
 import useSwipeTabs from '../hooks/useSwipeTabs';
+import useMenuSwipe from '../hooks/useMenuSwipe';
 import { formatPKR, formatDate } from '../utils/format';
 import {
   getIncomeSummary, getIncomes, addIncome, deleteIncome,
@@ -28,7 +29,8 @@ export default function Budget() {
   categoriesData?.forEach(c => { categoryColorMap[c.name] = c.color || '#6C63FF'; });
 
   const [activeView, setActiveView] = useState('budgets'); // 'budgets' or 'templates'
-  const mainSwipe = useSwipeTabs(['budgets', 'templates', 'prices'], activeView, setActiveView);
+  const onOverflow = useMenuSwipe();
+  const mainSwipe = useSwipeTabs(['budgets', 'templates', 'prices'], activeView, setActiveView, onOverflow);
   const [incomeModal, setIncomeModal] = useState(false);
   const [budgetModal, setBudgetModal] = useState(false);
   const [expenseModal, setExpenseModal] = useState(null);

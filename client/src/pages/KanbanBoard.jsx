@@ -33,15 +33,18 @@ function getDueDateColor(dueDate, colorSettings) {
   const diffMs = due - now;
   const daysRemaining = Math.ceil(diffMs / 86400000);
 
-  const warn = colorSettings?.warningDays ?? 3;
-  const danger = colorSettings?.dangerDays ?? 1;
-  const warnColor = colorSettings?.warningColor || '#f59e0b';
-  const dangerColor = colorSettings?.dangerColor || '#ef4444';
   const overdueColor = colorSettings?.overdueColor || '#dc2626';
-
   if (daysRemaining < 0) return overdueColor;
-  if (daysRemaining <= danger) return dangerColor;
-  if (daysRemaining <= warn) return warnColor;
+
+  // Dynamic rules: sorted by days ascending, first match where daysRemaining <= rule.days wins
+  const rules = colorSettings?.rules || [
+    { days: 1, color: '#ef4444' },
+    { days: 3, color: '#f59e0b' },
+  ];
+  const sorted = [...rules].sort((a, b) => a.days - b.days);
+  for (const rule of sorted) {
+    if (daysRemaining <= rule.days) return rule.color;
+  }
   return null;
 }
 
@@ -489,10 +492,12 @@ function CreateWorkOrderModal({ onClose, onCreated }) {
 // ──────────────────────── Detail Modal ────────────────────────
 
 function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
+  const { settings } = useSettings();
   const [wo, setWo] = useState(null);
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('info');
+  const detailSwipe = useSwipeTabs(['info', 'notes', 'reminders'], tab, setTab);
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editPriority, setEditPriority] = useState('');
@@ -633,8 +638,6 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   if (loading) return (
     <div style={modalBackdrop}><div style={modalContent}><Spinner /></div></div>
   );
-
-  const detailSwipe = useSwipeTabs(['info', 'notes', 'reminders'], tab, setTab);
 
   if (!wo) return null;
 
