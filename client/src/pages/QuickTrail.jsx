@@ -319,8 +319,8 @@ const modalContent = {
 };
 
 function TrailDetailModal({ entry, onClose, onUpdated }) {
-  const [tab, setTab] = useState('notes');
-  const detailSwipe = useSwipeTabs(['notes', 'reminders'], tab, setTab);
+  const [tab, setTab] = useState('reminders');
+  const detailSwipe = useSwipeTabs(['reminders', 'notes'], tab, setTab);
 
   // Notes
   const [notes, setNotes] = useState([]);
@@ -386,7 +386,7 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
 
   // Reminder handlers
   const addReminder = () => {
-    setReminders(prev => [...prev, { type: 'daily', time: '09:00', days: [], dates: [], enabled: true }]);
+    setReminders(prev => [...prev, { type: 'once', time: '09:00', days: [], dates: [], enabled: true }]);
     setRemindersDirty(true);
   };
 
@@ -428,7 +428,7 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '1px solid var(--border)' }}>
-          {[{ key: 'notes', label: 'Notes' }, { key: 'reminders', label: 'Reminders' }].map(t => (
+          {[{ key: 'reminders', label: 'Reminders' }, { key: 'notes', label: 'Notes' }].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               style={{
                 flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600,
