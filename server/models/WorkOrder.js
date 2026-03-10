@@ -16,6 +16,7 @@ const workOrderSchema = new mongoose.Schema({
   budgetId: { type: mongoose.Schema.Types.ObjectId, ref: 'Budget', default: null },
   budgetAmount: { type: Number, default: 0 },
   budgetExpenseStatus: { type: String, enum: ['none', 'pending', 'completed', 'failed'], default: 'none' },
+  dueDate: { type: Date, default: null },
   reminders: [reminderSchema],
 }, { timestamps: true });
 

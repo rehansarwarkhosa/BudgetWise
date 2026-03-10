@@ -7,6 +7,7 @@ import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import useFetch from '../hooks/useFetch';
+import useSwipeTabs from '../hooks/useSwipeTabs';
 import { formatPKR, formatDate } from '../utils/format';
 import {
   getIncomeSummary, getIncomes, addIncome, deleteIncome,
@@ -728,6 +729,7 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories, category
   const [funds, setFunds] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('expenses');
+  const budgetSwipe = useSwipeTabs(['expenses', 'funds'], activeTab, setActiveTab);
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetName, setBudgetName] = useState('');
   const [budgetCategory, setBudgetCategory] = useState('');
@@ -807,7 +809,7 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories, category
   return (
     <Modal open={open} onClose={handleClose} title={budget?.name}>
       {loading ? <Spinner /> : (
-        <>
+        <div onTouchStart={budgetSwipe.onTouchStart} onTouchEnd={budgetSwipe.onTouchEnd}>
           {/* Budget edit */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div style={{ fontSize: 14 }}>
@@ -974,7 +976,7 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories, category
             onConfirm={handleDeleteFund}
             title="Delete fund entry?"
             message={`Delete fund "${confirmDeleteFund?.note}" (${formatPKR(confirmDeleteFund?.amount)})? This will reduce the budget's allocated and remaining amounts.`} />
-        </>
+        </div>
       )}
     </Modal>
   );

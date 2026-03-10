@@ -5,6 +5,7 @@ import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
 import { useSettings } from '../context/SettingsContext';
+import useSwipeTabs from '../hooks/useSwipeTabs';
 import { getTrails, createTrail, deleteTrail } from '../api';
 import { formatDateTime } from '../utils/format';
 import KanbanBoard from './KanbanBoard';
@@ -33,6 +34,7 @@ export default function QuickTrail() {
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('trail');
+  const swipe = useSwipeTabs(['trail', 'board'], activeTab, setActiveTab);
   const inputRef = useRef(null);
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
@@ -110,7 +112,7 @@ export default function QuickTrail() {
   );
 
   return (
-    <div className="page">
+    <div className="page" onTouchStart={swipe.onTouchStart} onTouchEnd={swipe.onTouchEnd}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h1 className="page-title" style={{ marginBottom: 0 }}>Trail</h1>
         {activeTab === 'trail' && (

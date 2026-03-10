@@ -6,6 +6,7 @@ import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import useFetch from '../hooks/useFetch';
+import useSwipeTabs from '../hooks/useSwipeTabs';
 import { formatDateTime, formatDate } from '../utils/format';
 import {
   getRoutines, createRoutine, deleteRoutine, updateRoutine,
@@ -20,6 +21,7 @@ export default function Routines() {
   const [detailRoutine, setDetailRoutine] = useState(null);
   const [cloneSource, setCloneSource] = useState(null);
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'done_today' | 'expired'
+  const swipe = useSwipeTabs(['pending', 'done_today', 'expired'], activeTab, setActiveTab);
 
   if (loading && !routines) return <Spinner />;
 
@@ -39,7 +41,7 @@ export default function Routines() {
     : expiredRoutines;
 
   return (
-    <div className="page">
+    <div className="page" onTouchStart={swipe.onTouchStart} onTouchEnd={swipe.onTouchEnd}>
       <h1 className="page-title">Routines</h1>
 
       {/* Tabs */}

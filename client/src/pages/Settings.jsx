@@ -330,6 +330,11 @@ export default function Settings() {
   const [trailHighlights, setTrailHighlights] = useState([]);
   const [newKeyword, setNewKeyword] = useState('');
   const [newColor, setNewColor] = useState('#ef4444');
+  const [kanbanWarningDays, setKanbanWarningDays] = useState(3);
+  const [kanbanWarningColor, setKanbanWarningColor] = useState('#f59e0b');
+  const [kanbanDangerDays, setKanbanDangerDays] = useState(1);
+  const [kanbanDangerColor, setKanbanDangerColor] = useState('#ef4444');
+  const [kanbanOverdueColor, setKanbanOverdueColor] = useState('#dc2626');
 
   useEffect(() => {
     if (settings && !initialized) {
@@ -340,6 +345,12 @@ export default function Settings() {
       setEmailNotificationsEnabled(settings.emailNotificationsEnabled ?? true);
       setTrailBoldText(settings.trailBoldText || false);
       setTrailHighlights(settings.trailHighlights || []);
+      const kdc = settings.kanbanDueDateColors || {};
+      setKanbanWarningDays(kdc.warningDays ?? 3);
+      setKanbanWarningColor(kdc.warningColor || '#f59e0b');
+      setKanbanDangerDays(kdc.dangerDays ?? 1);
+      setKanbanDangerColor(kdc.dangerColor || '#ef4444');
+      setKanbanOverdueColor(kdc.overdueColor || '#dc2626');
       setInitialized(true);
     }
   }, [settings, initialized]);
@@ -685,6 +696,85 @@ export default function Settings() {
           onRemove={handleRemoveHighlight}
           onUpdateColor={handleUpdateHighlightColor}
         />
+      </div>
+
+      {/* Kanban Card Colors */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Kanban Card Colors</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Configure colors for work order cards based on due date proximity.
+        </p>
+
+        {[
+          { label: 'Warning', sublabel: 'days remaining', days: kanbanWarningDays, setDays: setKanbanWarningDays, color: kanbanWarningColor, setColor: setKanbanWarningColor },
+          { label: 'Danger', sublabel: 'days remaining', days: kanbanDangerDays, setDays: setKanbanDangerDays, color: kanbanDangerColor, setColor: setKanbanDangerColor },
+        ].map(({ label, sublabel, days, setDays, color, setColor }) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <div style={{ flex: 1 }}>
+              <span style={{ fontSize: 13, fontWeight: 500 }}>{label}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>({sublabel})</span>
+            </div>
+            <input type="number" value={days} min="0" onChange={e => setDays(Number(e.target.value))}
+              style={{ width: 50, fontSize: 13, textAlign: 'center' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input type="color" value={color} onChange={e => setColor(e.target.value)}
+                style={{ width: 28, height: 28, padding: 0, border: 'none', cursor: 'pointer', borderRadius: 4 }} />
+              <input type="text" value={color} onChange={e => setColor(e.target.value)}
+                style={{ width: 75, fontSize: 11, fontFamily: 'monospace' }} />
+            </div>
+          </div>
+        ))}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontSize: 13, fontWeight: 500 }}>Overdue</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>(past due)</span>
+          </div>
+          <div style={{ width: 50 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input type="color" value={kanbanOverdueColor} onChange={e => setKanbanOverdueColor(e.target.value)}
+              style={{ width: 28, height: 28, padding: 0, border: 'none', cursor: 'pointer', borderRadius: 4 }} />
+            <input type="text" value={kanbanOverdueColor} onChange={e => setKanbanOverdueColor(e.target.value)}
+              style={{ width: 75, fontSize: 11, fontFamily: 'monospace' }} />
+          </div>
+        </div>
+
+        {/* Preview */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {[
+            { label: `>${kanbanWarningDays}d`, color: 'var(--text-muted)', bg: 'var(--bg-input)' },
+            { label: `<=${kanbanWarningDays}d`, color: kanbanWarningColor, bg: kanbanWarningColor + '20' },
+            { label: `<=${kanbanDangerDays}d`, color: kanbanDangerColor, bg: kanbanDangerColor + '20' },
+            { label: 'Overdue', color: kanbanOverdueColor, bg: kanbanOverdueColor + '20' },
+          ].map(p => (
+            <div key={p.label} style={{
+              flex: 1, padding: '6px 4px', borderRadius: 6, textAlign: 'center',
+              fontSize: 10, fontWeight: 600, color: p.color,
+              background: p.bg, border: `1.5px solid ${p.color === 'var(--text-muted)' ? 'var(--border)' : p.color}`,
+              borderLeft: `3px solid ${p.color}`,
+            }}>
+              {p.label}
+            </div>
+          ))}
+        </div>
+
+        <button className="btn-primary" style={{ width: '100%', fontSize: 13 }}
+          onClick={async () => {
+            try {
+              await updateSettings({
+                kanbanDueDateColors: {
+                  warningDays: kanbanWarningDays, warningColor: kanbanWarningColor,
+                  dangerDays: kanbanDangerDays, dangerColor: kanbanDangerColor,
+                  overdueColor: kanbanOverdueColor,
+                },
+              });
+              await refetchSettings();
+              setInitialized(false);
+              toast.success('Kanban colors saved');
+            } catch (err) { toast.error(err.message); }
+          }}>
+          Save Kanban Colors
+        </button>
       </div>
 
       {/* Guide */}

@@ -2,12 +2,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import {
   IoAdd, IoTrash, IoCopy, IoSearch, IoClose, IoChevronForward, IoChevronBack,
-  IoWallet, IoFlag, IoAlarm, IoCreate, IoSave, IoFilter,
+  IoWallet, IoFlag, IoAlarm, IoCreate, IoSave, IoFilter, IoCalendar,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
 import { formatDateTime, formatDate, formatPKR } from '../utils/format';
+import { useSettings } from '../context/SettingsContext';
+import useSwipeTabs from '../hooks/useSwipeTabs';
 import api from '../api/axios.js';
 import {
   getWorkOrders, createWorkOrder, updateWorkOrder, moveWorkOrder, deleteWorkOrder,
@@ -22,6 +24,27 @@ const COLUMN_COLORS = { todo: '#6C63FF', doing: '#F59E0B', done: '#22C55E' };
 
 const RICH_COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
 
+function getDueDateColor(dueDate, colorSettings) {
+  if (!dueDate) return null;
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+  now.setHours(0, 0, 0, 0);
+  const due = new Date(new Date(dueDate).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+  due.setHours(0, 0, 0, 0);
+  const diffMs = due - now;
+  const daysRemaining = Math.ceil(diffMs / 86400000);
+
+  const warn = colorSettings?.warningDays ?? 3;
+  const danger = colorSettings?.dangerDays ?? 1;
+  const warnColor = colorSettings?.warningColor || '#f59e0b';
+  const dangerColor = colorSettings?.dangerColor || '#ef4444';
+  const overdueColor = colorSettings?.overdueColor || '#dc2626';
+
+  if (daysRemaining < 0) return overdueColor;
+  if (daysRemaining <= danger) return dangerColor;
+  if (daysRemaining <= warn) return warnColor;
+  return null;
+}
+
 function stripHtml(html) {
   const tmp = document.createElement('div');
   tmp.innerHTML = html || '';
@@ -29,6 +52,8 @@ function stripHtml(html) {
 }
 
 export default function KanbanBoard() {
+  const { settings } = useSettings();
+  const dueDateColors = settings?.kanbanDueDateColors;
   const [workOrders, setWorkOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -96,6 +121,7 @@ export default function KanbanBoard() {
         text += `Budget: ${wo.budgetId?.name || 'Linked'} — ${formatPKR(wo.budgetAmount)}\n`;
         text += `Expense Status: ${wo.budgetExpenseStatus}\n`;
       }
+      if (wo.dueDate) text += `Due: ${formatDate(wo.dueDate)}\n`;
       text += `Created: ${formatDateTime(wo.createdAt)}\n`;
       if (notes.length > 0) {
         text += `\n--- Notes ---\n`;
@@ -220,14 +246,17 @@ export default function KanbanBoard() {
                 <div style={{ textAlign: 'center', padding: '16px 4px', color: 'var(--text-muted)', fontSize: 11 }}>
                   No items
                 </div>
-              ) : getColumnOrders(col).map(wo => (
+              ) : getColumnOrders(col).map(wo => {
+                const cardDueColor = wo.status !== 'done' ? getDueDateColor(wo.dueDate, dueDateColors) : null;
+                return (
                 <div key={wo._id} draggable
                   onDragStart={e => onDragStart(e, wo._id)}
                   onClick={() => setDetailId(wo._id)}
                   style={{
                     background: 'var(--bg)', borderRadius: 'var(--radius-sm)',
                     padding: 8, cursor: 'pointer',
-                    border: '1px solid var(--border)',
+                    border: cardDueColor ? `1.5px solid ${cardDueColor}` : '1px solid var(--border)',
+                    borderLeft: cardDueColor ? `3px solid ${cardDueColor}` : undefined,
                     opacity: dragId === wo._id ? 0.5 : 1,
                     transition: 'opacity 0.2s, transform 0.1s',
                   }}>
@@ -276,6 +305,17 @@ export default function KanbanBoard() {
                         Expense Logged
                       </span>
                     )}
+                    {wo.dueDate && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 600,
+                        background: (cardDueColor || 'var(--text-muted)') + '20',
+                        color: cardDueColor || 'var(--text-muted)',
+                        padding: '1px 5px', borderRadius: 4,
+                        display: 'flex', alignItems: 'center', gap: 2,
+                      }}>
+                        <IoCalendar size={8} /> {formatDate(wo.dueDate)}
+                      </span>
+                    )}
                   </div>
 
                   {/* Date + Actions */}
@@ -305,7 +345,8 @@ export default function KanbanBoard() {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}
@@ -342,6 +383,7 @@ export default function KanbanBoard() {
 function CreateWorkOrderModal({ onClose, onCreated }) {
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('medium');
+  const [dueDate, setDueDate] = useState('');
   const [isBudget, setIsBudget] = useState(false);
   const [budgetId, setBudgetId] = useState('');
   const [budgetAmount, setBudgetAmount] = useState('');
@@ -358,6 +400,7 @@ function CreateWorkOrderModal({ onClose, onCreated }) {
     setSaving(true);
     try {
       const data = { title: title.trim(), priority };
+      if (dueDate) data.dueDate = dueDate;
       if (isBudget && budgetId) {
         data.budgetId = budgetId;
         data.budgetAmount = parseFloat(budgetAmount) || 0;
@@ -399,6 +442,11 @@ function CreateWorkOrderModal({ onClose, onCreated }) {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Due Date (optional)</label>
+            <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
           </div>
 
           <div className="form-group">
@@ -451,6 +499,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   const [editStatus, setEditStatus] = useState('');
   const [editBudgetId, setEditBudgetId] = useState('');
   const [editBudgetAmount, setEditBudgetAmount] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
   const [budgets, setBudgets] = useState([]);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -482,6 +531,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
       setEditStatus(data.status);
       setEditBudgetId(data.budgetId?._id || data.budgetId || '');
       setEditBudgetAmount(data.budgetAmount || 0);
+      setEditDueDate(data.dueDate ? new Date(data.dueDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' }) : '');
       setReminders(data.reminders || []);
     } catch (err) { toast.error('Failed to load'); }
     finally { setLoading(false); }
@@ -495,6 +545,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
         title: editTitle, priority: editPriority, status: editStatus,
         budgetId: editBudgetId || null,
         budgetAmount: editBudgetId ? parseFloat(editBudgetAmount) || 0 : 0,
+        dueDate: editDueDate || null,
       };
       if (remindersDirty) data.reminders = reminders;
       const res = await updateWorkOrder(workOrderId, data);
@@ -583,6 +634,8 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
     <div style={modalBackdrop}><div style={modalContent}><Spinner /></div></div>
   );
 
+  const detailSwipe = useSwipeTabs(['info', 'notes', 'reminders'], tab, setTab);
+
   if (!wo) return null;
 
   const hasBudget = !!(wo.budgetId);
@@ -591,7 +644,8 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
 
   return (
     <div style={modalBackdrop} onClick={onClose}>
-      <div style={{ ...modalContent, maxHeight: '88vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
+      <div style={{ ...modalContent, maxHeight: '88vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}
+        onTouchStart={detailSwipe.onTouchStart} onTouchEnd={detailSwipe.onTouchEnd}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div style={{ flex: 1 }}>
@@ -618,9 +672,15 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
           <button className="btn-ghost" onClick={onClose} style={{ padding: 4 }}><IoClose size={20} /></button>
         </div>
 
-        <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 12 }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: wo.dueDate ? 4 : 12 }}>
           Created: {formatDateTime(wo.createdAt)}
         </span>
+        {wo.dueDate && (
+          <span style={{ fontSize: 11, color: getDueDateColor(wo.dueDate, settings?.kanbanDueDateColors) || 'var(--text-muted)', display: 'block', marginBottom: 12 }}>
+            <IoCalendar size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
+            Due: {formatDate(wo.dueDate)}
+          </span>
+        )}
 
         {/* Expense Button */}
         {showExpenseBtn && (
@@ -666,6 +726,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
                   <InfoRow label="Title" value={wo.title} />
                   <InfoRow label="Priority" value={wo.priority} color={PRIORITY_COLORS[wo.priority]} />
                   <InfoRow label="Status" value={STATUS_LABELS[wo.status]} color={COLUMN_COLORS[wo.status]} />
+                  {wo.dueDate && <InfoRow label="Due Date" value={formatDate(wo.dueDate)} color={getDueDateColor(wo.dueDate, settings?.kanbanDueDateColors)} />}
                   {hasBudget && <InfoRow label="Budget" value={`${wo.budgetId?.name || ''} — ${formatPKR(wo.budgetAmount)}`} />}
                   {hasBudget && <InfoRow label="Expense Status" value={wo.budgetExpenseStatus} />}
                 </div>
@@ -698,6 +759,10 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
                   <select value={editStatus} onChange={e => setEditStatus(e.target.value)}>
                     {COLUMNS.map(c => <option key={c} value={c}>{STATUS_LABELS[c]}</option>)}
                   </select>
+                </div>
+                <div className="form-group">
+                  <label>Due Date (optional)</label>
+                  <input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -747,6 +812,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
                     text += `Budget: ${wo2.budgetId?.name || 'Linked'} — ${formatPKR(wo2.budgetAmount)}\n`;
                     text += `Expense Status: ${wo2.budgetExpenseStatus}\n`;
                   }
+                  if (wo2.dueDate) text += `Due: ${formatDate(wo2.dueDate)}\n`;
                   text += `Created: ${formatDateTime(wo2.createdAt)}\n`;
                   if (notes.length > 0) {
                     text += `\n--- Notes ---\n`;

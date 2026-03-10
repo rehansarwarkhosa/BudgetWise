@@ -16,12 +16,14 @@ import {
   searchNotes, getRecentNotes, getNotesTree,
 } from '../api';
 import { formatDateTime } from '../utils/format';
+import useSwipeTabs from '../hooks/useSwipeTabs';
 
 // ─── Main Page ───
 
 export default function Notes() {
   // Tab: 'tree' | 'recent' | 'search'
   const [tab, setTab] = useState('tree');
+  const swipe = useSwipeTabs(['tree', 'recent'], tab, setTab);
 
   // Tree data
   const [tree, setTree] = useState([]);
@@ -171,7 +173,7 @@ export default function Notes() {
   );
 
   return (
-    <div className="page">
+    <div className="page" onTouchStart={tab !== 'search' ? swipe.onTouchStart : undefined} onTouchEnd={tab !== 'search' ? swipe.onTouchEnd : undefined}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         {tab === 'search' && (

@@ -15,6 +15,13 @@ const settingsSchema = new mongoose.Schema({
     keyword: { type: String, required: true },
     color: { type: String, required: true },
   }],
+  kanbanDueDateColors: {
+    warningDays: { type: Number, default: 3 },
+    warningColor: { type: String, default: '#f59e0b' },
+    dangerDays: { type: Number, default: 1 },
+    dangerColor: { type: String, default: '#ef4444' },
+    overdueColor: { type: String, default: '#dc2626' },
+  },
 }, { timestamps: true });
 
 export default mongoose.model('Settings', settingsSchema);
