@@ -22,10 +22,11 @@ export function SettingsProvider({ children }) {
 
   useEffect(() => { fetchSettings(); }, []);
 
-  // Apply theme to document whenever settings change
+  // Apply theme to document whenever settings change and persist to localStorage
   useEffect(() => {
     if (settings?.theme) {
       document.documentElement.setAttribute('data-theme', settings.theme);
+      try { localStorage.setItem('budgetwise-theme', settings.theme); } catch (e) {}
     }
   }, [settings?.theme]);
 

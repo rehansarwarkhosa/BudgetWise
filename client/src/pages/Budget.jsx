@@ -74,8 +74,10 @@ export default function Budget() {
   });
   const categories = Object.keys(grouped).sort();
 
+  const mainSwipe = useSwipeTabs(['budgets', 'templates', 'prices'], activeView, setActiveView);
+
   return (
-    <div className="page">
+    <div className="page" onTouchStart={mainSwipe.onTouchStart} onTouchEnd={mainSwipe.onTouchEnd}>
       <h1 className="page-title">Budget</h1>
 
       {/* View Toggle: Budgets / Templates */}
@@ -109,10 +111,10 @@ export default function Budget() {
         </button>
       </div>
 
-      {activeView === 'prices' ? (
+      <div style={{ display: activeView === 'prices' ? 'block' : 'none' }}>
         <PriceList categoryNames={categoryNames} categoryColorMap={categoryColorMap} />
-      ) : activeView === 'budgets' ? (
-        <>
+      </div>
+      <div style={{ display: activeView === 'budgets' ? 'block' : 'none' }}>
           {/* Income Summary Bar */}
           <div className="card" style={{ marginBottom: 16, cursor: 'pointer' }} onClick={() => setIncomeListModal(true)}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -177,10 +179,10 @@ export default function Budget() {
 
           {/* FAB for new budget */}
           <button className="fab" onClick={() => setBudgetModal(true)}><IoAdd /></button>
-        </>
-      ) : (
+      </div>
+      <div style={{ display: activeView === 'templates' ? 'block' : 'none' }}>
         <TemplatesView categoryColorMap={categoryColorMap} categoryNames={categoryNames} onBudgetsChanged={refreshAll} />
-      )}
+      </div>
 
       {/* Modals */}
       <IncomeModal open={incomeModal} onClose={() => setIncomeModal(false)}

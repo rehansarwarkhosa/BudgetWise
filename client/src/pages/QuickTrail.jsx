@@ -138,86 +138,85 @@ export default function QuickTrail() {
         ))}
       </div>
 
-      {activeTab === 'trail' ? (
-        <>
-          {/* Search bar */}
-          {searchMode && (
-            <input ref={searchRef} type="text" placeholder="Search trails..."
-              value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ marginBottom: 12, width: '100%' }} />
-          )}
+      <div style={{ display: activeTab === 'trail' ? 'block' : 'none' }}>
+        {/* Search bar */}
+        {searchMode && (
+          <input ref={searchRef} type="text" placeholder="Search trails..."
+            value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ marginBottom: 12, width: '100%' }} />
+        )}
 
-          {/* Input bar */}
-          <form onSubmit={handleSend} style={{
-            display: 'flex', gap: 8, marginBottom: 16,
-            position: 'sticky', top: 0, zIndex: 10,
-            background: 'var(--bg-page)', paddingBottom: 8,
-          }}>
-            <input
-              ref={inputRef}
-              type="text"
-              placeholder="Quick thought..."
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              style={{ flex: 1 }}
-              autoFocus
-            />
-            <button type="submit" className="btn-primary"
-              disabled={sending || !text.trim()}
-              style={{ width: 'auto', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <IoSend size={18} />
-            </button>
-          </form>
+        {/* Input bar */}
+        <form onSubmit={handleSend} style={{
+          display: 'flex', gap: 8, marginBottom: 16,
+          position: 'sticky', top: 0, zIndex: 10,
+          background: 'var(--bg-page)', paddingBottom: 8,
+        }}>
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Quick thought..."
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            style={{ flex: 1 }}
+            autoFocus
+          />
+          <button type="submit" className="btn-primary"
+            disabled={sending || !text.trim()}
+            style={{ width: 'auto', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <IoSend size={18} />
+          </button>
+        </form>
 
-          {/* Entries */}
-          {entries.length === 0 ? (
-            <EmptyState icon={searchMode ? "🔍" : "⚡"} title={searchMode ? "No results" : "No entries yet"} subtitle={searchMode ? `Nothing found for "${searchQuery}"` : "Type something and hit send"} />
-          ) : (
-            <div style={{ display: 'grid', gap: 10 }}>
-              {entries.map((entry) => {
-                const hlColor = getEntryHighlight(entry.text, trailHighlights);
-                return (
-                <div key={entry._id} className="card" style={{
-                  position: 'relative',
-                  ...(hlColor ? { background: hlColor + '20', borderLeft: `3px solid ${hlColor}` } : {}),
-                }}>
-                  <p style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 8, whiteSpace: 'pre-wrap', ...(trailBold ? { fontWeight: 700 } : {}) }}>
-                    {entry.text}
-                  </p>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      {formatDateTime(entry.createdAt)}
-                    </span>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn-ghost" style={{ padding: 4 }} onClick={() => handleCopy(entry)}>
-                        <IoCopy size={14} color="var(--text-muted)" />
-                      </button>
-                      <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setConfirmDelete(entry)}>
-                        <IoTrash size={14} color="var(--danger)" />
-                      </button>
-                    </div>
+        {/* Entries */}
+        {entries.length === 0 ? (
+          <EmptyState icon={searchMode ? "🔍" : "⚡"} title={searchMode ? "No results" : "No entries yet"} subtitle={searchMode ? `Nothing found for "${searchQuery}"` : "Type something and hit send"} />
+        ) : (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {entries.map((entry) => {
+              const hlColor = getEntryHighlight(entry.text, trailHighlights);
+              return (
+              <div key={entry._id} className="card" style={{
+                position: 'relative',
+                ...(hlColor ? { background: hlColor + '20', borderLeft: `3px solid ${hlColor}` } : {}),
+              }}>
+                <p style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 8, whiteSpace: 'pre-wrap', ...(trailBold ? { fontWeight: 700 } : {}) }}>
+                  {entry.text}
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    {formatDateTime(entry.createdAt)}
+                  </span>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button className="btn-ghost" style={{ padding: 4 }} onClick={() => handleCopy(entry)}>
+                      <IoCopy size={14} color="var(--text-muted)" />
+                    </button>
+                    <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setConfirmDelete(entry)}>
+                      <IoTrash size={14} color="var(--danger)" />
+                    </button>
                   </div>
                 </div>
-                );
-              })}
+              </div>
+              );
+            })}
 
-              {page < totalPages && (
-                <button className="btn-outline" onClick={handleLoadMore} disabled={loadingMore}
-                  style={{ marginTop: 4 }}>
-                  {loadingMore ? 'Loading...' : 'Load More'}
-                </button>
-              )}
-            </div>
-          )}
+            {page < totalPages && (
+              <button className="btn-outline" onClick={handleLoadMore} disabled={loadingMore}
+                style={{ marginTop: 4 }}>
+                {loadingMore ? 'Loading...' : 'Load More'}
+              </button>
+            )}
+          </div>
+        )}
 
-          <ConfirmModal open={!!confirmDelete} onClose={() => setConfirmDelete(null)}
-            onConfirm={handleDelete}
-            title="Delete entry?"
-            message={`Delete "${confirmDelete?.text?.slice(0, 50)}${confirmDelete?.text?.length > 50 ? '...' : ''}"?`} />
-        </>
-      ) : (
+        <ConfirmModal open={!!confirmDelete} onClose={() => setConfirmDelete(null)}
+          onConfirm={handleDelete}
+          title="Delete entry?"
+          message={`Delete "${confirmDelete?.text?.slice(0, 50)}${confirmDelete?.text?.length > 50 ? '...' : ''}"?`} />
+      </div>
+      <div style={{ display: activeTab === 'board' ? 'block' : 'none' }}>
         <KanbanBoard />
-      )}
+      </div>
     </div>
   );
 }

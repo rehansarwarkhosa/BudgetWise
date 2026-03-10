@@ -101,7 +101,7 @@ export default function Notes() {
   useEffect(() => { fetchTree(); fetchTags(); }, []);
 
   useEffect(() => {
-    if (tab === 'recent') fetchRecent();
+    if (tab === 'recent' && !recentFetched.current) fetchRecent();
   }, [tab]);
 
   const toggleTopic = (topicId) => {
@@ -266,8 +266,7 @@ export default function Notes() {
       )}
 
       {/* Recent Notes */}
-      {tab === 'recent' && (
-        <>
+      <div style={{ display: tab === 'recent' ? 'block' : 'none' }}>
           {recentLoading ? <Spinner /> : recentNotes.length === 0 ? (
             <EmptyState icon="🕐" title="No recent notes" subtitle="Notes you edit will appear here" />
           ) : (
@@ -304,12 +303,10 @@ export default function Notes() {
               })}
             </div>
           )}
-        </>
-      )}
+      </div>
 
       {/* Tree View */}
-      {tab === 'tree' && (
-        <>
+      <div style={{ display: tab === 'tree' ? 'block' : 'none' }}>
           {tree.length === 0 ? (
             <EmptyState icon="📝" title="No topics yet" subtitle="Create a topic to organize your notes" />
           ) : (
@@ -469,8 +466,7 @@ export default function Notes() {
           <button className="fab" onClick={() => setCreateTopicModal(true)}>
             <IoAdd />
           </button>
-        </>
-      )}
+      </div>
 
       {/* Hidden color picker for topic color editing */}
       <input ref={topicColorRef} type="color"
