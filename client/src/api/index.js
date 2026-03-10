@@ -89,10 +89,15 @@ export const getRecentNotes = () => api.get('/notes/recent');
 export const getNotesTree = () => api.get('/notes/tree');
 
 // Trails
-export const getTrails = (page, search) => api.get('/trails', { params: { page, limit: 20, ...(search ? { search } : {}) } });
+export const getTrails = (page, search, filter) => api.get('/trails', { params: { page, limit: 20, ...(search ? { search } : {}), ...(filter && filter !== 'all' ? { filter } : {}) } });
 export const createTrail = (data) => api.post('/trails', data);
+export const updateTrail = (id, data) => api.put(`/trails/${id}`, data);
 export const deleteTrail = (id) => api.delete(`/trails/${id}`);
 export const deleteAllTrails = () => api.delete('/trails');
+export const getTrailNotes = (id) => api.get(`/trails/${id}/notes`);
+export const addTrailNote = (id, data) => api.post(`/trails/${id}/notes`, data);
+export const updateTrailNote = (noteId, data) => api.put(`/trails/notes/${noteId}`, data);
+export const deleteTrailNote = (noteId) => api.delete(`/trails/notes/${noteId}`);
 
 // Work Orders
 export const getWorkOrders = (params) => api.get('/workorders', { params });

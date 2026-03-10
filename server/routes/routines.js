@@ -3,6 +3,7 @@ import sgMail from '@sendgrid/mail';
 import Routine from '../models/Routine.js';
 import RoutineEntry from '../models/RoutineEntry.js';
 import WorkOrder from '../models/WorkOrder.js';
+import Trail from '../models/Trail.js';
 import Settings from '../models/Settings.js';
 import AuditLog from '../models/AuditLog.js';
 import { success, error } from '../utils/response.js';
@@ -417,6 +418,117 @@ router.get('/check-reminders', async (req, res, next) => {
       }
     }
 
+    // --- Also check Trail reminders ---
+    const trails = await Trail.find({ 'reminders.0': { $exists: true } });
+    const trailTriggered = [];
+
+    for (const trail of trails) {
+      let trailDirty = false;
+      for (const reminder of trail.reminders) {
+        if (!reminder.enabled) continue;
+        if (reminder.type === 'once' && reminder.fired) continue;
+        const [rh, rm] = reminder.time.split(':').map(Number);
+        const timeDiff = (currentHour * 60 + currentMin) - (rh * 60 + rm);
+        if (timeDiff < 0 || timeDiff >= 10) continue;
+        const reminderKey = `${todayStr}|${reminder.time}`;
+        if (reminder.lastNotifiedDate === reminderKey) continue;
+
+        let matches = false;
+        switch (reminder.type) {
+          case 'once': matches = true; break;
+          case 'daily': matches = true; break;
+          case 'weekdays': matches = currentDay >= 1 && currentDay <= 5; break;
+          case 'custom_days': matches = reminder.days.includes(currentDay); break;
+          case 'custom_dates':
+            matches = reminder.dates.some(d => new Date(d).toISOString().split('T')[0] === todayStr);
+            break;
+        }
+
+        if (matches) {
+          trailTriggered.push({
+            trailId: trail._id,
+            trailText: trail.text,
+            reminderTime: reminder.time,
+            reminderId: reminder._id,
+          });
+          reminder.lastNotifiedDate = reminderKey;
+          if (reminder.type === 'once') { reminder.fired = true; reminder.enabled = false; }
+          trailDirty = true;
+        }
+      }
+      if (trailDirty) await trail.save();
+    }
+
+    let trailEmailSent = false;
+    let trailEmailSkipReason = null;
+    let trailPushResult = null;
+
+    if (trailTriggered.length > 0) {
+      await AuditLog.create({
+        action: 'NOTIFY', entity: 'Trail',
+        details: `${trailTriggered.length} trail reminder(s): ${trailTriggered.map(t => `"${t.trailText.slice(0, 30)}" at ${t.reminderTime}`).join(', ')}`,
+      });
+
+      // Email for trail reminders
+      if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) {
+        trailEmailSkipReason = 'SendGrid not configured';
+      } else {
+        const trailSettings = await Settings.findOne();
+        if (trailSettings?.emailNotificationsEnabled === false) {
+          trailEmailSkipReason = 'notifications disabled';
+        } else {
+          const toEmail = trailSettings?.notificationEmail || process.env.NOTIFICATION_EMAIL;
+          if (!toEmail) {
+            trailEmailSkipReason = 'no notification email';
+          } else {
+            sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+            const reminderList = trailTriggered.map(t =>
+              `<li><strong>${t.trailText.slice(0, 80)}</strong> — ${t.reminderTime}</li>`
+            ).join('');
+            const timeStr = formatPKT(new Date());
+            try {
+              await sgMail.send({
+                to: toEmail,
+                from: process.env.SENDGRID_FROM_EMAIL,
+                subject: `BudgetWise — ${trailTriggered.length} Trail Reminder${trailTriggered.length > 1 ? 's' : ''}`,
+                html: `
+                  <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #6C63FF; margin-bottom: 4px;">Trail Reminders</h2>
+                    <p style="color: #666; font-size: 13px; margin-bottom: 16px;">${timeStr} (PKT)</p>
+                    <ul style="padding-left: 20px; line-height: 1.8;">${reminderList}</ul>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+                    <p style="color: #999; font-size: 12px;">Sent by BudgetWise</p>
+                  </div>
+                `,
+              });
+              trailEmailSent = true;
+              await AuditLog.create({ action: 'NOTIFY', entity: 'Trail', details: `Email sent to ${toEmail}` });
+            } catch (emailErr) {
+              trailEmailSkipReason = emailErr.message;
+              await AuditLog.create({ action: 'ERROR', entity: 'Trail', details: `Email failed: ${emailErr.message}` });
+            }
+          }
+        }
+      }
+
+      // Push notification for trail reminders
+      const trailPushTitle = `BudgetWise — ${trailTriggered.length} Trail Reminder${trailTriggered.length > 1 ? 's' : ''}`;
+      const trailPushMessage = trailTriggered.map(t => `${t.trailText.slice(0, 40)} (${t.reminderTime})`).join(', ');
+      trailPushResult = await sendPushNotification(trailPushTitle, trailPushMessage, 'https://budgetwise-f41c.onrender.com/');
+
+      if (trailPushResult.sent) {
+        await AuditLog.create({
+          action: 'PUSH_NOTIFY', entity: 'Trail',
+          details: `Push sent to ${trailPushResult.recipients} subscriber(s): ${trailPushMessage}`,
+        });
+      } else {
+        await AuditLog.create({
+          action: 'PUSH_SKIP', entity: 'Trail',
+          details: `Push skipped: ${trailPushResult.reason}`,
+        });
+      }
+    }
+
     success(res, {
       triggered, emailSent, count: triggered.length,
       ...(emailSkipReason ? { emailSkipReason } : {}),
@@ -426,6 +538,12 @@ router.get('/check-reminders', async (req, res, next) => {
         emailSent: woEmailSent,
         ...(woEmailSkipReason ? { emailSkipReason: woEmailSkipReason } : {}),
         pushNotification: woPushResult,
+      },
+      trails: {
+        triggered: trailTriggered, count: trailTriggered.length,
+        emailSent: trailEmailSent,
+        ...(trailEmailSkipReason ? { emailSkipReason: trailEmailSkipReason } : {}),
+        pushNotification: trailPushResult,
       },
     });
   } catch (err) { next(err); }

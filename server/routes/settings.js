@@ -12,6 +12,7 @@ import Topic from '../models/Topic.js';
 import SubTopic from '../models/SubTopic.js';
 import Note from '../models/Note.js';
 import Trail from '../models/Trail.js';
+import TrailNote from '../models/TrailNote.js';
 import FundEntry from '../models/FundEntry.js';
 import AuditLog from '../models/AuditLog.js';
 import BudgetCategory from '../models/BudgetCategory.js';
@@ -128,7 +129,7 @@ router.post('/test-email', async (req, res, next) => {
 // Export all data
 router.get('/export', async (req, res, next) => {
   try {
-    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries] = await Promise.all([
+    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries] = await Promise.all([
       Settings.findOne(),
       Income.find(),
       Budget.find(),
@@ -141,6 +142,7 @@ router.get('/export', async (req, res, next) => {
       SubTopic.find(),
       Note.find(),
       Trail.find(),
+      TrailNote.find(),
       FundEntry.find(),
       AuditLog.find(),
       BudgetCategory.find(),
@@ -153,7 +155,7 @@ router.get('/export', async (req, res, next) => {
     success(res, {
       exportDate: new Date().toISOString(),
       version: 1,
-      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries,
+      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries,
     });
   } catch (err) { next(err); }
 });
@@ -177,6 +179,7 @@ router.post('/import', async (req, res, next) => {
       subTopics: await SubTopic.find().lean(),
       notes: await Note.find().lean(),
       trails: await Trail.find().lean(),
+      trailNotes: await TrailNote.find().lean(),
       fundEntries: await FundEntry.find().lean(),
       auditLogs: await AuditLog.find().lean(),
       budgetCategories: await BudgetCategory.find().lean(),
@@ -194,7 +197,7 @@ router.post('/import', async (req, res, next) => {
         Income.deleteMany({}), Budget.deleteMany({}), Expense.deleteMany({}),
         Routine.deleteMany({}), RoutineEntry.deleteMany({}), Savings.deleteMany({}),
         Tag.deleteMany({}), Topic.deleteMany({}), SubTopic.deleteMany({}), Note.deleteMany({}),
-        Trail.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
+        Trail.deleteMany({}), TrailNote.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
         BudgetTemplate.deleteMany({}), WorkOrder.deleteMany({}), WorkOrderNote.deleteMany({}),
         PriceItem.deleteMany({}), PriceEntry.deleteMany({}),
       ]);
@@ -211,6 +214,7 @@ router.post('/import', async (req, res, next) => {
       if (data.subTopics?.length) await SubTopic.insertMany(data.subTopics);
       if (data.notes?.length) await Note.insertMany(data.notes);
       if (data.trails?.length) await Trail.insertMany(data.trails);
+      if (data.trailNotes?.length) await TrailNote.insertMany(data.trailNotes);
       if (data.fundEntries?.length) await FundEntry.insertMany(data.fundEntries);
       if (data.auditLogs?.length) await AuditLog.insertMany(data.auditLogs);
       if (data.budgetCategories?.length) await BudgetCategory.insertMany(data.budgetCategories);
@@ -242,7 +246,7 @@ router.post('/import', async (req, res, next) => {
         Income.deleteMany({}), Budget.deleteMany({}), Expense.deleteMany({}),
         Routine.deleteMany({}), RoutineEntry.deleteMany({}), Savings.deleteMany({}),
         Tag.deleteMany({}), Topic.deleteMany({}), SubTopic.deleteMany({}), Note.deleteMany({}),
-        Trail.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
+        Trail.deleteMany({}), TrailNote.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
         BudgetTemplate.deleteMany({}), WorkOrder.deleteMany({}), WorkOrderNote.deleteMany({}),
         PriceItem.deleteMany({}), PriceEntry.deleteMany({}),
       ]);
@@ -257,6 +261,7 @@ router.post('/import', async (req, res, next) => {
       if (snapshot.subTopics.length) await SubTopic.insertMany(snapshot.subTopics);
       if (snapshot.notes.length) await Note.insertMany(snapshot.notes);
       if (snapshot.trails.length) await Trail.insertMany(snapshot.trails);
+      if (snapshot.trailNotes.length) await TrailNote.insertMany(snapshot.trailNotes);
       if (snapshot.fundEntries.length) await FundEntry.insertMany(snapshot.fundEntries);
       if (snapshot.auditLogs.length) await AuditLog.insertMany(snapshot.auditLogs);
       if (snapshot.budgetCategories.length) await BudgetCategory.insertMany(snapshot.budgetCategories);
@@ -288,6 +293,7 @@ router.delete('/all-data', async (req, res, next) => {
       SubTopic.deleteMany({}),
       Note.deleteMany({}),
       Trail.deleteMany({}),
+      TrailNote.deleteMany({}),
       FundEntry.deleteMany({}),
       AuditLog.deleteMany({}),
       BudgetCategory.deleteMany({}),
