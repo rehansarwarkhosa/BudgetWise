@@ -2,6 +2,7 @@ import { Router } from 'express';
 import sgMail from '@sendgrid/mail';
 import Routine from '../models/Routine.js';
 import RoutineEntry from '../models/RoutineEntry.js';
+import WorkOrder from '../models/WorkOrder.js';
 import Settings from '../models/Settings.js';
 import AuditLog from '../models/AuditLog.js';
 import { success, error } from '../utils/response.js';
@@ -307,10 +308,125 @@ router.get('/check-reminders', async (req, res, next) => {
       }
     }
 
+    // --- Also check Work Order reminders ---
+    const workOrders = await WorkOrder.find({ status: { $ne: 'done' } });
+    const woTriggered = [];
+
+    for (const wo of workOrders) {
+      let woDirty = false;
+      for (const reminder of wo.reminders) {
+        if (!reminder.enabled) continue;
+        const [rh, rm] = reminder.time.split(':').map(Number);
+        const timeDiff = (currentHour * 60 + currentMin) - (rh * 60 + rm);
+        if (timeDiff < 0 || timeDiff >= 10) continue;
+        const reminderKey = `${todayStr}|${reminder.time}`;
+        if (reminder.lastNotifiedDate === reminderKey) continue;
+
+        let matches = false;
+        switch (reminder.type) {
+          case 'daily': matches = true; break;
+          case 'weekdays': matches = currentDay >= 1 && currentDay <= 5; break;
+          case 'custom_days': matches = reminder.days.includes(currentDay); break;
+          case 'custom_dates':
+            matches = reminder.dates.some(d => new Date(d).toISOString().split('T')[0] === todayStr);
+            break;
+        }
+
+        if (matches) {
+          woTriggered.push({
+            workOrderId: wo._id,
+            workOrderTitle: wo.title,
+            reminderTime: reminder.time,
+            reminderId: reminder._id,
+            message: `Work order reminder: "${wo.title}"`,
+          });
+          reminder.lastNotifiedDate = reminderKey;
+          woDirty = true;
+        }
+      }
+      if (woDirty) await wo.save();
+    }
+
+    let woEmailSent = false;
+    let woEmailSkipReason = null;
+    let woPushResult = null;
+
+    if (woTriggered.length > 0) {
+      await AuditLog.create({
+        action: 'NOTIFY', entity: 'WorkOrder',
+        details: `${woTriggered.length} work order reminder(s): ${woTriggered.map(t => `"${t.workOrderTitle}" at ${t.reminderTime}`).join(', ')}`,
+      });
+
+      // Email for work orders
+      if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) {
+        woEmailSkipReason = 'SendGrid not configured';
+      } else {
+        const woSettings = await Settings.findOne();
+        if (woSettings?.emailNotificationsEnabled === false) {
+          woEmailSkipReason = 'notifications disabled';
+        } else {
+          const toEmail = woSettings?.notificationEmail || process.env.NOTIFICATION_EMAIL;
+          if (!toEmail) {
+            woEmailSkipReason = 'no notification email';
+          } else {
+            sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+            const reminderList = woTriggered.map(t =>
+              `<li><strong>${t.workOrderTitle}</strong> — ${t.reminderTime}</li>`
+            ).join('');
+            const timeStr = formatPKT(new Date());
+            try {
+              await sgMail.send({
+                to: toEmail,
+                from: process.env.SENDGRID_FROM_EMAIL,
+                subject: `BudgetWise — ${woTriggered.length} Work Order Reminder${woTriggered.length > 1 ? 's' : ''}`,
+                html: `
+                  <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #6C63FF; margin-bottom: 4px;">Work Order Reminders</h2>
+                    <p style="color: #666; font-size: 13px; margin-bottom: 16px;">${timeStr} (PKT)</p>
+                    <ul style="padding-left: 20px; line-height: 1.8;">${reminderList}</ul>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+                    <p style="color: #999; font-size: 12px;">Sent by BudgetWise</p>
+                  </div>
+                `,
+              });
+              woEmailSent = true;
+              await AuditLog.create({ action: 'NOTIFY', entity: 'WorkOrder', details: `Email sent to ${toEmail}` });
+            } catch (emailErr) {
+              woEmailSkipReason = emailErr.message;
+              await AuditLog.create({ action: 'ERROR', entity: 'WorkOrder', details: `Email failed: ${emailErr.message}` });
+            }
+          }
+        }
+      }
+
+      // Push notification for work orders
+      const woPushTitle = `BudgetWise — ${woTriggered.length} Work Order Reminder${woTriggered.length > 1 ? 's' : ''}`;
+      const woPushMessage = woTriggered.map(t => `${t.workOrderTitle} (${t.reminderTime})`).join(', ');
+      woPushResult = await sendPushNotification(woPushTitle, woPushMessage, 'https://budgetwise-f41c.onrender.com/');
+
+      if (woPushResult.sent) {
+        await AuditLog.create({
+          action: 'PUSH_NOTIFY', entity: 'WorkOrder',
+          details: `Push sent to ${woPushResult.recipients} subscriber(s): ${woPushMessage}`,
+        });
+      } else {
+        await AuditLog.create({
+          action: 'PUSH_SKIP', entity: 'WorkOrder',
+          details: `Push skipped: ${woPushResult.reason}`,
+        });
+      }
+    }
+
     success(res, {
       triggered, emailSent, count: triggered.length,
       ...(emailSkipReason ? { emailSkipReason } : {}),
       pushNotification: pushResult,
+      workOrders: {
+        triggered: woTriggered, count: woTriggered.length,
+        emailSent: woEmailSent,
+        ...(woEmailSkipReason ? { emailSkipReason: woEmailSkipReason } : {}),
+        pushNotification: woPushResult,
+      },
     });
   } catch (err) { next(err); }
 });

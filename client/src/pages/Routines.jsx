@@ -165,7 +165,7 @@ function ReminderEditor({ reminders, setReminders }) {
       </div>
       {reminders.map((rem, idx) => (
         <div key={idx} style={{ background: 'var(--bg-input)', borderRadius: 8, padding: 12, marginBottom: 8 }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
             <select value={rem.type} onChange={(e) => updateReminder(idx, 'type', e.target.value)}
               style={{ flex: 1 }}>
               <option value="daily">Daily</option>
@@ -175,6 +175,12 @@ function ReminderEditor({ reminders, setReminders }) {
             </select>
             <input type="time" value={rem.time} onChange={(e) => updateReminder(idx, 'time', e.target.value)}
               style={{ flex: '0 0 120px' }} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+              <input type="checkbox" checked={rem.enabled !== false}
+                onChange={(e) => updateReminder(idx, 'enabled', e.target.checked)}
+                style={{ width: 14, height: 14 }} />
+              On
+            </label>
             <button type="button" className="btn-ghost" onClick={() => removeReminder(idx)}
               style={{ color: 'var(--danger)', padding: 4 }}><IoTrash size={16} /></button>
           </div>
@@ -497,6 +503,27 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const [editTargetEntries, setEditTargetEntries] = useState('');
   const [editMaxDailyEntries, setEditMaxDailyEntries] = useState('');
   const [editReminders, setEditReminders] = useState([]);
+  const editReadyRef = useRef(false);
+  const skipEditAutoCalcRef = useRef(false);
+  const skipEditDailyCalcRef = useRef(false);
+
+  const editAutoCalc = calcEntriesFromReminders(editDueDate, editReminders);
+  const editAutoDaily = calcMaxDailyEntries(Number(editTargetEntries) || 0, editDueDate, editReminders);
+  const editRemindersKey = JSON.stringify(editReminders.map(r => ({ type: r.type, time: r.time, days: r.days, dates: r.dates, enabled: r.enabled })));
+
+  useEffect(() => {
+    if (!editing || !editReadyRef.current || skipEditAutoCalcRef.current) return;
+    if (editAutoCalc > 0) {
+      setEditTargetEntries(String(editAutoCalc));
+    }
+  }, [editDueDate, editRemindersKey]);
+
+  useEffect(() => {
+    if (!editing || !editReadyRef.current || skipEditDailyCalcRef.current) return;
+    if (Number(editTargetEntries) > 0 && editDueDate) {
+      setEditMaxDailyEntries(String(editAutoDaily));
+    }
+  }, [editTargetEntries, editDueDate]);
 
   const fetchEntries = async () => {
     if (!routine?._id) return;
@@ -556,9 +583,13 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const incompleteCount = entries.filter(e => e.status === 'incomplete').length;
   const targetEntries = routine?.targetEntries || entries.length || 1;
   const progress = Math.round((completedCount / targetEntries) * 100);
-  const completionRate = entries.length > 0 ? Math.round((completedCount / entries.length) * 100) : 0;
   const isExpired = routine?.isExpired;
   const maxDailyEntries = routine?.maxDailyEntries || 1;
+  // Account for today's missed entries (auto-incomplete only runs for yesterday)
+  const todayMissed = isExpired ? 0 : Math.max(0, maxDailyEntries - (routine?.todayCompleteCount || 0));
+  const totalMissed = incompleteCount + todayMissed;
+  const effectiveTotal = completedCount + incompleteCount + todayMissed;
+  const completionRate = effectiveTotal > 0 ? Math.round((completedCount / effectiveTotal) * 100) : 0;
 
   // Streak: consecutive complete entries from most recent
   let currentStreak = 0;
@@ -646,7 +677,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Best</div>
           </div>
           <div style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--danger)' }}>{incompleteCount}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--danger)' }}>{totalMissed}</div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Missed</div>
           </div>
           <div style={{ flex: 1, textAlign: 'center' }}>
@@ -672,6 +703,9 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
         )}
         <button className="btn-outline" style={{ width: 'auto', padding: '12px 14px' }}
           onClick={() => {
+            editReadyRef.current = false;
+            skipEditAutoCalcRef.current = false;
+            skipEditDailyCalcRef.current = false;
             setEditing(true);
             setEditName(routine?.name || '');
             setEditDueDate(routine?.dueDate ? routine.dueDate.split('T')[0] : '');
@@ -681,6 +715,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
               type: r.type, time: r.time, days: [...(r.days || [])],
               dates: [...(r.dates || [])], enabled: r.enabled ?? true,
             })) || []);
+            requestAnimationFrame(() => { editReadyRef.current = true; });
           }}>
           <IoCreate size={16} />
         </button>
@@ -708,12 +743,24 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
           <div className="form-group">
             <label>Target Entries</label>
             <input type="number" value={editTargetEntries} min="1"
-              onChange={(e) => setEditTargetEntries(e.target.value)} />
+              onChange={(e) => { setEditTargetEntries(e.target.value); skipEditAutoCalcRef.current = true; }} />
+            {editAutoCalc > 0 && (
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                Calculated from reminders: <strong style={{ color: 'var(--primary)' }}>{editAutoCalc}</strong> entries
+                {String(editTargetEntries) !== String(editAutoCalc) && <span style={{ color: 'var(--warning)' }}> (modified)</span>}
+              </p>
+            )}
           </div>
           <div className="form-group">
             <label>Max Daily Entries</label>
             <input type="number" value={editMaxDailyEntries} min="1"
-              onChange={(e) => setEditMaxDailyEntries(e.target.value)} />
+              onChange={(e) => { setEditMaxDailyEntries(e.target.value); skipEditDailyCalcRef.current = true; }} />
+            {Number(editTargetEntries) > 0 && editDueDate && (
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                Calculated: <strong style={{ color: 'var(--primary)' }}>{editAutoDaily}</strong>/day to meet target
+                {String(editMaxDailyEntries) !== String(editAutoDaily) && <span style={{ color: 'var(--warning)' }}> (modified)</span>}
+              </p>
+            )}
           </div>
           <ReminderEditor reminders={editReminders} setReminders={setEditReminders} />
           <div style={{ display: 'flex', gap: 8 }}>
@@ -725,43 +772,67 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 
       {loading ? <Spinner /> : entries.length === 0 ? (
         <EmptyState title="No entries yet" subtitle="Log your first entry" />
-      ) : (
-        <div style={{ display: 'grid', gap: 8 }}>
-          {entries.map((entry) => (
-            <div key={entry._id} style={{
-              padding: '10px 0', borderBottom: '1px solid var(--border)',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-            }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  {entry.status === 'complete'
-                    ? <IoCheckmarkCircle size={16} color="var(--success)" />
-                    : <IoCloseCircle size={16} color="var(--danger)" />}
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>{entry.status}</span>
-                  {entry.manualDate && <span className="badge badge-warning">Manual</span>}
+      ) : (() => {
+        const todayStrPKT = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
+        const grouped = {};
+        for (const entry of entries) {
+          const dateKey = new Date(entry.date).toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
+          if (!grouped[dateKey]) grouped[dateKey] = [];
+          grouped[dateKey].push(entry);
+        }
+        const sortedKeys = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+        return (
+          <div style={{ display: 'grid', gap: 4 }}>
+            {sortedKeys.map(dateKey => (
+              <div key={dateKey}>
+                <div style={{
+                  fontSize: 12, fontWeight: 600, color: dateKey === todayStrPKT ? 'var(--primary)' : 'var(--text-secondary)',
+                  padding: '8px 0 4px', borderBottom: '2px solid var(--border)', marginBottom: 4,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}>
+                  <span>{dateKey === todayStrPKT ? 'Today' : formatDate(dateKey)}</span>
+                  <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>
+                    {grouped[dateKey].length} {grouped[dateKey].length === 1 ? 'entry' : 'entries'}
+                  </span>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatDateTime(entry.date)}</div>
-                {entry.fieldValues?.length > 0 && (
-                  <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-secondary)' }}>
-                    {entry.fieldValues.map((fv, i) => (
-                      <div key={i}>{fv.label}: <strong>{
-                        Array.isArray(fv.value) ? fv.value.join(', ')
-                        : typeof fv.value === 'number' && fv.value >= 1 && fv.value <= 5
-                          ? '★'.repeat(fv.value) + '☆'.repeat(5 - fv.value)
-                          : String(fv.value)
-                      }</strong></div>
-                    ))}
+                {grouped[dateKey].map((entry) => (
+                  <div key={entry._id} style={{
+                    padding: '8px 0 8px 12px', borderBottom: '1px solid var(--border)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                  }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        {entry.status === 'complete'
+                          ? <IoCheckmarkCircle size={16} color="var(--success)" />
+                          : <IoCloseCircle size={16} color="var(--danger)" />}
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>{entry.status}</span>
+                        {entry.manualDate && <span className="badge badge-warning">Manual</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatDateTime(entry.date)}</div>
+                      {entry.fieldValues?.length > 0 && (
+                        <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-secondary)' }}>
+                          {entry.fieldValues.map((fv, i) => (
+                            <div key={i}>{fv.label}: <strong>{
+                              Array.isArray(fv.value) ? fv.value.join(', ')
+                              : typeof fv.value === 'number' && fv.value >= 1 && fv.value <= 5
+                                ? '★'.repeat(fv.value) + '☆'.repeat(5 - fv.value)
+                                : String(fv.value)
+                            }</strong></div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button className="btn-ghost" style={{ color: 'var(--danger)', padding: 4 }}
+                      onClick={() => setConfirmDeleteEntry(entry)}>
+                      <IoTrash size={14} />
+                    </button>
                   </div>
-                )}
+                ))}
               </div>
-              <button className="btn-ghost" style={{ color: 'var(--danger)', padding: 4 }}
-                onClick={() => setConfirmDeleteEntry(entry)}>
-                <IoTrash size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        );
+      })()}
 
       {logModal && (
         <LogEntryModal open={logModal} routine={routine}
