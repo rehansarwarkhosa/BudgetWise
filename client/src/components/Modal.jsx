@@ -10,7 +10,10 @@ export default function Modal({ open, onClose, title, children }) {
   if (!open) return null;
 
   return (
-    <div onClick={onClose} style={{
+    <div onClick={onClose}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
+      style={{
       position: 'fixed', inset: 0, background: 'var(--modal-backdrop)',
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
       zIndex: 100, padding: 0,

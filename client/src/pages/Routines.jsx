@@ -704,9 +704,9 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 
   return (
     <Modal open={open} onClose={handleClose} title={routine?.name}>
+      <div onTouchStart={detailSwipe.onTouchStart} onTouchEnd={detailSwipe.onTouchEnd}>
       {/* Tab switcher */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--border)' }}
-        onTouchStart={detailSwipe.onTouchStart} onTouchEnd={detailSwipe.onTouchEnd}>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--border)' }}>
         {[{ key: 'info', label: 'Info' }, { key: 'notes', label: `Notes${notes.length ? ` (${notes.length})` : ''}` }].map(t => (
           <button key={t.key} onClick={() => setDetailTab(t.key)}
             style={{
@@ -1057,6 +1057,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
         onConfirm={handleDeleteEntry}
         title="Delete entry?"
         message="Are you sure you want to delete this entry?" />
+      </div>
     </Modal>
   );
 }

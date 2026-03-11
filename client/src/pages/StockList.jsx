@@ -111,7 +111,10 @@ export default function StockList({ categoryNames, categoryColorMap }) {
             const sc = STATUS_CONFIG[item.status] || STATUS_CONFIG.in_stock;
             const catColor = categoryColorMap?.[item.category] || '#6C63FF';
             return (
-              <div key={item._id} className="card" style={{ cursor: 'pointer', padding: '12px 14px' }}
+              <div key={item._id} className="card" style={{
+                cursor: 'pointer', padding: '12px 14px',
+                borderLeft: `3px solid ${catColor}`,
+              }}
                 onClick={() => setDetailItem(item)}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}>
@@ -391,9 +394,9 @@ function StockDetailModal({ open, item, onClose, onDone, categoryNames }) {
 
   return (
     <Modal open={open} onClose={handleClose} title={current?.name}>
+      <div onTouchStart={detailSwipe.onTouchStart} onTouchEnd={detailSwipe.onTouchEnd}>
       {/* Tab switcher */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--border)' }}
-        onTouchStart={detailSwipe.onTouchStart} onTouchEnd={detailSwipe.onTouchEnd}>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--border)' }}>
         {[
           { key: 'info', label: 'Info' },
           { key: 'notes', label: `Notes${notes.length ? ` (${notes.length})` : ''}` },
@@ -665,6 +668,7 @@ function StockDetailModal({ open, item, onClose, onDone, categoryNames }) {
         onConfirm={handleDelete}
         title="Delete stock item?"
         message={`Delete "${current?.name}" and all its history? This cannot be undone.`} />
+      </div>
     </Modal>
   );
 }
