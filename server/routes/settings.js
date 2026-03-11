@@ -21,6 +21,9 @@ import WorkOrder from '../models/WorkOrder.js';
 import WorkOrderNote from '../models/WorkOrderNote.js';
 import PriceItem from '../models/PriceItem.js';
 import PriceEntry from '../models/PriceEntry.js';
+import RoutineNote from '../models/RoutineNote.js';
+import StockItem from '../models/StockItem.js';
+import StockNote from '../models/StockNote.js';
 import { success, error } from '../utils/response.js';
 import { getCurrentPeriod } from '../utils/monthEnd.js';
 
@@ -45,7 +48,7 @@ router.get('/', async (req, res, next) => {
 // Update settings
 router.put('/', async (req, res, next) => {
   try {
-    const { mode, negativeLimit, currentPeriod, notificationEmail, emailNotificationsEnabled, theme, trailBoldText, trailHighlights, kanbanDueDateColors, menuSwipeEnabled } = req.body;
+    const { mode, negativeLimit, currentPeriod, notificationEmail, emailNotificationsEnabled, theme, trailBoldText, trailHighlights, routineHighlights, kanbanDueDateColors, menuSwipeEnabled } = req.body;
     let settings = await Settings.findOne();
     if (!settings) {
       const period = getCurrentPeriod();
@@ -66,6 +69,7 @@ router.put('/', async (req, res, next) => {
     if (trailBoldText !== undefined && trailBoldText !== settings.trailBoldText) { changes.push(`trailBoldText: ${settings.trailBoldText} -> ${trailBoldText}`); settings.trailBoldText = trailBoldText; }
     else if (trailBoldText !== undefined) settings.trailBoldText = trailBoldText;
     if (trailHighlights !== undefined) { settings.trailHighlights = trailHighlights; changes.push(`trailHighlights updated (${trailHighlights.length} rules)`); }
+    if (routineHighlights !== undefined) { settings.routineHighlights = routineHighlights; changes.push(`routineHighlights updated (${routineHighlights.length} rules)`); }
     if (kanbanDueDateColors !== undefined) { settings.kanbanDueDateColors = kanbanDueDateColors; changes.push('kanbanDueDateColors updated'); }
     if (menuSwipeEnabled !== undefined && menuSwipeEnabled !== settings.menuSwipeEnabled) { changes.push(`menuSwipeEnabled: ${settings.menuSwipeEnabled} -> ${menuSwipeEnabled}`); settings.menuSwipeEnabled = menuSwipeEnabled; }
     else if (menuSwipeEnabled !== undefined) settings.menuSwipeEnabled = menuSwipeEnabled;
@@ -129,7 +133,7 @@ router.post('/test-email', async (req, res, next) => {
 // Export all data
 router.get('/export', async (req, res, next) => {
   try {
-    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries] = await Promise.all([
+    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes] = await Promise.all([
       Settings.findOne(),
       Income.find(),
       Budget.find(),
@@ -151,11 +155,14 @@ router.get('/export', async (req, res, next) => {
       WorkOrderNote.find(),
       PriceItem.find(),
       PriceEntry.find(),
+      RoutineNote.find(),
+      StockItem.find(),
+      StockNote.find(),
     ]);
     success(res, {
       exportDate: new Date().toISOString(),
       version: 1,
-      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries,
+      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes,
     });
   } catch (err) { next(err); }
 });
@@ -188,6 +195,9 @@ router.post('/import', async (req, res, next) => {
       workOrderNotes: await WorkOrderNote.find().lean(),
       priceItems: await PriceItem.find().lean(),
       priceEntries: await PriceEntry.find().lean(),
+      routineNotes: await RoutineNote.find().lean(),
+      stockItems: await StockItem.find().lean(),
+      stockNotes: await StockNote.find().lean(),
       settings: await Settings.findOne().lean(),
     };
 
@@ -200,6 +210,7 @@ router.post('/import', async (req, res, next) => {
         Trail.deleteMany({}), TrailNote.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
         BudgetTemplate.deleteMany({}), WorkOrder.deleteMany({}), WorkOrderNote.deleteMany({}),
         PriceItem.deleteMany({}), PriceEntry.deleteMany({}),
+        RoutineNote.deleteMany({}), StockItem.deleteMany({}), StockNote.deleteMany({}),
       ]);
 
       // Restore from import file — sequential to catch failures early
@@ -223,6 +234,9 @@ router.post('/import', async (req, res, next) => {
       if (data.workOrderNotes?.length) await WorkOrderNote.insertMany(data.workOrderNotes);
       if (data.priceItems?.length) await PriceItem.insertMany(data.priceItems);
       if (data.priceEntries?.length) await PriceEntry.insertMany(data.priceEntries);
+      if (data.routineNotes?.length) await RoutineNote.insertMany(data.routineNotes);
+      if (data.stockItems?.length) await StockItem.insertMany(data.stockItems);
+      if (data.stockNotes?.length) await StockNote.insertMany(data.stockNotes);
 
       if (data.settings) {
         await Settings.findOneAndUpdate({}, {
@@ -234,6 +248,7 @@ router.post('/import', async (req, res, next) => {
           theme: data.settings.theme || 'dark',
           trailBoldText: data.settings.trailBoldText ?? false,
           trailHighlights: data.settings.trailHighlights || [],
+          routineHighlights: data.settings.routineHighlights || [],
           kanbanDueDateColors: data.settings.kanbanDueDateColors || undefined,
           menuSwipeEnabled: data.settings.menuSwipeEnabled ?? true,
         }, { upsert: true });
@@ -249,6 +264,7 @@ router.post('/import', async (req, res, next) => {
         Trail.deleteMany({}), TrailNote.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
         BudgetTemplate.deleteMany({}), WorkOrder.deleteMany({}), WorkOrderNote.deleteMany({}),
         PriceItem.deleteMany({}), PriceEntry.deleteMany({}),
+        RoutineNote.deleteMany({}), StockItem.deleteMany({}), StockNote.deleteMany({}),
       ]);
       if (snapshot.incomes.length) await Income.insertMany(snapshot.incomes);
       if (snapshot.budgets.length) await Budget.insertMany(snapshot.budgets);
@@ -270,6 +286,9 @@ router.post('/import', async (req, res, next) => {
       if (snapshot.workOrderNotes.length) await WorkOrderNote.insertMany(snapshot.workOrderNotes);
       if (snapshot.priceItems.length) await PriceItem.insertMany(snapshot.priceItems);
       if (snapshot.priceEntries.length) await PriceEntry.insertMany(snapshot.priceEntries);
+      if (snapshot.routineNotes.length) await RoutineNote.insertMany(snapshot.routineNotes);
+      if (snapshot.stockItems.length) await StockItem.insertMany(snapshot.stockItems);
+      if (snapshot.stockNotes.length) await StockNote.insertMany(snapshot.stockNotes);
       if (snapshot.settings) {
         await Settings.findOneAndUpdate({}, snapshot.settings, { upsert: true });
       }
@@ -302,6 +321,9 @@ router.delete('/all-data', async (req, res, next) => {
       WorkOrderNote.deleteMany({}),
       PriceItem.deleteMany({}),
       PriceEntry.deleteMany({}),
+      RoutineNote.deleteMany({}),
+      StockItem.deleteMany({}),
+      StockNote.deleteMany({}),
     ]);
     const period = getCurrentPeriod();
     const settings = await Settings.findOneAndUpdate(
@@ -309,7 +331,7 @@ router.delete('/all-data', async (req, res, next) => {
       {
         mode: 'monthly', negativeLimit: 0, currentPeriod: period,
         notificationEmail: '', emailNotificationsEnabled: true,
-        theme: 'dark', trailBoldText: false, trailHighlights: [],
+        theme: 'dark', trailBoldText: false, trailHighlights: [], routineHighlights: [],
         kanbanDueDateColors: { rules: [{ days: 3, color: '#f59e0b', label: 'Warning' }, { days: 1, color: '#ef4444', label: 'Danger' }], overdueColor: '#dc2626' },
         menuSwipeEnabled: true,
       },

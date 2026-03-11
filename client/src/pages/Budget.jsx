@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoCreate, IoChevronUp, IoChevronDown, IoDocumentText, IoPlayCircle, IoBookmark, IoPricetag } from 'react-icons/io5';
+import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoCreate, IoChevronUp, IoChevronDown, IoDocumentText, IoPlayCircle, IoBookmark, IoPricetag, IoCube } from 'react-icons/io5';
 import PriceList from './PriceList';
+import StockList from './StockList';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
@@ -30,7 +31,7 @@ export default function Budget() {
 
   const [activeView, setActiveView] = useState('budgets'); // 'budgets' or 'templates'
   const onOverflow = useMenuSwipe();
-  const mainSwipe = useSwipeTabs(['budgets', 'templates', 'prices'], activeView, setActiveView, onOverflow);
+  const mainSwipe = useSwipeTabs(['budgets', 'templates', 'prices', 'stock'], activeView, setActiveView, onOverflow);
   const [incomeModal, setIncomeModal] = useState(false);
   const [budgetModal, setBudgetModal] = useState(false);
   const [expenseModal, setExpenseModal] = useState(null);
@@ -110,10 +111,22 @@ export default function Budget() {
           }}>
           <IoPricetag size={16} /> Prices
         </button>
+        <button onClick={() => setActiveView('stock')}
+          style={{
+            flex: 1, padding: '10px 0', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+            background: 'none', border: 'none', color: activeView === 'stock' ? 'var(--primary)' : 'var(--text-muted)',
+            borderBottom: activeView === 'stock' ? '2px solid var(--primary)' : '2px solid transparent',
+            marginBottom: -2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}>
+          <IoCube size={16} /> Stock
+        </button>
       </div>
 
       <div style={{ display: activeView === 'prices' ? 'block' : 'none' }}>
         <PriceList categoryNames={categoryNames} categoryColorMap={categoryColorMap} />
+      </div>
+      <div style={{ display: activeView === 'stock' ? 'block' : 'none' }}>
+        <StockList categoryNames={categoryNames} categoryColorMap={categoryColorMap} />
       </div>
       <div style={{ display: activeView === 'budgets' ? 'block' : 'none' }}>
           {/* Income Summary Bar */}

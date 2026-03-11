@@ -12,11 +12,31 @@ import { formatDateTime, formatDate } from '../utils/format';
 import {
   getRoutines, createRoutine, deleteRoutine, updateRoutine,
   getRoutineEntries, logRoutineEntry, deleteRoutineEntry, batchLogRoutineEntries,
+  getRoutineNotes, addRoutineNote, updateRoutineNote, deleteRoutineNote,
 } from '../api';
+import { useSettings } from '../context/SettingsContext';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const RICH_COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
+
+function getRoutineHighlight(text, highlights) {
+  if (!highlights?.length) return null;
+  const lower = text.toLowerCase();
+  for (const h of highlights) {
+    if (lower.includes(h.keyword.toLowerCase())) return h.color;
+  }
+  return null;
+}
+
+function stripHtml(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html || '';
+  return tmp.textContent || tmp.innerText || '';
+}
 
 export default function Routines() {
+  const { settings } = useSettings();
+  const routineHighlights = settings?.routineHighlights || [];
   const { data: routines, loading, refetch } = useFetch(getRoutines);
   const [createModal, setCreateModal] = useState(false);
   const [detailRoutine, setDetailRoutine] = useState(null);
@@ -72,8 +92,13 @@ export default function Routines() {
         />
       ) : (
         <div style={{ display: 'grid', gap: 10 }}>
-          {currentList.map((r) => (
-            <div key={r._id} className="card" style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+          {currentList.map((r) => {
+            const hlColor = getRoutineHighlight(r.name, routineHighlights);
+            return (
+            <div key={r._id} className="card" style={{
+              cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              ...(hlColor ? { background: hlColor + '20', borderLeft: `3px solid ${hlColor}` } : {}),
+            }}
               onClick={() => setDetailRoutine(r)}>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -113,7 +138,8 @@ export default function Routines() {
               </div>
               <IoChevronForward size={18} color="var(--text-muted)" />
             </div>
-          ))}
+          );
+          })}
         </div>
       )}
 
@@ -511,6 +537,16 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const skipEditAutoCalcRef = useRef(false);
   const skipEditDailyCalcRef = useRef(false);
 
+  // Notes state
+  const [detailTab, setDetailTab] = useState('info');
+  const [notes, setNotes] = useState([]);
+  const [notesFetched, setNotesFetched] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const noteEditorRef = useRef(null);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [customColor, setCustomColor] = useState('#6C63FF');
+  const detailSwipe = useSwipeTabs(['info', 'notes'], detailTab, setDetailTab);
+
   const editAutoCalc = calcEntriesFromReminders(editDueDate, editReminders);
   const editAutoDaily = calcMaxDailyEntries(Number(editTargetEntries) || 0, editDueDate, editReminders);
   const editRemindersKey = JSON.stringify(editReminders.map(r => ({ type: r.type, time: r.time, days: r.days, dates: r.dates, enabled: r.enabled })));
@@ -544,8 +580,62 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
     fetchEntries();
   }
 
+  const fetchNotes = async () => {
+    if (!routine?._id) return;
+    try {
+      const res = await getRoutineNotes(routine._id);
+      setNotes(res.data);
+      setNotesFetched(true);
+    } catch (err) { toast.error(err.message); }
+  };
+
+  useEffect(() => {
+    if (open && routine?._id && detailTab === 'notes' && !notesFetched) {
+      fetchNotes();
+    }
+  }, [detailTab, open, routine?._id]);
+
+  const handleAddNote = async () => {
+    const content = noteEditorRef.current?.innerHTML;
+    if (!content?.trim() || !stripHtml(content).trim()) return;
+    try {
+      if (editingNoteId) {
+        await updateRoutineNote(editingNoteId, { content });
+        setEditingNoteId(null);
+        toast.success('Note updated');
+      } else {
+        await addRoutineNote(routine._id, { content });
+        toast.success('Note added');
+      }
+      if (noteEditorRef.current) noteEditorRef.current.innerHTML = '';
+      const notesRes = await getRoutineNotes(routine._id);
+      setNotes(notesRes.data);
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleEditNote = (note) => {
+    setEditingNoteId(note._id);
+    if (noteEditorRef.current) noteEditorRef.current.innerHTML = note.content;
+    setDetailTab('notes');
+  };
+
+  const handleDeleteNote = async (noteId) => {
+    try {
+      await deleteRoutineNote(noteId);
+      setNotes(prev => prev.filter(n => n._id !== noteId));
+      toast.success('Note deleted');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const execCmd = (cmd, val) => {
+    document.execCommand(cmd, false, val);
+    noteEditorRef.current?.focus();
+  };
+
   const handleClose = () => {
     setEntries([]); setFetched(false); setEditing(false);
+    setNotes([]); setNotesFetched(false); setDetailTab('info');
+    setEditingNoteId(null); setShowColorPicker(false);
     onClose();
   };
 
@@ -614,6 +704,24 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 
   return (
     <Modal open={open} onClose={handleClose} title={routine?.name}>
+      {/* Tab switcher */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--border)' }}
+        onTouchStart={detailSwipe.onTouchStart} onTouchEnd={detailSwipe.onTouchEnd}>
+        {[{ key: 'info', label: 'Info' }, { key: 'notes', label: `Notes${notes.length ? ` (${notes.length})` : ''}` }].map(t => (
+          <button key={t.key} onClick={() => setDetailTab(t.key)}
+            style={{
+              flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              background: 'none', border: 'none',
+              color: detailTab === t.key ? 'var(--primary)' : 'var(--text-muted)',
+              borderBottom: detailTab === t.key ? '2px solid var(--primary)' : '2px solid transparent',
+              marginBottom: -2,
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {detailTab === 'info' && (<>
       {/* Expired badge */}
       {isExpired && (
         <div style={{ marginBottom: 12 }}>
@@ -837,6 +945,98 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
           </div>
         );
       })()}
+      </>)}
+
+      {detailTab === 'notes' && (
+        <div>
+          {/* Rich Text Toolbar */}
+          <div style={{
+            display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6,
+            padding: '4px 0', borderBottom: '1px solid var(--border)',
+          }}>
+            <button type="button" className="btn-ghost" onClick={() => execCmd('bold')}
+              style={{ padding: '4px 8px', fontSize: 12, fontWeight: 700 }}>B</button>
+            <button type="button" className="btn-ghost" onClick={() => execCmd('italic')}
+              style={{ padding: '4px 8px', fontSize: 12, fontStyle: 'italic' }}>I</button>
+            <button type="button" className="btn-ghost" onClick={() => execCmd('underline')}
+              style={{ padding: '4px 8px', fontSize: 12, textDecoration: 'underline' }}>U</button>
+            <div style={{ position: 'relative' }}>
+              <button type="button" className="btn-ghost" onClick={() => setShowColorPicker(!showColorPicker)}
+                style={{ padding: '4px 8px', fontSize: 12 }}>
+                A<span style={{ display: 'inline-block', width: 10, height: 3, background: customColor, marginLeft: 2, verticalAlign: 'bottom' }} />
+              </button>
+              {showColorPicker && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, zIndex: 20,
+                  background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)', padding: 8,
+                  display: 'flex', gap: 4, flexWrap: 'wrap', width: 160,
+                }}>
+                  {RICH_COLORS.map(c => (
+                    <button key={c} type="button" onClick={() => { execCmd('foreColor', c); setCustomColor(c); setShowColorPicker(false); }}
+                      style={{ width: 24, height: 24, borderRadius: 4, background: c, border: '2px solid var(--border)', cursor: 'pointer' }} />
+                  ))}
+                  <input type="color" value={customColor}
+                    onChange={e => { execCmd('foreColor', e.target.value); setCustomColor(e.target.value); setShowColorPicker(false); }}
+                    style={{ width: 24, height: 24, padding: 0, border: 'none', cursor: 'pointer' }} />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Editor */}
+          <div ref={noteEditorRef} contentEditable suppressContentEditableWarning
+            style={{
+              minHeight: 80, padding: 10, background: 'var(--bg-input)',
+              borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+              fontSize: 13, lineHeight: 1.5, marginBottom: 8, color: 'var(--text)',
+              outline: 'none',
+            }}
+            data-placeholder="Add a note..."
+          />
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            {editingNoteId && (
+              <button className="btn-ghost" onClick={() => { setEditingNoteId(null); if (noteEditorRef.current) noteEditorRef.current.innerHTML = ''; }}
+                style={{ flex: 1, fontSize: 12 }}>Cancel</button>
+            )}
+            <button className="btn-primary" onClick={handleAddNote}
+              style={{ flex: 1, fontSize: 12, width: 'auto' }}>
+              {editingNoteId ? 'Update Note' : 'Add Note'}
+            </button>
+          </div>
+
+          {/* Notes List */}
+          {notes.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)', fontSize: 12 }}>No notes yet</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {notes.map(note => (
+                <div key={note._id} className="card" style={{ padding: 10 }}>
+                  <div dangerouslySetInnerHTML={{ __html: note.content }}
+                    style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 6, wordBreak: 'break-word' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                      {formatDateTime(note.createdAt)}
+                      {note.updatedAt !== note.createdAt && (
+                        <span> · edited {formatDateTime(note.updatedAt)}</span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="btn-ghost" style={{ padding: 3 }} onClick={() => handleEditNote(note)}>
+                        <IoCreate size={13} color="var(--text-muted)" />
+                      </button>
+                      <button className="btn-ghost" style={{ padding: 3 }} onClick={() => handleDeleteNote(note._id)}>
+                        <IoTrash size={13} color="var(--danger)" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {logModal && (
         <LogEntryModal open={logModal} routine={routine}

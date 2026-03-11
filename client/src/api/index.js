@@ -55,6 +55,10 @@ export const deleteRoutineEntry = (entryId) => api.delete(`/routines/entries/${e
 export const batchLogRoutineEntries = (id, data) => api.post(`/routines/${id}/entries/batch`, data);
 export const checkReminders = () => api.get('/routines/check-reminders');
 export const autoIncompleteRoutines = () => api.post('/routines/auto-incomplete');
+export const getRoutineNotes = (id) => api.get(`/routines/${id}/notes`);
+export const addRoutineNote = (id, data) => api.post(`/routines/${id}/notes`, data);
+export const updateRoutineNote = (noteId, data) => api.put(`/routines/notes/${noteId}`, data);
+export const deleteRoutineNote = (noteId) => api.delete(`/routines/notes/${noteId}`);
 
 // Savings
 export const getSavings = () => api.get('/savings');
@@ -121,6 +125,19 @@ export const getPriceEntries = (id) => api.get(`/price-items/${id}/prices`);
 export const addPriceEntry = (id, data) => api.post(`/price-items/${id}/prices`, data);
 export const updatePriceEntry = (priceId, data) => api.put(`/price-items/prices/${priceId}`, data);
 export const deletePriceEntry = (priceId) => api.delete(`/price-items/prices/${priceId}`);
+
+// Stock
+export const getStockItems = (params) => api.get('/stock', { params });
+export const getStockItem = (id) => api.get(`/stock/${id}`);
+export const createStockItem = (data) => api.post('/stock', data);
+export const updateStockItem = (id, data) => api.put(`/stock/${id}`, data);
+export const deleteStockItem = (id) => api.delete(`/stock/${id}`);
+export const consumeStock = (id, data) => api.post(`/stock/${id}/consume`, data);
+export const refillStock = (id, data) => api.post(`/stock/${id}/refill`, data);
+export const getStockNotes = (id) => api.get(`/stock/${id}/notes`);
+export const addStockNote = (id, data) => api.post(`/stock/${id}/notes`, data);
+export const updateStockNote = (noteId, data) => api.put(`/stock/notes/${noteId}`, data);
+export const deleteStockNote = (noteId) => api.delete(`/stock/notes/${noteId}`);
 
 // Audit Logs
 export const getAuditLogs = (page = 1) => api.get(`/audit-logs?page=${page}&limit=50`);

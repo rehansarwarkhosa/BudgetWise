@@ -15,6 +15,10 @@ const settingsSchema = new mongoose.Schema({
     keyword: { type: String, required: true },
     color: { type: String, required: true },
   }],
+  routineHighlights: [{
+    keyword: { type: String, required: true },
+    color: { type: String, required: true },
+  }],
   kanbanDueDateColors: {
     rules: [{
       days: { type: Number, required: true },

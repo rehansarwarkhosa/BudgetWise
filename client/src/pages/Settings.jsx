@@ -21,7 +21,7 @@ const PRESET_COLORS = [
   { name: 'Pink', hex: '#ec4899' },
 ];
 
-function HighlightEditor({ highlights, newKeyword, setNewKeyword, newColor, setNewColor, onAdd, onRemove, onUpdateColor }) {
+function HighlightEditor({ highlights, newKeyword, setNewKeyword, newColor, setNewColor, onAdd, onRemove, onUpdateColor, description }) {
   const [hexInput, setHexInput] = useState(newColor);
   const colorPickerRef = useRef(null);
   const editPickerRef = useRef(null);
@@ -58,7 +58,7 @@ function HighlightEditor({ highlights, newKeyword, setNewKeyword, newColor, setN
         Keyword Color Highlights
       </label>
       <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
-        If a trail entry contains a keyword, its background changes to the chosen color.
+        {description || 'If an entry contains a keyword, its background changes to the chosen color.'}
       </p>
 
       {/* Keyword input */}
@@ -335,6 +335,9 @@ export default function Settings() {
   const [trailHighlights, setTrailHighlights] = useState([]);
   const [newKeyword, setNewKeyword] = useState('');
   const [newColor, setNewColor] = useState('#ef4444');
+  const [routineHighlights, setRoutineHighlights] = useState([]);
+  const [newRoutineKeyword, setNewRoutineKeyword] = useState('');
+  const [newRoutineColor, setNewRoutineColor] = useState('#ef4444');
   const [kanbanColorRules, setKanbanColorRules] = useState([
     { days: 3, color: '#f59e0b', label: 'Warning' },
     { days: 1, color: '#ef4444', label: 'Danger' },
@@ -351,6 +354,7 @@ export default function Settings() {
       setEmailNotificationsEnabled(settings.emailNotificationsEnabled ?? true);
       setTrailBoldText(settings.trailBoldText || false);
       setTrailHighlights(settings.trailHighlights || []);
+      setRoutineHighlights(settings.routineHighlights || []);
       const kdc = settings.kanbanDueDateColors || {};
       if (kdc.rules?.length) {
         setKanbanColorRules(kdc.rules.map(r => ({ days: r.days, color: r.color, label: r.label || '' })));
@@ -470,6 +474,42 @@ export default function Settings() {
     setTrailHighlights(updated);
     try {
       await updateSettings({ trailHighlights: updated });
+      await refetchSettings();
+      setInitialized(false);
+      toast.success('Color updated');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleAddRoutineHighlight = async (e) => {
+    e.preventDefault();
+    if (!newRoutineKeyword.trim()) return;
+    const updated = [...routineHighlights, { keyword: newRoutineKeyword.trim().toLowerCase(), color: newRoutineColor }];
+    setRoutineHighlights(updated);
+    setNewRoutineKeyword('');
+    try {
+      await updateSettings({ routineHighlights: updated });
+      await refetchSettings();
+      setInitialized(false);
+      toast.success('Highlight rule added');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleRemoveRoutineHighlight = async (index) => {
+    const updated = routineHighlights.filter((_, i) => i !== index);
+    setRoutineHighlights(updated);
+    try {
+      await updateSettings({ routineHighlights: updated });
+      await refetchSettings();
+      setInitialized(false);
+      toast.success('Highlight rule removed');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleUpdateRoutineHighlightColor = async (index, color) => {
+    const updated = routineHighlights.map((h, i) => i === index ? { ...h, color } : h);
+    setRoutineHighlights(updated);
+    try {
+      await updateSettings({ routineHighlights: updated });
       await refetchSettings();
       setInitialized(false);
       toast.success('Color updated');
@@ -738,6 +778,24 @@ export default function Settings() {
           onAdd={handleAddHighlight}
           onRemove={handleRemoveHighlight}
           onUpdateColor={handleUpdateHighlightColor}
+        />
+      </div>
+
+      {/* Routine Highlights */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Routine Formatting</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Highlight routine cards by keyword with custom colors.
+        </p>
+        <HighlightEditor
+          highlights={routineHighlights}
+          newKeyword={newRoutineKeyword}
+          setNewKeyword={setNewRoutineKeyword}
+          newColor={newRoutineColor}
+          setNewColor={setNewRoutineColor}
+          onAdd={handleAddRoutineHighlight}
+          onRemove={handleRemoveRoutineHighlight}
+          onUpdateColor={handleUpdateRoutineHighlightColor}
         />
       </div>
 

@@ -6,6 +6,7 @@ import WorkOrder from '../models/WorkOrder.js';
 import Trail from '../models/Trail.js';
 import Settings from '../models/Settings.js';
 import AuditLog from '../models/AuditLog.js';
+import RoutineNote from '../models/RoutineNote.js';
 import { success, error } from '../utils/response.js';
 
 const router = Router();
@@ -636,6 +637,42 @@ router.delete('/entries/:entryId', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// --- Routine Notes ---
+
+router.get('/:id/notes', async (req, res, next) => {
+  try {
+    const notes = await RoutineNote.find({ routineId: req.params.id }).sort({ createdAt: -1 });
+    success(res, notes);
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/notes', async (req, res, next) => {
+  try {
+    const { content } = req.body;
+    if (!content?.trim()) return error(res, 'Note content is required');
+    const note = await RoutineNote.create({ routineId: req.params.id, content });
+    success(res, note, 201);
+  } catch (err) { next(err); }
+});
+
+router.put('/notes/:noteId', async (req, res, next) => {
+  try {
+    const note = await RoutineNote.findById(req.params.noteId);
+    if (!note) return error(res, 'Note not found', 404);
+    if (req.body.content !== undefined) note.content = req.body.content;
+    await note.save();
+    success(res, note);
+  } catch (err) { next(err); }
+});
+
+router.delete('/notes/:noteId', async (req, res, next) => {
+  try {
+    const note = await RoutineNote.findByIdAndDelete(req.params.noteId);
+    if (!note) return error(res, 'Note not found', 404);
+    success(res, { message: 'Note deleted' });
+  } catch (err) { next(err); }
+});
+
 // --- Single routine CRUD (after static routes) ---
 
 router.get('/:id', async (req, res, next) => {
@@ -693,6 +730,7 @@ router.delete('/:id', async (req, res, next) => {
     const routine = await Routine.findByIdAndDelete(req.params.id);
     if (!routine) return error(res, 'Routine not found', 404);
     await RoutineEntry.deleteMany({ routineId: routine._id });
+    await RoutineNote.deleteMany({ routineId: routine._id });
     await AuditLog.create({
       action: 'DELETE', entity: 'Routine', entityId: routine._id,
       details: `Deleted routine "${routine.name}" and all its entries`,
