@@ -114,6 +114,8 @@ export const addWorkOrderNote = (id, data) => api.post(`/workorders/${id}/notes`
 export const updateWorkOrderNote = (noteId, data) => api.put(`/workorders/notes/${noteId}`, data);
 export const deleteWorkOrderNote = (noteId) => api.delete(`/workorders/notes/${noteId}`);
 export const logWorkOrderExpense = (id) => api.post(`/workorders/${id}/log-expense`);
+export const bulkArchiveWorkOrders = () => api.post('/workorders/bulk-archive');
+export const getArchivedWorkOrders = () => api.get('/workorders', { params: { status: 'archived' } });
 export const checkWorkOrderReminders = () => api.get('/workorders/check-reminders');
 
 // Price Items

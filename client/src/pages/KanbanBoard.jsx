@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import {
   IoAdd, IoTrash, IoCopy, IoSearch, IoClose, IoChevronForward, IoChevronBack,
   IoWallet, IoFlag, IoAlarm, IoCreate, IoSave, IoFilter, IoCalendar,
+  IoArchive, IoArrowUndo, IoChevronDown, IoChevronUp,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -14,13 +15,13 @@ import api from '../api/axios.js';
 import {
   getWorkOrders, createWorkOrder, updateWorkOrder, moveWorkOrder, deleteWorkOrder,
   getWorkOrderNotes, addWorkOrderNote, updateWorkOrderNote, deleteWorkOrderNote,
-  logWorkOrderExpense, getBudgets,
+  logWorkOrderExpense, getBudgets, bulkArchiveWorkOrders, getArchivedWorkOrders,
 } from '../api';
 
 const PRIORITY_COLORS = { low: '#22C55E', medium: '#F59E0B', high: '#EF4444' };
-const STATUS_LABELS = { todo: 'Todo', doing: 'Doing', done: 'Done' };
+const STATUS_LABELS = { todo: 'Todo', doing: 'Doing', done: 'Done', archived: 'Archived' };
 const COLUMNS = ['todo', 'doing', 'done'];
-const COLUMN_COLORS = { todo: '#6C63FF', doing: '#F59E0B', done: '#22C55E' };
+const COLUMN_COLORS = { todo: '#6C63FF', doing: '#F59E0B', done: '#22C55E', archived: '#6B7280' };
 
 const RICH_COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
 
@@ -69,8 +70,17 @@ export default function KanbanBoard() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [dragId, setDragId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
+  const [archivedOrders, setArchivedOrders] = useState([]);
+  const [showArchived, setShowArchived] = useState(false);
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
+
+  const fetchArchived = useCallback(async () => {
+    try {
+      const res = await getArchivedWorkOrders();
+      setArchivedOrders(res.data);
+    } catch (err) { /* silent */ }
+  }, []);
 
   const fetchWorkOrders = useCallback(async (search, priority, budgetType) => {
     try {
@@ -84,7 +94,7 @@ export default function KanbanBoard() {
   }, []);
 
   useEffect(() => {
-    fetchWorkOrders('', '', '').finally(() => setLoading(false));
+    Promise.all([fetchWorkOrders('', '', ''), fetchArchived()]).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -95,7 +105,35 @@ export default function KanbanBoard() {
     return () => clearTimeout(searchTimeout.current);
   }, [searchQuery, filterPriority, filterBudgetType]);
 
-  const refresh = () => fetchWorkOrders(searchQuery, filterPriority, filterBudgetType);
+  const refresh = () => { fetchWorkOrders(searchQuery, filterPriority, filterBudgetType); fetchArchived(); };
+
+  const handleArchive = async (id) => {
+    try {
+      const res = await moveWorkOrder(id, 'archived');
+      setWorkOrders(prev => prev.filter(w => w._id !== id));
+      setArchivedOrders(prev => [res.data, ...prev]);
+      toast.success('Archived');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleUnarchive = async (id) => {
+    try {
+      const res = await moveWorkOrder(id, 'done');
+      setArchivedOrders(prev => prev.filter(w => w._id !== id));
+      setWorkOrders(prev => [res.data, ...prev]);
+      toast.success('Moved to Done');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleBulkArchive = async () => {
+    const doneCount = workOrders.filter(w => w.status === 'done').length;
+    if (doneCount === 0) return;
+    try {
+      await bulkArchiveWorkOrders();
+      toast.success(`Archived ${doneCount} item${doneCount > 1 ? 's' : ''}`);
+      refresh();
+    } catch (err) { toast.error(err.message); }
+  };
 
   const handleMove = async (id, newStatus) => {
     try {
@@ -109,6 +147,7 @@ export default function KanbanBoard() {
     try {
       await deleteWorkOrder(confirmDelete._id);
       setWorkOrders(prev => prev.filter(w => w._id !== confirmDelete._id));
+      setArchivedOrders(prev => prev.filter(w => w._id !== confirmDelete._id));
       toast.success('Deleted');
     } catch (err) { toast.error(err.message); }
   };
@@ -235,12 +274,20 @@ export default function KanbanBoard() {
               <span style={{ fontSize: 12, fontWeight: 700, color: COLUMN_COLORS[col], textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 {STATUS_LABELS[col]}
               </span>
-              <span style={{
-                fontSize: 10, fontWeight: 600, background: COLUMN_COLORS[col] + '25',
-                color: COLUMN_COLORS[col], padding: '2px 6px', borderRadius: 10,
-              }}>
-                {getColumnOrders(col).length}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                {col === 'done' && getColumnOrders('done').length > 0 && (
+                  <button className="btn-ghost" onClick={handleBulkArchive} title="Archive all done"
+                    style={{ padding: '2px 5px', fontSize: 9, display: 'flex', alignItems: 'center', gap: 2, color: '#6B7280' }}>
+                    <IoArchive size={11} />
+                  </button>
+                )}
+                <span style={{
+                  fontSize: 10, fontWeight: 600, background: COLUMN_COLORS[col] + '25',
+                  color: COLUMN_COLORS[col], padding: '2px 6px', borderRadius: 10,
+                }}>
+                  {getColumnOrders(col).length}
+                </span>
+              </div>
             </div>
 
             {/* Cards */}
@@ -339,6 +386,12 @@ export default function KanbanBoard() {
                           <IoChevronForward size={12} color="var(--text-muted)" />
                         </button>
                       )}
+                      {col === 'done' && (
+                        <button className="btn-ghost" style={{ padding: 2 }} title="Archive"
+                          onClick={() => handleArchive(wo._id)}>
+                          <IoArchive size={11} color="#6B7280" />
+                        </button>
+                      )}
                       <button className="btn-ghost" style={{ padding: 2 }} onClick={() => handleCopy(wo)}>
                         <IoCopy size={11} color="var(--text-muted)" />
                       </button>
@@ -354,6 +407,82 @@ export default function KanbanBoard() {
           </div>
         ))}
       </div>
+
+      {/* Archived Section */}
+      {archivedOrders.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <button onClick={() => setShowArchived(!showArchived)}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--text-secondary)',
+            }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <IoArchive size={14} color="#6B7280" />
+              <span style={{ fontSize: 13, fontWeight: 600 }}>Archived</span>
+              <span style={{
+                fontSize: 10, fontWeight: 600, background: '#6B728025',
+                color: '#6B7280', padding: '2px 6px', borderRadius: 10,
+              }}>
+                {archivedOrders.length}
+              </span>
+            </div>
+            {showArchived ? <IoChevronUp size={14} /> : <IoChevronDown size={14} />}
+          </button>
+
+          {showArchived && (
+            <div style={{
+              marginTop: 6, display: 'grid', gap: 6,
+              maxHeight: 400, overflowY: 'auto', padding: '2px 0',
+            }}>
+              {archivedOrders.map(wo => (
+                <div key={wo._id} onClick={() => setDetailId(wo._id)}
+                  style={{
+                    background: 'var(--bg-card)', borderRadius: 'var(--radius-sm)',
+                    padding: '10px 12px', cursor: 'pointer',
+                    border: '1px solid var(--border)',
+                    borderLeft: '3px solid #6B7280',
+                    opacity: 0.75,
+                  }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{
+                        fontSize: 12, fontWeight: 600, marginBottom: 4,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {wo.title}
+                      </p>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
+                          background: PRIORITY_COLORS[wo.priority] + '25',
+                          color: PRIORITY_COLORS[wo.priority],
+                          padding: '1px 5px', borderRadius: 4,
+                        }}>
+                          {wo.priority}
+                        </span>
+                        <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+                          {formatDateTime(wo.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 2 }} onClick={e => e.stopPropagation()}>
+                      <button className="btn-ghost" style={{ padding: 3 }} title="Unarchive"
+                        onClick={() => handleUnarchive(wo._id)}>
+                        <IoArrowUndo size={13} color="var(--primary)" />
+                      </button>
+                      <button className="btn-ghost" style={{ padding: 3 }}
+                        onClick={() => setConfirmDelete(wo)}>
+                        <IoTrash size={12} color="var(--danger)" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Create Modal */}
       {showCreate && (
@@ -642,7 +771,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   if (!wo) return null;
 
   const hasBudget = !!(wo.budgetId);
-  const isDone = wo.status === 'done';
+  const isDone = wo.status === 'done' || wo.status === 'archived';
   const showExpenseBtn = hasBudget && isDone && wo.budgetExpenseStatus !== 'completed';
 
   return (
@@ -761,7 +890,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
                 <div className="form-group">
                   <label>Status</label>
                   <select value={editStatus} onChange={e => setEditStatus(e.target.value)}>
-                    {COLUMNS.map(c => <option key={c} value={c}>{STATUS_LABELS[c]}</option>)}
+                    {[...COLUMNS, 'archived'].map(c => <option key={c} value={c}>{STATUS_LABELS[c]}</option>)}
                   </select>
                 </div>
                 <div className="form-group">

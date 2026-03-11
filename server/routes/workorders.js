@@ -75,11 +75,12 @@ const sendPushNotification = async (title, message, url) => {
 // Get all work orders (with search & filter)
 router.get('/', async (req, res, next) => {
   try {
-    const { search, priority, status, budgetType } = req.query;
+    const { search, priority, status, budgetType, includeArchived } = req.query;
     const filter = {};
     if (search) filter.title = { $regex: search, $options: 'i' };
     if (priority) filter.priority = priority;
     if (status) filter.status = status;
+    else if (includeArchived !== 'true') filter.status = { $ne: 'archived' };
     if (budgetType === 'budget') filter.budgetId = { $ne: null };
     if (budgetType === 'simple') filter.budgetId = null;
 
@@ -125,7 +126,7 @@ router.get('/check-reminders', async (req, res, next) => {
     const currentMin = pkt.minute;
     const todayStr = `${pkt.year}-${String(pkt.month).padStart(2, '0')}-${String(pkt.day).padStart(2, '0')}`;
 
-    const workOrders = await WorkOrder.find({ status: { $ne: 'done' } });
+    const workOrders = await WorkOrder.find({ status: { $nin: ['done', 'archived'] } });
     const triggered = [];
 
     for (const wo of workOrders) {
@@ -331,7 +332,7 @@ router.put('/:id', async (req, res, next) => {
 router.put('/:id/move', async (req, res, next) => {
   try {
     const { status } = req.body;
-    if (!['todo', 'doing', 'done'].includes(status)) return error(res, 'Invalid status');
+    if (!['todo', 'doing', 'done', 'archived'].includes(status)) return error(res, 'Invalid status');
     const wo = await WorkOrder.findById(req.params.id);
     if (!wo) return error(res, 'Work order not found', 404);
     const oldStatus = wo.status;
@@ -345,6 +346,15 @@ router.put('/:id/move', async (req, res, next) => {
 
     const populated = await WorkOrder.findById(wo._id).populate('budgetId', 'name remainingAmount allocatedAmount');
     success(res, populated);
+  } catch (err) { next(err); }
+});
+
+// Bulk archive all done work orders
+router.post('/bulk-archive', async (req, res, next) => {
+  try {
+    const result = await WorkOrder.updateMany({ status: 'done' }, { $set: { status: 'archived' } });
+    await AuditLog.create({ action: 'UPDATE', entity: 'WorkOrder', details: `Bulk archived ${result.modifiedCount} done work orders` });
+    success(res, { archived: result.modifiedCount });
   } catch (err) { next(err); }
 });
 

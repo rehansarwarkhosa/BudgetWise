@@ -311,7 +311,7 @@ router.get('/check-reminders', async (req, res, next) => {
     }
 
     // --- Also check Work Order reminders ---
-    const workOrders = await WorkOrder.find({ status: { $ne: 'done' } });
+    const workOrders = await WorkOrder.find({ status: { $nin: ['done', 'archived'] } });
     const woTriggered = [];
 
     for (const wo of workOrders) {
