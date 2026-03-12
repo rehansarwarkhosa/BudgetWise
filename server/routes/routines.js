@@ -93,6 +93,34 @@ const sendPushNotification = async (title, message, url) => {
   }
 };
 
+// Check if a reminder matches a given day
+const reminderMatchesDay = (reminder, todayStr, weekday) => {
+  if (!reminder.enabled) return false;
+  if (reminder.type === 'once' && reminder.fired) return false;
+  switch (reminder.type) {
+    case 'once': return true;
+    case 'daily': return true;
+    case 'weekdays': return weekday >= 1 && weekday <= 5;
+    case 'custom_days': return (reminder.days || []).includes(weekday);
+    case 'custom_dates':
+      return (reminder.dates || []).some(d => new Date(d).toISOString().split('T')[0] === todayStr);
+    case 'interval': {
+      if (!reminder.intervalStartDate || !reminder.intervalDays || reminder.intervalDays < 1) return false;
+      const startStr = new Date(reminder.intervalStartDate).toISOString().split('T')[0];
+      if (todayStr < startStr) return false;
+      if (reminder.intervalEndDate) {
+        const endStr = new Date(reminder.intervalEndDate).toISOString().split('T')[0];
+        if (todayStr > endStr) return false;
+      }
+      const startMs = new Date(startStr + 'T00:00:00Z').getTime();
+      const todayMs = new Date(todayStr + 'T00:00:00Z').getTime();
+      const diffDays = Math.round((todayMs - startMs) / 86400000);
+      return diffDays % reminder.intervalDays === 0;
+    }
+    default: return false;
+  }
+};
+
 // Get all routines
 router.get('/', async (req, res, next) => {
   try {
@@ -100,6 +128,9 @@ router.get('/', async (req, res, next) => {
     const now = new Date();
     const todayStr = getTodayStrPKT();
     const { start: todayStart, end: todayEnd } = pktDayToUTCRange(todayStr);
+
+    const pktNow = getPKTComponents(now);
+    const pktWeekday = pktNow.weekday;
 
     const routinesWithCounts = await Promise.all(
       routines.map(async (r) => {
@@ -154,10 +185,18 @@ router.get('/', async (req, res, next) => {
         }
         const isDoneForToday = todayCompleteCount >= effectiveMaxDaily;
 
+        // Determine if today is an active day for this routine
+        // If no reminders → always active (daily by default)
+        // Otherwise check if any enabled reminder matches today
+        const enabledReminders = (r.reminders || []).filter(rem => rem.enabled && !(rem.type === 'once' && rem.fired));
+        const isActiveToday = enabledReminders.length === 0
+          || enabledReminders.some(rem => reminderMatchesDay(rem, todayStr, pktWeekday));
+
         return {
           ...r.toObject(), entryCount, completedEntries, targetEntries,
           progress, isExpired, lastEntry,
           todayCompleteCount, maxDailyEntries: effectiveMaxDaily, isDoneForToday,
+          isActiveToday,
         };
       })
     );
@@ -183,6 +222,7 @@ router.get('/check-reminders', async (req, res, next) => {
       let routineDirty = false;
       for (const reminder of routine.reminders) {
         if (!reminder.enabled) continue;
+        if (reminder.type === 'once' && reminder.fired) continue;
 
         const [rh, rm] = reminder.time.split(':').map(Number);
         const timeDiff = (currentHour * 60 + currentMin) - (rh * 60 + rm);
@@ -191,21 +231,7 @@ router.get('/check-reminders', async (req, res, next) => {
         const reminderKey = `${todayStr}|${reminder.time}`;
         if (reminder.lastNotifiedDate === reminderKey) continue;
 
-        let matches = false;
-        switch (reminder.type) {
-          case 'daily':
-            matches = true;
-            break;
-          case 'weekdays':
-            matches = currentDay >= 1 && currentDay <= 5;
-            break;
-          case 'custom_days':
-            matches = reminder.days.includes(currentDay);
-            break;
-          case 'custom_dates':
-            matches = reminder.dates.some(d => new Date(d).toISOString().split('T')[0] === todayStr);
-            break;
-        }
+        const matches = reminderMatchesDay(reminder, todayStr, currentDay);
 
         if (matches) {
           triggered.push({
@@ -216,6 +242,10 @@ router.get('/check-reminders', async (req, res, next) => {
             message: `Time to work on "${routine.name}"!`,
           });
           reminder.lastNotifiedDate = reminderKey;
+          if (reminder.type === 'once') {
+            reminder.fired = true;
+            reminder.enabled = false;
+          }
           routineDirty = true;
         }
       }
@@ -318,21 +348,14 @@ router.get('/check-reminders', async (req, res, next) => {
       let woDirty = false;
       for (const reminder of wo.reminders) {
         if (!reminder.enabled) continue;
+        if (reminder.type === 'once' && reminder.fired) continue;
         const [rh, rm] = reminder.time.split(':').map(Number);
         const timeDiff = (currentHour * 60 + currentMin) - (rh * 60 + rm);
         if (timeDiff < 0 || timeDiff >= 10) continue;
         const reminderKey = `${todayStr}|${reminder.time}`;
         if (reminder.lastNotifiedDate === reminderKey) continue;
 
-        let matches = false;
-        switch (reminder.type) {
-          case 'daily': matches = true; break;
-          case 'weekdays': matches = currentDay >= 1 && currentDay <= 5; break;
-          case 'custom_days': matches = reminder.days.includes(currentDay); break;
-          case 'custom_dates':
-            matches = reminder.dates.some(d => new Date(d).toISOString().split('T')[0] === todayStr);
-            break;
-        }
+        const matches = reminderMatchesDay(reminder, todayStr, currentDay);
 
         if (matches) {
           woTriggered.push({
@@ -343,6 +366,10 @@ router.get('/check-reminders', async (req, res, next) => {
             message: `Work order reminder: "${wo.title}"`,
           });
           reminder.lastNotifiedDate = reminderKey;
+          if (reminder.type === 'once') {
+            reminder.fired = true;
+            reminder.enabled = false;
+          }
           woDirty = true;
         }
       }
@@ -582,16 +609,10 @@ router.post('/auto-incomplete', async (req, res, next) => {
           shouldCount = true;
         } else {
           for (const rem of routine.reminders) {
-            if (!rem.enabled) continue;
-            switch (rem.type) {
-              case 'daily': shouldCount = true; break;
-              case 'weekdays': if (yDow >= 1 && yDow <= 5) shouldCount = true; break;
-              case 'custom_days': if (rem.days.includes(yDow)) shouldCount = true; break;
-              case 'custom_dates':
-                if (rem.dates.some(d => new Date(d).toISOString().split('T')[0] === yStr)) shouldCount = true;
-                break;
+            if (reminderMatchesDay(rem, yStr, yDow)) {
+              shouldCount = true;
+              break;
             }
-            if (shouldCount) break;
           }
         }
 

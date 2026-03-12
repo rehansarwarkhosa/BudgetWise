@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { IoAdd, IoTrash, IoCheckmarkCircle, IoCloseCircle, IoChevronForward, IoCreate, IoCopy, IoFlash, IoCheckmarkDone } from 'react-icons/io5';
+import { IoAdd, IoTrash, IoCheckmarkCircle, IoCloseCircle, IoChevronForward, IoCreate, IoCopy, IoFlash, IoCheckmarkDone, IoCalendar } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
@@ -41,25 +41,29 @@ export default function Routines() {
   const [createModal, setCreateModal] = useState(false);
   const [detailRoutine, setDetailRoutine] = useState(null);
   const [cloneSource, setCloneSource] = useState(null);
-  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'done_today' | 'expired'
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'done_today' | 'scheduled' | 'expired'
   const onOverflow = useMenuSwipe();
-  const swipe = useSwipeTabs(['pending', 'done_today', 'expired'], activeTab, setActiveTab, onOverflow);
+  const swipe = useSwipeTabs(['pending', 'done_today', 'scheduled', 'expired'], activeTab, setActiveTab, onOverflow);
 
   if (loading && !routines) return <Spinner />;
 
   // Segregate routines
-  const pendingRoutines = routines?.filter(r => !r.isExpired && !r.isDoneForToday) || [];
-  const doneTodayRoutines = routines?.filter(r => !r.isExpired && r.isDoneForToday) || [];
+  // Scheduled: not expired, not active today (today is not a reminder day)
+  const scheduledRoutines = routines?.filter(r => !r.isExpired && r.isActiveToday === false) || [];
+  const pendingRoutines = routines?.filter(r => !r.isExpired && r.isActiveToday !== false && !r.isDoneForToday) || [];
+  const doneTodayRoutines = routines?.filter(r => !r.isExpired && r.isActiveToday !== false && r.isDoneForToday) || [];
   const expiredRoutines = routines?.filter(r => r.isExpired) || [];
 
   const tabs = [
     { key: 'pending', label: 'Pending', count: pendingRoutines.length },
-    { key: 'done_today', label: 'Done Today', count: doneTodayRoutines.length },
+    { key: 'done_today', label: 'Done', count: doneTodayRoutines.length },
+    { key: 'scheduled', label: 'Scheduled', count: scheduledRoutines.length },
     { key: 'expired', label: 'Expired', count: expiredRoutines.length },
   ];
 
   const currentList = activeTab === 'pending' ? pendingRoutines
     : activeTab === 'done_today' ? doneTodayRoutines
+    : activeTab === 'scheduled' ? scheduledRoutines
     : expiredRoutines;
 
   return (
@@ -71,7 +75,7 @@ export default function Routines() {
         {tabs.map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
             style={{
-              flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              flex: 1, padding: '10px 0', fontSize: 11, fontWeight: 600, cursor: 'pointer',
               background: 'none', border: 'none',
               color: activeTab === tab.key ? 'var(--primary)' : 'var(--text-muted)',
               borderBottom: activeTab === tab.key ? '2px solid var(--primary)' : '2px solid transparent',
@@ -84,11 +88,14 @@ export default function Routines() {
 
       {currentList.length === 0 ? (
         <EmptyState
-          icon={activeTab === 'pending' ? '📋' : activeTab === 'done_today' ? '✅' : '📁'}
+          icon={activeTab === 'pending' ? '📋' : activeTab === 'done_today' ? '✅' : activeTab === 'scheduled' ? '📅' : '📁'}
           title={activeTab === 'pending' ? 'No pending routines'
             : activeTab === 'done_today' ? 'Nothing completed today yet'
+            : activeTab === 'scheduled' ? 'No scheduled routines'
             : 'No expired routines'}
-          subtitle={activeTab === 'pending' ? 'All caught up! Create a routine to track tasks' : undefined}
+          subtitle={activeTab === 'pending' ? 'All caught up! Create a routine to track tasks'
+            : activeTab === 'scheduled' ? 'Routines with interval or specific date reminders will appear here on non-active days'
+            : undefined}
         />
       ) : (
         <div style={{ display: 'grid', gap: 10 }}>
@@ -104,11 +111,19 @@ export default function Routines() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <h3 style={{ fontSize: 15, fontWeight: 600 }}>{r.name}</h3>
                   {r.isExpired && <span className="badge badge-danger">Expired</span>}
-                  {r.isDoneForToday && !r.isExpired && (
+                  {r.isDoneForToday && !r.isExpired && r.isActiveToday !== false && (
                     <span className="badge" style={{
                       background: 'var(--success)', color: 'white', fontSize: 10, padding: '2px 6px',
                     }}>
                       Done
+                    </span>
+                  )}
+                  {r.isActiveToday === false && !r.isExpired && (
+                    <span className="badge" style={{
+                      background: 'var(--text-muted)', color: 'white', fontSize: 10, padding: '2px 6px',
+                    }}>
+                      <IoCalendar size={9} style={{ marginRight: 3, verticalAlign: -1 }} />
+                      Scheduled
                     </span>
                   )}
                 </div>
@@ -116,10 +131,15 @@ export default function Routines() {
                   {r.completedEntries}/{r.targetEntries} entries ({r.progress}%)
                   {r.lastEntry && <> &middot; Last: {formatDateTime(r.lastEntry.date)}</>}
                 </p>
-                {!r.isExpired && (
+                {!r.isExpired && r.isActiveToday !== false && (
                   <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
                     Today: {r.todayCompleteCount}/{r.maxDailyEntries} daily
                     {r.dueDate && <> &middot; Due: <span style={{ color: 'var(--warning)' }}>{formatDate(r.dueDate)}</span></>}
+                  </p>
+                )}
+                {!r.isExpired && r.isActiveToday === false && (
+                  <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    {r.dueDate && <>Due: <span style={{ color: 'var(--warning)' }}>{formatDate(r.dueDate)}</span></>}
                   </p>
                 )}
                 {r.isExpired && r.dueDate && (
@@ -156,7 +176,7 @@ export default function Routines() {
 
 function ReminderEditor({ reminders, setReminders }) {
   const addReminder = () => {
-    setReminders([...reminders, { type: 'daily', time: '09:00', days: [], dates: [], enabled: true }]);
+    setReminders([...reminders, { type: 'daily', time: '09:00', days: [], dates: [], enabled: true, intervalDays: '', intervalStartDate: '', intervalEndDate: '' }]);
   };
 
   const updateReminder = (idx, key, val) => {
@@ -198,10 +218,12 @@ function ReminderEditor({ reminders, setReminders }) {
           <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
             <select value={rem.type} onChange={(e) => updateReminder(idx, 'type', e.target.value)}
               style={{ flex: 1 }}>
+              <option value="once">Once</option>
               <option value="daily">Daily</option>
               <option value="weekdays">Weekdays</option>
               <option value="custom_days">Custom Days</option>
               <option value="custom_dates">Custom Dates</option>
+              <option value="interval">Every N Days</option>
             </select>
             <input type="time" value={rem.time} onChange={(e) => updateReminder(idx, 'time', e.target.value)}
               style={{ flex: '0 0 120px' }} />
@@ -214,6 +236,43 @@ function ReminderEditor({ reminders, setReminders }) {
             <button type="button" className="btn-ghost" onClick={() => removeReminder(idx)}
               style={{ color: 'var(--danger)', padding: 4 }}><IoTrash size={16} /></button>
           </div>
+
+          {rem.type === 'once' && rem.fired && (
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: 4 }}>
+              Already fired
+            </div>
+          )}
+
+          {rem.type === 'interval' && (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <label style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Every</label>
+                <input type="number" min="1" placeholder="N" value={rem.intervalDays || ''}
+                  onChange={(e) => updateReminder(idx, 'intervalDays', Number(e.target.value) || '')}
+                  style={{ width: 70 }} />
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>days</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <label style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>From</label>
+                <input type="date" value={rem.intervalStartDate ? (typeof rem.intervalStartDate === 'string' && rem.intervalStartDate.includes('T') ? rem.intervalStartDate.split('T')[0] : rem.intervalStartDate) : ''}
+                  onChange={(e) => updateReminder(idx, 'intervalStartDate', e.target.value)}
+                  style={{ flex: 1 }} />
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <label style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Until</label>
+                <input type="date" value={rem.intervalEndDate ? (typeof rem.intervalEndDate === 'string' && rem.intervalEndDate.includes('T') ? rem.intervalEndDate.split('T')[0] : rem.intervalEndDate) : ''}
+                  onChange={(e) => updateReminder(idx, 'intervalEndDate', e.target.value)}
+                  style={{ flex: 1 }} />
+              </div>
+              {rem.intervalDays > 0 && rem.intervalStartDate && (
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
+                  <IoCalendar size={10} style={{ verticalAlign: -1, marginRight: 4 }} />
+                  Reminds every {rem.intervalDays} day{rem.intervalDays > 1 ? 's' : ''} starting {typeof rem.intervalStartDate === 'string' && rem.intervalStartDate.includes('T') ? rem.intervalStartDate.split('T')[0] : rem.intervalStartDate}
+                  {rem.intervalEndDate && <> until {typeof rem.intervalEndDate === 'string' && rem.intervalEndDate.includes('T') ? rem.intervalEndDate.split('T')[0] : rem.intervalEndDate}</>}
+                </p>
+              )}
+            </div>
+          )}
 
           {rem.type === 'custom_days' && (
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -310,6 +369,23 @@ function calcEntriesFromReminders(dueDate, reminders) {
         cd.setHours(0, 0, 0, 0);
         if (cd >= today && cd <= due) total++;
       }
+    } else if (rem.type === 'once') {
+      total += 1;
+    } else if (rem.type === 'interval') {
+      if (!rem.intervalDays || rem.intervalDays < 1 || !rem.intervalStartDate) continue;
+      const startD = new Date(typeof rem.intervalStartDate === 'string' && rem.intervalStartDate.includes('T') ? rem.intervalStartDate.split('T')[0] : rem.intervalStartDate);
+      startD.setHours(0, 0, 0, 0);
+      const endD = rem.intervalEndDate ? new Date(typeof rem.intervalEndDate === 'string' && rem.intervalEndDate.includes('T') ? rem.intervalEndDate.split('T')[0] : rem.intervalEndDate) : due;
+      endD.setHours(0, 0, 0, 0);
+      const effectiveStart = startD < today ? today : startD;
+      const effectiveEnd = endD > due ? due : endD;
+      if (effectiveStart > effectiveEnd) continue;
+      let d = new Date(effectiveStart);
+      while (d <= effectiveEnd) {
+        const diffFromStart = Math.round((d - startD) / 86400000);
+        if (diffFromStart % rem.intervalDays === 0) total++;
+        d.setDate(d.getDate() + 1);
+      }
     }
   }
   return total;
@@ -377,6 +453,9 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
     setReminders(cloneSource.reminders?.map(r => ({
       type: r.type, time: r.time, days: [...(r.days || [])],
       dates: [...(r.dates || [])], enabled: r.enabled ?? true,
+      fired: false, intervalDays: r.intervalDays || '',
+      intervalStartDate: r.intervalStartDate ? (typeof r.intervalStartDate === 'string' && r.intervalStartDate.includes('T') ? r.intervalStartDate.split('T')[0] : r.intervalStartDate) : '',
+      intervalEndDate: r.intervalEndDate ? (typeof r.intervalEndDate === 'string' && r.intervalEndDate.includes('T') ? r.intervalEndDate.split('T')[0] : r.intervalEndDate) : '',
     })) || []);
     setInitialized(true);
     skipAutoCalcRef.current = true;
@@ -826,6 +905,9 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
             setEditReminders(routine?.reminders?.map(r => ({
               type: r.type, time: r.time, days: [...(r.days || [])],
               dates: [...(r.dates || [])], enabled: r.enabled ?? true,
+              fired: r.fired || false, intervalDays: r.intervalDays || '',
+              intervalStartDate: r.intervalStartDate ? (typeof r.intervalStartDate === 'string' && r.intervalStartDate.includes('T') ? r.intervalStartDate.split('T')[0] : r.intervalStartDate) : '',
+              intervalEndDate: r.intervalEndDate ? (typeof r.intervalEndDate === 'string' && r.intervalEndDate.includes('T') ? r.intervalEndDate.split('T')[0] : r.intervalEndDate) : '',
             })) || []);
             requestAnimationFrame(() => { editReadyRef.current = true; });
           }}>
