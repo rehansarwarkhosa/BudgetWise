@@ -1,11 +1,12 @@
 import mongoose from 'mongoose';
 
 const reminderSchema = new mongoose.Schema({
-  type: { type: String, enum: ['daily', 'weekdays', 'custom_days', 'custom_dates'], required: true },
+  type: { type: String, enum: ['once', 'daily', 'weekdays', 'custom_days', 'custom_dates'], required: true },
   time: { type: String, required: true },
   days: [Number],
   dates: [Date],
   enabled: { type: Boolean, default: true },
+  fired: { type: Boolean, default: false },
   lastNotifiedDate: { type: String, default: '' },
 });
 

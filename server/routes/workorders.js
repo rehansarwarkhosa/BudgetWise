@@ -141,8 +141,12 @@ router.get('/check-reminders', async (req, res, next) => {
         const reminderKey = `${todayStr}|${reminder.time}`;
         if (reminder.lastNotifiedDate === reminderKey) continue;
 
+        // Skip once-type reminders that have already fired
+        if (reminder.type === 'once' && reminder.fired) continue;
+
         let matches = false;
         switch (reminder.type) {
+          case 'once': matches = true; break;
           case 'daily': matches = true; break;
           case 'weekdays': matches = currentDay >= 1 && currentDay <= 5; break;
           case 'custom_days': matches = reminder.days.includes(currentDay); break;
@@ -160,6 +164,11 @@ router.get('/check-reminders', async (req, res, next) => {
             message: `Work order reminder: "${wo.title}"`,
           });
           reminder.lastNotifiedDate = reminderKey;
+          // Auto-disable once-type reminders after firing
+          if (reminder.type === 'once') {
+            reminder.fired = true;
+            reminder.enabled = false;
+          }
           woDirty = true;
         }
       }

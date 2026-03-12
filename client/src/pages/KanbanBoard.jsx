@@ -1077,6 +1077,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
                     <div style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
                       <select value={rem.type} onChange={e => updateReminder(idx, 'type', e.target.value)}
                         style={{ flex: 1, fontSize: 12 }}>
+                        <option value="once">Once</option>
                         <option value="daily">Daily</option>
                         <option value="weekdays">Weekdays</option>
                         <option value="custom_days">Custom Days</option>
@@ -1094,6 +1095,11 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
                         <IoTrash size={14} color="var(--danger)" />
                       </button>
                     </div>
+                    {rem.type === 'once' && rem.fired && (
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: 4 }}>
+                        Already fired
+                      </div>
+                    )}
 
                     {rem.type === 'custom_days' && (
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
