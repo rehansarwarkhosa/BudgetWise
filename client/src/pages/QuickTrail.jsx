@@ -66,7 +66,7 @@ export default function QuickTrail() {
   const [entries, setEntries] = useState([]);
   const [text, setText] = useState('');
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -101,7 +101,7 @@ export default function QuickTrail() {
       const data = res.data;
       setEntries(prev => append ? [...prev, ...data.entries] : data.entries);
       setPage(data.page);
-      setTotalPages(data.totalPages);
+      setHasMore(data.hasMore ?? false);
     } catch (err) { toast.error(err.message); }
   };
 
@@ -408,7 +408,7 @@ export default function QuickTrail() {
               );
             })}
 
-            {page < totalPages && (
+            {hasMore && (
               <button className="btn-outline" onClick={handleLoadMore} disabled={loadingMore}
                 style={{ marginTop: 4 }}>
                 {loadingMore ? 'Loading...' : 'Load More'}

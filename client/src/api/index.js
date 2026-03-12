@@ -93,7 +93,7 @@ export const getRecentNotes = () => api.get('/notes/recent');
 export const getNotesTree = () => api.get('/notes/tree');
 
 // Trails
-export const getTrails = (page, search, filter, date) => api.get('/trails', { params: { page, limit: 20, ...(search ? { search } : {}), ...(filter && filter !== 'all' ? { filter } : {}), ...(date ? { date } : {}) } });
+export const getTrails = (page, search, filter, date) => api.get('/trails', { params: { page, daysPerPage: 30, ...(search ? { search } : {}), ...(filter && filter !== 'all' ? { filter } : {}), ...(date ? { date } : {}) } });
 export const createTrail = (data) => api.post('/trails', data);
 export const updateTrail = (id, data) => api.put(`/trails/${id}`, data);
 export const deleteTrail = (id) => api.delete(`/trails/${id}`);
