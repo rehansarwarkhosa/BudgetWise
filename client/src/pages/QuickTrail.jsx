@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoColorPalette, IoSave } from 'react-icons/io5';
+import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoColorPalette, IoSave, IoChevronDown, IoChevronForward } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
@@ -84,6 +84,16 @@ export default function QuickTrail() {
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
   const lastTapRef = useRef({});
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+
+  const todayStr = useMemo(() => {
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const toggleGroup = useCallback((date) => {
+    setCollapsedGroups(prev => ({ ...prev, [date]: !prev[date] }));
+  }, []);
 
   const fetchTrails = async (p = 1, append = false, search = searchQuery, filter = filterMode, date = dateFilter) => {
     try {
@@ -326,19 +336,34 @@ export default function QuickTrail() {
           <EmptyState icon={searchMode ? "🔍" : "⚡"} title={searchMode ? "No results" : "No entries yet"} subtitle={searchMode ? `Nothing found for "${searchQuery}"` : "Type something and hit send"} />
         ) : (
           <div>
-            {groupByDate(entries).map(group => (
+            {groupByDate(entries).map(group => {
+              const isToday = group.date === todayStr;
+              // Default: today expanded, others collapsed (unless user toggled)
+              const isCollapsed = collapsedGroups[group.date] !== undefined
+                ? collapsedGroups[group.date]
+                : !isToday;
+              return (
               <div key={group.date}>
-                <div style={{
-                  fontSize: 12, fontWeight: 700, color: 'var(--primary)',
-                  padding: '8px 0 6px', position: 'sticky', top: 56, zIndex: 5,
-                  background: 'var(--bg-page)',
-                  borderBottom: '1px solid var(--border)', marginBottom: 8,
-                }}>
+                <div
+                  onClick={() => toggleGroup(group.date)}
+                  style={{
+                    fontSize: 12, fontWeight: 700, color: 'var(--primary)',
+                    padding: '8px 0 6px', position: 'sticky', top: 56, zIndex: 5,
+                    background: 'var(--bg-page)',
+                    borderBottom: '1px solid var(--border)', marginBottom: 8,
+                    display: 'flex', alignItems: 'center', cursor: 'pointer',
+                    userSelect: 'none',
+                  }}>
+                  {isCollapsed
+                    ? <IoChevronForward size={14} style={{ marginRight: 4, flexShrink: 0 }} />
+                    : <IoChevronDown size={14} style={{ marginRight: 4, flexShrink: 0 }} />
+                  }
                   {group.label}
                   <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>
                     {group.entries.length} item{group.entries.length !== 1 ? 's' : ''}
                   </span>
                 </div>
+                {!isCollapsed && (
                 <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
                   {group.entries.map((entry) => {
                     const hlColor = getEntryHighlight(entry.text, trailHighlights);
@@ -378,8 +403,10 @@ export default function QuickTrail() {
                     );
                   })}
                 </div>
+                )}
               </div>
-            ))}
+              );
+            })}
 
             {page < totalPages && (
               <button className="btn-outline" onClick={handleLoadMore} disabled={loadingMore}
