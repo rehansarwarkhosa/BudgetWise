@@ -109,6 +109,13 @@ export default function QuickTrail() {
     fetchTrails(1, false, '', 'all', '').finally(() => setLoading(false));
   }, []);
 
+  // Auto-focus trail input when trail tab is active
+  useEffect(() => {
+    if (activeTab === 'trail' && !searchMode) {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [activeTab, searchMode, loading]);
+
   useEffect(() => {
     if (!searchMode) return;
     clearTimeout(searchTimeout.current);
@@ -305,6 +312,8 @@ export default function QuickTrail() {
             onChange={(e) => setText(e.target.value)}
             style={{ flex: 1 }}
             autoFocus
+            inputMode="text"
+            enterKeyHint="send"
           />
           <button type="submit" className="btn-primary"
             disabled={sending || !text.trim()}
