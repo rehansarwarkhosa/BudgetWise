@@ -394,7 +394,7 @@ function StockDetailModal({ open, item, onClose, onDone, categoryNames }) {
 
   return (
     <Modal open={open} onClose={handleClose} title={current?.name}>
-      <div onTouchStart={detailSwipe.onTouchStart} onTouchEnd={detailSwipe.onTouchEnd}>
+      <div onTouchStart={e => { e.stopPropagation(); detailSwipe.onTouchStart(e); }} onTouchEnd={e => { e.stopPropagation(); detailSwipe.onTouchEnd(e); }}>
       {/* Tab switcher */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--border)' }}>
         {[

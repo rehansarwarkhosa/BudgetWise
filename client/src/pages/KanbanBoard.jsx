@@ -186,6 +186,7 @@ export default function KanbanBoard() {
 
   // Swipe-to-move handlers
   const handleTouchStart = useCallback((e, id) => {
+    e.stopPropagation();
     touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     touchLocked.current = false;
     setSwipingId(id);
@@ -210,7 +211,8 @@ export default function KanbanBoard() {
     }
   }, [swipingId]);
 
-  const handleTouchEnd = useCallback(() => {
+  const handleTouchEnd = useCallback((e) => {
+    if (e) e.stopPropagation();
     if (!swipingId) return;
     const wo = workOrders.find(w => w._id === swipingId);
     if (wo) {
@@ -271,7 +273,7 @@ export default function KanbanBoard() {
         <div
           onTouchStart={(e) => handleTouchStart(e, wo._id)}
           onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
+          onTouchEnd={(e) => handleTouchEnd(e)}
           onClick={() => !touchLocked.current && setDetailId(wo._id)}
           style={{
             background: 'var(--bg-card)',
