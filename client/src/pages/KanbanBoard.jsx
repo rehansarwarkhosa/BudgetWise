@@ -85,6 +85,7 @@ export default function KanbanBoard() {
 
   // Quick status popup
   const [quickStatusId, setQuickStatusId] = useState(null);
+  const [quickStatusPos, setQuickStatusPos] = useState(null);
 
   // Quick budget edit
   const [quickBudgetWo, setQuickBudgetWo] = useState(null);
@@ -303,7 +304,6 @@ export default function KanbanBoard() {
             WebkitUserSelect: 'none',
             touchAction: 'pan-y',
             position: 'relative',
-            zIndex: isSwiping ? 10 : 1,
           }}
         >
           {/* Title + Priority */}
@@ -378,7 +378,16 @@ export default function KanbanBoard() {
               {/* Quick status change */}
               <div style={{ position: 'relative' }}>
                 <button className="btn-ghost"
-                  onClick={() => setQuickStatusId(quickStatusId === wo._id ? null : wo._id)}
+                  onClick={(e) => {
+                    if (quickStatusId === wo._id) {
+                      setQuickStatusId(null);
+                      setQuickStatusPos(null);
+                    } else {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setQuickStatusPos({ top: rect.bottom + 4, left: rect.left, colName });
+                      setQuickStatusId(wo._id);
+                    }
+                  }}
                   style={{
                     background: COLUMN_COLORS[colName] + '18',
                     border: 'none', borderRadius: 10, padding: '5px 10px',
@@ -387,30 +396,6 @@ export default function KanbanBoard() {
                   }}>
                   {STATUS_LABELS[colName]} <IoChevronDown size={9} />
                 </button>
-                {quickStatusId === wo._id && (
-                  <div style={{
-                    position: 'absolute', top: '100%', left: 0, zIndex: 30, marginTop: 4,
-                    background: 'var(--bg-card)', border: '1px solid var(--border)',
-                    borderRadius: 10, overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-                    minWidth: 120,
-                  }}>
-                    {[...COLUMNS, 'archived'].filter(s => s !== colName).map(s => (
-                      <button key={s} onClick={() => {
-                        if (s === 'archived') handleArchive(wo._id);
-                        else handleMove(wo._id, s);
-                        setQuickStatusId(null);
-                      }} style={{
-                        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-                        padding: '10px 14px', border: 'none', background: 'transparent',
-                        cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                        color: COLUMN_COLORS[s] || '#6B7280',
-                      }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: COLUMN_COLORS[s] || '#6B7280' }} />
-                        {STATUS_LABELS[s]}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
               {/* Quick budget edit for budget-linked WOs */}
               {wo.budgetId && (
@@ -496,7 +481,7 @@ export default function KanbanBoard() {
   if (loading) return <Spinner />;
 
   return (
-    <div onClick={() => quickStatusId && setQuickStatusId(null)}>
+    <div onClick={() => { if (quickStatusId) { setQuickStatusId(null); setQuickStatusPos(null); } }}>
       {/* Header row: search, filter, view toggle, add */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}>
         {searchMode ? (
@@ -840,6 +825,36 @@ export default function KanbanBoard() {
           </div>
         );
       })()}
+
+      {/* Quick Status Dropdown (fixed, outside card stacking context) */}
+      {quickStatusId && quickStatusPos && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100 }}
+          onClick={() => { setQuickStatusId(null); setQuickStatusPos(null); }}>
+          <div style={{
+            position: 'fixed', top: quickStatusPos.top, left: quickStatusPos.left,
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: 10, overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+            minWidth: 120, zIndex: 101,
+          }} onClick={e => e.stopPropagation()}>
+            {[...COLUMNS, 'archived'].filter(s => s !== quickStatusPos.colName).map(s => (
+              <button key={s} onClick={() => {
+                if (s === 'archived') handleArchive(quickStatusId);
+                else handleMove(quickStatusId, s);
+                setQuickStatusId(null);
+                setQuickStatusPos(null);
+              }} style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                padding: '10px 14px', border: 'none', background: 'transparent',
+                cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                color: COLUMN_COLORS[s] || '#6B7280',
+              }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: COLUMN_COLORS[s] || '#6B7280' }} />
+                {STATUS_LABELS[s]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Quick Budget Edit Modal */}
       {quickBudgetWo && (

@@ -48,6 +48,10 @@ function groupByDate(entries) {
     }
     currentGroup.entries.push(entry);
   }
+  // Sort entries within each day by sortOrder, then by createdAt desc
+  for (const g of groups) {
+    g.entries.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || new Date(b.createdAt) - new Date(a.createdAt));
+  }
   return groups;
 }
 
@@ -84,7 +88,6 @@ export default function QuickTrail() {
   const inputRef = useRef(null);
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
-  const lastTapRef = useRef({});
   const [collapsedGroups, setCollapsedGroups] = useState({});
 
   // Reorder state: triple-tap to unlock an entry, then drag to reorder
@@ -104,7 +107,7 @@ export default function QuickTrail() {
     prev.last = now;
     reorderTapCount.current[entryId] = prev;
     clearTimeout(reorderTapTimer.current);
-    if (prev.count >= 3) {
+    if (prev.count >= 2) {
       if (reorderEntryId === entryId) {
         setReorderEntryId(null);
         toast('Reorder locked', { icon: '🔒', duration: 1000 });
@@ -256,12 +259,19 @@ export default function QuickTrail() {
     setLoadingMore(false);
   };
 
-  const handleDoubleTap = (entry) => {
+  const tripleTapRef = useRef({});
+  const handleTripleTap = (entry) => {
     const now = Date.now();
-    const lastTap = lastTapRef.current[entry._id] || 0;
-    lastTapRef.current[entry._id] = now;
-    if (now - lastTap < 350) {
-      lastTapRef.current[entry._id] = 0;
+    const prev = tripleTapRef.current[entry._id] || { count: 0, last: 0 };
+    if (now - prev.last < 400) {
+      prev.count++;
+    } else {
+      prev.count = 1;
+    }
+    prev.last = now;
+    tripleTapRef.current[entry._id] = prev;
+    if (prev.count >= 3) {
+      prev.count = 0;
       setDetailEntry(entry);
     }
   };
@@ -471,7 +481,7 @@ export default function QuickTrail() {
                             return;
                           }
                           handleReorderTap(entry._id);
-                          handleDoubleTap(entry);
+                          handleTripleTap(entry);
                         }}
                         draggable={isUnlocked}
                         onDragStart={(e) => {

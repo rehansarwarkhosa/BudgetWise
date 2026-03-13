@@ -965,26 +965,64 @@ export default function Settings() {
         ) : (
           <>
             <div style={{ display: 'grid', gap: 0 }}>
-              {auditLogs.map((log) => (
-                <div key={log._id} style={{
-                  padding: '10px 0', borderBottom: '1px solid var(--border)',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                    <span style={{
-                      fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-                      background: log.action === 'DELETE' ? 'rgba(239,68,68,0.15)' : log.action === 'CREATE' ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.15)',
-                      color: log.action === 'DELETE' ? 'var(--danger)' : log.action === 'CREATE' ? 'var(--success)' : 'var(--primary)',
-                      whiteSpace: 'nowrap',
+              {(() => {
+                // Group audit logs by date
+                const groups = [];
+                let currentDate = null;
+                let currentGroup = null;
+                const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+                for (const log of auditLogs) {
+                  const d = new Date(new Date(log.timestamp).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+                  const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                  if (dateStr !== currentDate) {
+                    currentDate = dateStr;
+                    let label = dateStr === todayStr ? 'Today' : dateStr === yesterdayStr ? 'Yesterday' : new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+                    currentGroup = { date: dateStr, label, logs: [] };
+                    groups.push(currentGroup);
+                  }
+                  currentGroup.logs.push(log);
+                }
+
+                return groups.map(group => (
+                  <div key={group.date}>
+                    <div style={{
+                      fontSize: 11, fontWeight: 700, color: 'var(--primary)',
+                      padding: '10px 0 6px', borderBottom: '1px solid var(--border)',
+                      position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1,
                     }}>
-                      {log.action}
-                    </span>
-                    <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                      {formatDateTime(log.timestamp)}
-                    </span>
+                      {group.label}
+                      <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>
+                        {group.logs.length} entr{group.logs.length !== 1 ? 'ies' : 'y'}
+                      </span>
+                    </div>
+                    {group.logs.map(log => (
+                      <div key={log._id} style={{
+                        padding: '10px 0', borderBottom: '1px solid var(--border)',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                            background: log.action === 'DELETE' ? 'rgba(239,68,68,0.15)' : log.action === 'CREATE' ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.15)',
+                            color: log.action === 'DELETE' ? 'var(--danger)' : log.action === 'CREATE' ? 'var(--success)' : 'var(--primary)',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {log.action}
+                          </span>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                            {formatDateTime(log.timestamp)}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 13, marginTop: 4 }}>{log.details}</div>
+                      </div>
+                    ))}
                   </div>
-                  <div style={{ fontSize: 13, marginTop: 4 }}>{log.details}</div>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
             {auditPages > 1 && (
               <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 12 }}>

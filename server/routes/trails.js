@@ -32,9 +32,12 @@ router.get('/', async (req, res, next) => {
       query.createdAt = { $gte: dayStart, $lte: dayEnd };
 
       const [entries, total] = await Promise.all([
-        Trail.find(query).sort({ sortOrder: 1, createdAt: -1 }),
+        Trail.find(query).sort({ createdAt: -1 }),
         Trail.countDocuments(query),
       ]);
+
+      // Sort within each day by sortOrder (entries already grouped by day from query)
+      entries.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || new Date(b.createdAt) - new Date(a.createdAt));
 
       return success(res, { entries, page: 1, totalPages: 1, total, hasMore: false });
     }
@@ -58,7 +61,7 @@ router.get('/', async (req, res, next) => {
 
     query.createdAt = { $gte: rangeStart, $lte: rangeEnd };
 
-    const entries = await Trail.find(query).sort({ sortOrder: 1, createdAt: -1 });
+    const entries = await Trail.find(query).sort({ createdAt: -1 });
 
     // Check if there are older entries beyond this range (preserve search/filter)
     const olderQuery = {};
