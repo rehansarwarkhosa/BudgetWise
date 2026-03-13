@@ -6,7 +6,7 @@ import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
 import { IoSunny, IoMoon, IoTrash, IoAdd } from 'react-icons/io5';
 import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails, getAuditLogs, clearAuditLogs, getBudgetCategories, addBudgetCategory, updateBudgetCategory, deleteBudgetCategory, sendTestEmail } from '../api';
-import { formatDate } from '../utils/format';
+import { formatDate, formatDateTime } from '../utils/format';
 
 const PRESET_COLORS = [
   { name: 'Red', hex: '#ef4444' },
@@ -979,7 +979,7 @@ export default function Settings() {
                       {log.action}
                     </span>
                     <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                      {formatDate(log.timestamp)}
+                      {formatDateTime(log.timestamp)}
                     </span>
                   </div>
                   <div style={{ fontSize: 13, marginTop: 4 }}>{log.details}</div>

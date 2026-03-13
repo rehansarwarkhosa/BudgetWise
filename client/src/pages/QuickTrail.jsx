@@ -7,7 +7,8 @@ import ConfirmModal from '../components/ConfirmModal';
 import { useSettings } from '../context/SettingsContext';
 import useSwipeTabs from '../hooks/useSwipeTabs';
 
-import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote } from '../api';
+import { IoReorderThree } from 'react-icons/io5';
+import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote, reorderTrails } from '../api';
 import { formatDateTime } from '../utils/format';
 import KanbanBoard from './KanbanBoard';
 
@@ -85,6 +86,61 @@ export default function QuickTrail() {
   const searchTimeout = useRef(null);
   const lastTapRef = useRef({});
   const [collapsedGroups, setCollapsedGroups] = useState({});
+
+  // Reorder state: triple-tap to unlock an entry, then drag to reorder
+  const [reorderEntryId, setReorderEntryId] = useState(null);
+  const reorderTapCount = useRef({});
+  const reorderTapTimer = useRef(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
+
+  const handleReorderTap = useCallback((entryId) => {
+    const now = Date.now();
+    const prev = reorderTapCount.current[entryId] || { count: 0, last: 0 };
+    if (now - prev.last < 400) {
+      prev.count++;
+    } else {
+      prev.count = 1;
+    }
+    prev.last = now;
+    reorderTapCount.current[entryId] = prev;
+    clearTimeout(reorderTapTimer.current);
+    if (prev.count >= 3) {
+      if (reorderEntryId === entryId) {
+        setReorderEntryId(null);
+        toast('Reorder locked', { icon: '🔒', duration: 1000 });
+      } else {
+        setReorderEntryId(entryId);
+        toast('Drag to reorder', { icon: '🔓', duration: 1500 });
+      }
+      prev.count = 0;
+    } else {
+      reorderTapTimer.current = setTimeout(() => {
+        reorderTapCount.current[entryId] = { count: 0, last: 0 };
+      }, 500);
+    }
+  }, [reorderEntryId]);
+
+  const handleDrop = useCallback(async (groupEntries, fromIdx, toIdx) => {
+    if (fromIdx === toIdx) return;
+    const reordered = [...groupEntries];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    const orderedIds = reordered.map(e => e._id);
+    // Optimistic update
+    setEntries(prev => {
+      const updated = [...prev];
+      for (let i = 0; i < orderedIds.length; i++) {
+        const entry = updated.find(e => e._id === orderedIds[i]);
+        if (entry) entry.sortOrder = i;
+      }
+      return [...updated];
+    });
+    setReorderEntryId(null);
+    setDragOverIdx(null);
+    try {
+      await reorderTrails(orderedIds);
+    } catch (err) { toast.error('Reorder failed'); fetchTrails(); }
+  }, []);
 
   const todayStr = useMemo(() => {
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
@@ -392,43 +448,98 @@ export default function QuickTrail() {
                 </div>
                 {!isCollapsed && (
                 <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
-                  {group.entries.map((entry) => {
+                  {group.entries.map((entry, entryIdx) => {
                     const hlColor = getEntryHighlight(entry.text, trailHighlights);
                     const hasReminders = entry.reminders?.length > 0;
+                    const isUnlocked = reorderEntryId === entry._id;
                     return (
-                    <div key={entry._id} className="card" style={{
-                      position: 'relative',
-                      ...(hlColor ? { background: hlColor + '20', borderLeft: `3px solid ${hlColor}` } : {}),
-                    }}
-                      onClick={() => handleDoubleTap(entry)}
-                    >
-                      <p style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 8, whiteSpace: 'pre-wrap', ...(trailBold ? { fontWeight: 700 } : {}) }}>
-                        {entry.text}
-                      </p>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                            {formatDateTime(entry.createdAt)}
-                          </span>
-                          {hasReminders && (
-                            <IoAlarm size={12} color="var(--primary)" title="Has reminders" />
+                    <div key={entry._id}>
+                      {/* Drop target above */}
+                      {reorderEntryId && reorderEntryId !== entry._id && dragOverIdx === entryIdx && (
+                        <div style={{ height: 4, background: 'var(--primary)', borderRadius: 2, marginBottom: 4 }} />
+                      )}
+                      <div className="card" style={{
+                        position: 'relative',
+                        ...(hlColor ? { background: hlColor + '20', borderLeft: `3px solid ${hlColor}` } : {}),
+                        ...(isUnlocked ? { outline: '2px solid var(--primary)', outlineOffset: 1 } : {}),
+                      }}
+                        onClick={() => {
+                          if (reorderEntryId && reorderEntryId !== entry._id) {
+                            // Drop the unlocked entry at this position
+                            const fromIdx = group.entries.findIndex(e => e._id === reorderEntryId);
+                            if (fromIdx !== -1) handleDrop(group.entries, fromIdx, entryIdx);
+                            return;
+                          }
+                          handleReorderTap(entry._id);
+                          handleDoubleTap(entry);
+                        }}
+                        draggable={isUnlocked}
+                        onDragStart={(e) => {
+                          if (!isUnlocked) { e.preventDefault(); return; }
+                          e.dataTransfer.setData('text/plain', entry._id);
+                          e.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragOver={(e) => {
+                          if (!reorderEntryId) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                          setDragOverIdx(entryIdx);
+                        }}
+                        onDragLeave={() => setDragOverIdx(null)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const fromIdx = group.entries.findIndex(en => en._id === reorderEntryId);
+                          if (fromIdx !== -1) handleDrop(group.entries, fromIdx, entryIdx);
+                        }}
+                      >
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          {/* Drag handle - shows when any entry is unlocked */}
+                          {reorderEntryId && (
+                            <div style={{
+                              display: 'flex', alignItems: 'center', flexShrink: 0,
+                              color: isUnlocked ? 'var(--primary)' : 'var(--text-muted)',
+                              cursor: isUnlocked ? 'grab' : 'pointer',
+                              opacity: isUnlocked ? 1 : 0.5,
+                              paddingRight: 4,
+                            }}>
+                              <IoReorderThree size={20} />
+                            </div>
                           )}
-                        </div>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setDetailEntry(entry); }}>
-                            <IoDocumentText size={14} color="var(--text-muted)" />
-                          </button>
-                          <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); handleCopy(entry); }}>
-                            <IoCopy size={14} color="var(--text-muted)" />
-                          </button>
-                          <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setConfirmDelete(entry); }}>
-                            <IoTrash size={14} color="var(--danger)" />
-                          </button>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 8, whiteSpace: 'pre-wrap', ...(trailBold ? { fontWeight: 700 } : {}) }}>
+                              {entry.text}
+                            </p>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                  {formatDateTime(entry.createdAt)}
+                                </span>
+                                {hasReminders && (
+                                  <IoAlarm size={12} color="var(--primary)" title="Has reminders" />
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setDetailEntry(entry); }}>
+                                  <IoDocumentText size={14} color="var(--text-muted)" />
+                                </button>
+                                <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); handleCopy(entry); }}>
+                                  <IoCopy size={14} color="var(--text-muted)" />
+                                </button>
+                                <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setConfirmDelete(entry); }}>
+                                  <IoTrash size={14} color="var(--danger)" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
                     );
                   })}
+                  {/* Drop target at end */}
+                  {reorderEntryId && dragOverIdx === group.entries.length && (
+                    <div style={{ height: 4, background: 'var(--primary)', borderRadius: 2 }} />
+                  )}
                 </div>
                 )}
               </div>

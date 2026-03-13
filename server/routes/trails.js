@@ -32,7 +32,7 @@ router.get('/', async (req, res, next) => {
       query.createdAt = { $gte: dayStart, $lte: dayEnd };
 
       const [entries, total] = await Promise.all([
-        Trail.find(query).sort({ createdAt: -1 }),
+        Trail.find(query).sort({ sortOrder: 1, createdAt: -1 }),
         Trail.countDocuments(query),
       ]);
 
@@ -58,7 +58,7 @@ router.get('/', async (req, res, next) => {
 
     query.createdAt = { $gte: rangeStart, $lte: rangeEnd };
 
-    const entries = await Trail.find(query).sort({ createdAt: -1 });
+    const entries = await Trail.find(query).sort({ sortOrder: 1, createdAt: -1 });
 
     // Check if there are older entries beyond this range (preserve search/filter)
     const olderQuery = {};
@@ -85,6 +85,20 @@ router.post('/', async (req, res, next) => {
     const entry = await Trail.create({ text: text.trim() });
     await AuditLog.create({ action: 'CREATE', entity: 'Trail', entityId: entry._id, details: `Created trail entry "${text.trim().slice(0, 50)}"` });
     success(res, entry, 201);
+  } catch (err) { next(err); }
+});
+
+// POST /reorder — reorder trail entries within a day
+router.post('/reorder', async (req, res, next) => {
+  try {
+    const { orderedIds } = req.body;
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0) return error(res, 'orderedIds array required');
+    const bulk = orderedIds.map((id, idx) => ({
+      updateOne: { filter: { _id: id }, update: { sortOrder: idx } },
+    }));
+    await Trail.bulkWrite(bulk);
+    await AuditLog.create({ action: 'UPDATE', entity: 'Trail', details: `Reordered ${orderedIds.length} trail entries` });
+    success(res, { message: 'Reordered' });
   } catch (err) { next(err); }
 });
 

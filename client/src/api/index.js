@@ -99,6 +99,7 @@ export const createTrail = (data) => api.post('/trails', data);
 export const updateTrail = (id, data) => api.put(`/trails/${id}`, data);
 export const deleteTrail = (id) => api.delete(`/trails/${id}`);
 export const deleteAllTrails = () => api.delete('/trails');
+export const reorderTrails = (orderedIds) => api.post('/trails/reorder', { orderedIds });
 export const getTrailNotes = (id) => api.get(`/trails/${id}/notes`);
 export const addTrailNote = (id, data) => api.post(`/trails/${id}/notes`, data);
 export const updateTrailNote = (noteId, data) => api.put(`/trails/notes/${noteId}`, data);

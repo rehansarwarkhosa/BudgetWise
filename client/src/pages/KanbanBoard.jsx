@@ -69,7 +69,7 @@ export default function KanbanBoard() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [archivedOrders, setArchivedOrders] = useState([]);
   const [showArchived, setShowArchived] = useState(false);
-  const [activeTab, setActiveTab] = useState('todo');
+  const [activeTab, setActiveTab] = useState('doing');
   const [viewMode, setViewMode] = useState('tabs');
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
@@ -79,6 +79,19 @@ export default function KanbanBoard() {
   const [swipeX, setSwipeX] = useState(0);
   const touchStart = useRef({ x: 0, y: 0 });
   const touchLocked = useRef(false);
+
+  // Swipe confirm state
+  const [swipeConfirm, setSwipeConfirm] = useState(null); // { id, newStatus }
+
+  // Quick status popup
+  const [quickStatusId, setQuickStatusId] = useState(null);
+
+  // Quick budget edit
+  const [quickBudgetWo, setQuickBudgetWo] = useState(null);
+  const [quickBudgetId, setQuickBudgetId] = useState('');
+  const [quickBudgetAmount, setQuickBudgetAmount] = useState('');
+  const [quickBudgetBudgets, setQuickBudgetBudgets] = useState([]);
+  const [quickBudgetSaving, setQuickBudgetSaving] = useState(false);
 
   const fetchArchived = useCallback(async () => {
     try {
@@ -218,9 +231,9 @@ export default function KanbanBoard() {
     if (wo) {
       const colIdx = COLUMNS.indexOf(wo.status);
       if (swipeX > 70 && colIdx < COLUMNS.length - 1) {
-        handleMove(swipingId, COLUMNS[colIdx + 1]);
+        setSwipeConfirm({ id: swipingId, newStatus: COLUMNS[colIdx + 1] });
       } else if (swipeX < -70 && colIdx > 0) {
-        handleMove(swipingId, COLUMNS[colIdx - 1]);
+        setSwipeConfirm({ id: swipingId, newStatus: COLUMNS[colIdx - 1] });
       }
     }
     setSwipingId(null);
@@ -357,35 +370,63 @@ export default function KanbanBoard() {
             {formatDateTime(wo.createdAt)}
           </div>
 
-          {/* Quick-move buttons + actions */}
+          {/* Quick actions row */}
           <div style={{
             display: 'flex', gap: 6, justifyContent: 'space-between', alignItems: 'center',
           }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {canLeft && (
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+              {/* Quick status change */}
+              <div style={{ position: 'relative' }}>
                 <button className="btn-ghost"
-                  onClick={() => handleMove(wo._id, COLUMNS[colIdx - 1])}
+                  onClick={() => setQuickStatusId(quickStatusId === wo._id ? null : wo._id)}
                   style={{
-                    background: COLUMN_COLORS[COLUMNS[colIdx - 1]] + '18',
+                    background: COLUMN_COLORS[colName] + '18',
                     border: 'none', borderRadius: 10, padding: '5px 10px',
-                    fontSize: 10, fontWeight: 700, color: COLUMN_COLORS[COLUMNS[colIdx - 1]],
+                    fontSize: 10, fontWeight: 700, color: COLUMN_COLORS[colName],
                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3,
-                  }}
-                >
-                  <IoChevronBack size={10} /> {STATUS_LABELS[COLUMNS[colIdx - 1]]}
+                  }}>
+                  {STATUS_LABELS[colName]} <IoChevronDown size={9} />
                 </button>
-              )}
-              {canRight && (
+                {quickStatusId === wo._id && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, zIndex: 30, marginTop: 4,
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    borderRadius: 10, overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+                    minWidth: 120,
+                  }}>
+                    {[...COLUMNS, 'archived'].filter(s => s !== colName).map(s => (
+                      <button key={s} onClick={() => {
+                        if (s === 'archived') handleArchive(wo._id);
+                        else handleMove(wo._id, s);
+                        setQuickStatusId(null);
+                      }} style={{
+                        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                        padding: '10px 14px', border: 'none', background: 'transparent',
+                        cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                        color: COLUMN_COLORS[s] || '#6B7280',
+                      }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: COLUMN_COLORS[s] || '#6B7280' }} />
+                        {STATUS_LABELS[s]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Quick budget edit for budget-linked WOs */}
+              {wo.budgetId && (
                 <button className="btn-ghost"
-                  onClick={() => handleMove(wo._id, COLUMNS[colIdx + 1])}
-                  style={{
-                    background: COLUMN_COLORS[COLUMNS[colIdx + 1]] + '18',
-                    border: 'none', borderRadius: 10, padding: '5px 10px',
-                    fontSize: 10, fontWeight: 700, color: COLUMN_COLORS[COLUMNS[colIdx + 1]],
-                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3,
+                  onClick={() => {
+                    setQuickBudgetWo(wo);
+                    setQuickBudgetId(wo.budgetId?._id || wo.budgetId || '');
+                    setQuickBudgetAmount(wo.budgetAmount || '');
+                    getBudgets().then(res => setQuickBudgetBudgets(res.data)).catch(() => {});
                   }}
-                >
-                  {STATUS_LABELS[COLUMNS[colIdx + 1]]} <IoChevronForward size={10} />
+                  style={{
+                    background: '#3AAFB918', border: 'none', borderRadius: 10, padding: '5px 10px',
+                    fontSize: 10, fontWeight: 700, color: '#3AAFB9',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3,
+                  }}>
+                  <IoWallet size={10} /> {formatPKR(wo.budgetAmount)}
                 </button>
               )}
               {colName === 'done' && (
@@ -395,8 +436,7 @@ export default function KanbanBoard() {
                     background: '#6B728018', border: 'none', borderRadius: 10, padding: '5px 10px',
                     fontSize: 10, fontWeight: 700, color: '#6B7280',
                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3,
-                  }}
-                >
+                  }}>
                   <IoArchive size={10} /> Archive
                 </button>
               )}
@@ -415,10 +455,48 @@ export default function KanbanBoard() {
     );
   };
 
+  // Column tab swipe (isolated: stopPropagation prevents parent tab switch)
+  const colTouchStart = useRef(null);
+  const colTouchStartY = useRef(null);
+  const handleColTouchStart = useCallback((e) => {
+    e.stopPropagation();
+    colTouchStart.current = e.changedTouches[0].clientX;
+    colTouchStartY.current = e.changedTouches[0].clientY;
+  }, []);
+  const handleColTouchEnd = useCallback((e) => {
+    e.stopPropagation();
+    if (colTouchStart.current === null) return;
+    const diffX = colTouchStart.current - e.changedTouches[0].clientX;
+    const diffY = colTouchStartY.current - e.changedTouches[0].clientY;
+    colTouchStart.current = null;
+    colTouchStartY.current = null;
+    if (Math.abs(diffX) < 50 || Math.abs(diffY) > Math.abs(diffX)) return;
+    const idx = COLUMNS.indexOf(activeTab);
+    if (diffX > 0 && idx < COLUMNS.length - 1) setActiveTab(COLUMNS[idx + 1]);
+    else if (diffX < 0 && idx > 0) setActiveTab(COLUMNS[idx - 1]);
+  }, [activeTab]);
+
+  // Quick budget save handler
+  const handleQuickBudgetSave = async () => {
+    if (!quickBudgetWo || quickBudgetSaving) return;
+    setQuickBudgetSaving(true);
+    try {
+      const data = {
+        budgetId: quickBudgetId || null,
+        budgetAmount: quickBudgetId ? parseFloat(quickBudgetAmount) || 0 : 0,
+      };
+      const res = await updateWorkOrder(quickBudgetWo._id, data);
+      setWorkOrders(prev => prev.map(w => w._id === quickBudgetWo._id ? res.data : w));
+      setQuickBudgetWo(null);
+      toast.success('Budget updated');
+    } catch (err) { toast.error(err.message); }
+    finally { setQuickBudgetSaving(false); }
+  };
+
   if (loading) return <Spinner />;
 
   return (
-    <div>
+    <div onClick={() => quickStatusId && setQuickStatusId(null)}>
       {/* Header row: search, filter, view toggle, add */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}>
         {searchMode ? (
@@ -520,8 +598,9 @@ export default function KanbanBoard() {
       {/* Tab View */}
       {viewMode === 'tabs' && (
         <>
-          {/* Column Tabs */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+          {/* Column Tabs (swipeable) */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}
+            onTouchStart={handleColTouchStart} onTouchEnd={handleColTouchEnd}>
             {COLUMNS.map(c => {
               const active = c === activeTab;
               const count = getColumnOrders(c).length;
@@ -723,6 +802,79 @@ export default function KanbanBoard() {
         onConfirm={handleDelete}
         title="Delete work order?"
         message={`Delete "${confirmDelete?.title?.slice(0, 50)}${confirmDelete?.title?.length > 50 ? '...' : ''}"?`} />
+
+      {/* Swipe Move Confirmation */}
+      {swipeConfirm && (() => {
+        const wo = workOrders.find(w => w._id === swipeConfirm.id);
+        const newColor = COLUMN_COLORS[swipeConfirm.newStatus];
+        return (
+          <div style={modalBackdrop} onClick={() => setSwipeConfirm(null)}>
+            <div style={{ ...modalContent, textAlign: 'center', padding: 28 }} onClick={e => e.stopPropagation()}>
+              <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
+                Move to {STATUS_LABELS[swipeConfirm.newStatus]}?
+              </p>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
+                &quot;{wo?.title?.slice(0, 60)}{wo?.title?.length > 60 ? '...' : ''}&quot;
+              </p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setSwipeConfirm(null)}
+                  style={{
+                    flex: 1, padding: '14px 0', borderRadius: 12, fontSize: 15, fontWeight: 700,
+                    border: '2px solid var(--border)', background: 'transparent',
+                    color: 'var(--text-secondary)', cursor: 'pointer',
+                  }}>
+                  No
+                </button>
+                <button onClick={() => {
+                  handleMove(swipeConfirm.id, swipeConfirm.newStatus);
+                  setSwipeConfirm(null);
+                }}
+                  style={{
+                    flex: 1, padding: '14px 0', borderRadius: 12, fontSize: 15, fontWeight: 700,
+                    border: 'none', background: newColor, color: '#fff', cursor: 'pointer',
+                  }}>
+                  Yes
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Quick Budget Edit Modal */}
+      {quickBudgetWo && (
+        <div style={modalBackdrop} onClick={() => setQuickBudgetWo(null)}>
+          <div style={{ ...modalContent, padding: 20 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700 }}>Quick Budget Edit</h3>
+              <button className="btn-ghost" onClick={() => setQuickBudgetWo(null)} style={{ padding: 4 }}><IoClose size={18} /></button>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+              {quickBudgetWo.title}
+            </p>
+            <div className="form-group">
+              <label style={{ fontSize: 13 }}>Budget</label>
+              <select value={quickBudgetId} onChange={e => setQuickBudgetId(e.target.value)} style={{ fontSize: 13 }}>
+                <option value="">No budget</option>
+                {quickBudgetBudgets.map(b => (
+                  <option key={b._id} value={b._id}>{b.name} ({formatPKR(b.remainingAmount)})</option>
+                ))}
+              </select>
+            </div>
+            {quickBudgetId && (
+              <div className="form-group">
+                <label style={{ fontSize: 13 }}>Amount (PKR)</label>
+                <input type="number" value={quickBudgetAmount} onChange={e => setQuickBudgetAmount(e.target.value)}
+                  min="0" step="0.01" style={{ fontSize: 14 }} />
+              </div>
+            )}
+            <button className="btn-primary" onClick={handleQuickBudgetSave} disabled={quickBudgetSaving}
+              style={{ width: '100%', padding: '12px 0', fontSize: 14, fontWeight: 700, marginTop: 4 }}>
+              {quickBudgetSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
