@@ -115,6 +115,8 @@ const reminderMatchesDay = (reminder, todayStr, weekday) => {
       const startMs = new Date(startStr + 'T00:00:00Z').getTime();
       const todayMs = new Date(todayStr + 'T00:00:00Z').getTime();
       const diffDays = Math.round((todayMs - startMs) / 86400000);
+      // If intervalIncludeStart is false, day 0 (start day) is not active — first active day is day N
+      if (diffDays === 0 && reminder.intervalIncludeStart === false) return false;
       return diffDays % reminder.intervalDays === 0;
     }
     default: return false;
@@ -800,6 +802,19 @@ router.post('/:id/entries', async (req, res, next) => {
       }
     }
 
+    // Check if today is an active day for schedule-based routines
+    if (!manualDate && routine.reminders?.length > 0) {
+      const checkTodayStr = getTodayStrPKT();
+      const checkPkt = getPKTComponents(new Date());
+      const enabledReminders = routine.reminders.filter(rem => rem.enabled && !(rem.type === 'once' && rem.fired));
+      if (enabledReminders.length > 0) {
+        const isActive = enabledReminders.some(rem => reminderMatchesDay(rem, checkTodayStr, checkPkt.weekday));
+        if (!isActive) {
+          return error(res, 'Today is not an active day for this routine. Entry can only be logged on scheduled days.', 400);
+        }
+      }
+    }
+
     // Check if daily limit reached
     const todayStr = getTodayStrPKT();
     const { start: todayStart, end: todayEnd } = pktDayToUTCRange(todayStr);
@@ -880,6 +895,19 @@ router.post('/:id/entries/batch', async (req, res, next) => {
 
       if (expired) {
         return error(res, 'Routine has expired, no more entries allowed', 400);
+      }
+    }
+
+    // Check if today is an active day for schedule-based routines
+    if (routine.reminders?.length > 0) {
+      const checkTodayStr = getTodayStrPKT();
+      const checkPkt = getPKTComponents(new Date());
+      const enabledReminders = routine.reminders.filter(rem => rem.enabled && !(rem.type === 'once' && rem.fired));
+      if (enabledReminders.length > 0) {
+        const isActive = enabledReminders.some(rem => reminderMatchesDay(rem, checkTodayStr, checkPkt.weekday));
+        if (!isActive) {
+          return error(res, 'Today is not an active day for this routine.', 400);
+        }
       }
     }
 

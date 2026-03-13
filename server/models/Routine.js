@@ -16,6 +16,7 @@ const reminderSchema = new mongoose.Schema({
   intervalDays: { type: Number, default: 0 },
   intervalStartDate: { type: Date, default: null },
   intervalEndDate: { type: Date, default: null },
+  intervalIncludeStart: { type: Boolean, default: true },
   lastNotifiedDate: { type: String, default: '' },
 }, { _id: true });
 

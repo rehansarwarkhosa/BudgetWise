@@ -176,7 +176,7 @@ export default function Routines() {
 
 function ReminderEditor({ reminders, setReminders }) {
   const addReminder = () => {
-    setReminders([...reminders, { type: 'daily', time: '09:00', days: [], dates: [], enabled: true, intervalDays: '', intervalStartDate: '', intervalEndDate: '' }]);
+    setReminders([...reminders, { type: 'daily', time: '09:00', days: [], dates: [], enabled: true, intervalDays: '', intervalStartDate: '', intervalEndDate: '', intervalIncludeStart: true }]);
   };
 
   const updateReminder = (idx, key, val) => {
@@ -264,10 +264,16 @@ function ReminderEditor({ reminders, setReminders }) {
                   onChange={(e) => updateReminder(idx, 'intervalEndDate', e.target.value)}
                   style={{ flex: 1 }} />
               </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={rem.intervalIncludeStart !== false}
+                  onChange={(e) => updateReminder(idx, 'intervalIncludeStart', e.target.checked)}
+                  style={{ width: 14, height: 14 }} />
+                Log entry on start day
+              </label>
               {rem.intervalDays > 0 && rem.intervalStartDate && (
                 <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
                   <IoCalendar size={10} style={{ verticalAlign: -1, marginRight: 4 }} />
-                  Reminds every {rem.intervalDays} day{rem.intervalDays > 1 ? 's' : ''} starting {typeof rem.intervalStartDate === 'string' && rem.intervalStartDate.includes('T') ? rem.intervalStartDate.split('T')[0] : rem.intervalStartDate}
+                  {rem.intervalIncludeStart !== false ? 'First entry on start day, then' : 'First entry'} every {rem.intervalDays} day{rem.intervalDays > 1 ? 's' : ''}{rem.intervalIncludeStart === false ? ` after ${typeof rem.intervalStartDate === 'string' && rem.intervalStartDate.includes('T') ? rem.intervalStartDate.split('T')[0] : rem.intervalStartDate}` : ` from ${typeof rem.intervalStartDate === 'string' && rem.intervalStartDate.includes('T') ? rem.intervalStartDate.split('T')[0] : rem.intervalStartDate}`}
                   {rem.intervalEndDate && <> until {typeof rem.intervalEndDate === 'string' && rem.intervalEndDate.includes('T') ? rem.intervalEndDate.split('T')[0] : rem.intervalEndDate}</>}
                 </p>
               )}
@@ -373,9 +379,11 @@ function calcEntriesFromReminders(dueDate, reminders) {
       total += 1;
     } else if (rem.type === 'interval') {
       if (!rem.intervalDays || rem.intervalDays < 1 || !rem.intervalStartDate) continue;
-      const startD = new Date(typeof rem.intervalStartDate === 'string' && rem.intervalStartDate.includes('T') ? rem.intervalStartDate.split('T')[0] : rem.intervalStartDate);
+      const rawStart = typeof rem.intervalStartDate === 'string' && rem.intervalStartDate.includes('T') ? rem.intervalStartDate.split('T')[0] : rem.intervalStartDate;
+      const startD = new Date(rawStart);
       startD.setHours(0, 0, 0, 0);
-      const endD = rem.intervalEndDate ? new Date(typeof rem.intervalEndDate === 'string' && rem.intervalEndDate.includes('T') ? rem.intervalEndDate.split('T')[0] : rem.intervalEndDate) : due;
+      const rawEnd = rem.intervalEndDate ? (typeof rem.intervalEndDate === 'string' && rem.intervalEndDate.includes('T') ? rem.intervalEndDate.split('T')[0] : rem.intervalEndDate) : null;
+      const endD = rawEnd ? new Date(rawEnd) : new Date(due);
       endD.setHours(0, 0, 0, 0);
       const effectiveStart = startD < today ? today : startD;
       const effectiveEnd = endD > due ? due : endD;
@@ -383,7 +391,13 @@ function calcEntriesFromReminders(dueDate, reminders) {
       let d = new Date(effectiveStart);
       while (d <= effectiveEnd) {
         const diffFromStart = Math.round((d - startD) / 86400000);
-        if (diffFromStart % rem.intervalDays === 0) total++;
+        const isMatch = diffFromStart % rem.intervalDays === 0;
+        // Skip start day if intervalIncludeStart is false
+        if (isMatch && diffFromStart === 0 && rem.intervalIncludeStart === false) {
+          d.setDate(d.getDate() + 1);
+          continue;
+        }
+        if (isMatch) total++;
         d.setDate(d.getDate() + 1);
       }
     }
@@ -401,10 +415,15 @@ function calcDaysRemaining(dueDate) {
 }
 
 function calcMaxDailyEntries(targetEntries, dueDate, reminders) {
-  // If reminders exist, max daily = count of enabled reminders (each = 1 entry per matching day)
   if (reminders && reminders.length > 0) {
-    const count = reminders.filter(r => r.enabled).length;
-    if (count > 0) return count;
+    const enabled = reminders.filter(r => r.enabled);
+    if (enabled.length > 0) {
+      // Schedule-based types (interval, custom_dates, once) always allow 1 entry per active day
+      const scheduleOnly = enabled.every(r => ['interval', 'custom_dates', 'once'].includes(r.type));
+      if (scheduleOnly) return 1;
+      // For daily/weekdays/custom_days, max daily = count of enabled reminders
+      return enabled.length;
+    }
   }
   const days = calcDaysRemaining(dueDate);
   if (days <= 0) return 1;
@@ -427,21 +446,22 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
   const autoDaily = calcMaxDailyEntries(Number(targetEntries) || 0, dueDate, reminders);
 
   // Auto-fill target entries when dueDate or reminders change
-  const remindersKey = JSON.stringify(reminders.map(r => ({ type: r.type, time: r.time, days: r.days, dates: r.dates, enabled: r.enabled })));
+  const remindersKey = JSON.stringify(reminders.map(r => ({ type: r.type, time: r.time, days: r.days, dates: r.dates, enabled: r.enabled, intervalDays: r.intervalDays, intervalStartDate: r.intervalStartDate, intervalEndDate: r.intervalEndDate, intervalIncludeStart: r.intervalIncludeStart })));
   useEffect(() => {
     if (!initialized || skipAutoCalcRef.current) return;
-    if (autoCalc > 0) {
-      setTargetEntries(String(autoCalc));
+    if (reminders.length > 0 && dueDate) {
+      setTargetEntries(String(autoCalc || 0));
+      skipAutoCalcRef.current = false;
     }
   }, [dueDate, remindersKey]);
 
-  // Auto-fill max daily entries when targetEntries or dueDate change
+  // Auto-fill max daily entries when targetEntries or dueDate or reminders change
   useEffect(() => {
     if (!initialized || skipDailyCalcRef.current) return;
-    if (Number(targetEntries) > 0 && dueDate) {
+    if (dueDate) {
       setMaxDailyEntries(String(autoDaily));
     }
-  }, [targetEntries, dueDate]);
+  }, [targetEntries, dueDate, remindersKey]);
 
   // Initialize from clone source
   if (open && cloneSource && !initialized) {
@@ -456,6 +476,7 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
       fired: false, intervalDays: r.intervalDays || '',
       intervalStartDate: r.intervalStartDate ? (typeof r.intervalStartDate === 'string' && r.intervalStartDate.includes('T') ? r.intervalStartDate.split('T')[0] : r.intervalStartDate) : '',
       intervalEndDate: r.intervalEndDate ? (typeof r.intervalEndDate === 'string' && r.intervalEndDate.includes('T') ? r.intervalEndDate.split('T')[0] : r.intervalEndDate) : '',
+      intervalIncludeStart: r.intervalIncludeStart ?? true,
     })) || []);
     setInitialized(true);
     skipAutoCalcRef.current = true;
@@ -628,21 +649,22 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 
   const editAutoCalc = calcEntriesFromReminders(editDueDate, editReminders);
   const editAutoDaily = calcMaxDailyEntries(Number(editTargetEntries) || 0, editDueDate, editReminders);
-  const editRemindersKey = JSON.stringify(editReminders.map(r => ({ type: r.type, time: r.time, days: r.days, dates: r.dates, enabled: r.enabled })));
+  const editRemindersKey = JSON.stringify(editReminders.map(r => ({ type: r.type, time: r.time, days: r.days, dates: r.dates, enabled: r.enabled, intervalDays: r.intervalDays, intervalStartDate: r.intervalStartDate, intervalEndDate: r.intervalEndDate, intervalIncludeStart: r.intervalIncludeStart })));
 
   useEffect(() => {
     if (!editing || !editReadyRef.current || skipEditAutoCalcRef.current) return;
-    if (editAutoCalc > 0) {
-      setEditTargetEntries(String(editAutoCalc));
+    if (editReminders.length > 0 && editDueDate) {
+      setEditTargetEntries(String(editAutoCalc || 0));
+      skipEditAutoCalcRef.current = false;
     }
   }, [editDueDate, editRemindersKey]);
 
   useEffect(() => {
     if (!editing || !editReadyRef.current || skipEditDailyCalcRef.current) return;
-    if (Number(editTargetEntries) > 0 && editDueDate) {
+    if (editDueDate) {
       setEditMaxDailyEntries(String(editAutoDaily));
     }
-  }, [editTargetEntries, editDueDate]);
+  }, [editTargetEntries, editDueDate, editRemindersKey]);
 
   const fetchEntries = async () => {
     if (!routine?._id) return;
@@ -908,6 +930,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
               fired: r.fired || false, intervalDays: r.intervalDays || '',
               intervalStartDate: r.intervalStartDate ? (typeof r.intervalStartDate === 'string' && r.intervalStartDate.includes('T') ? r.intervalStartDate.split('T')[0] : r.intervalStartDate) : '',
               intervalEndDate: r.intervalEndDate ? (typeof r.intervalEndDate === 'string' && r.intervalEndDate.includes('T') ? r.intervalEndDate.split('T')[0] : r.intervalEndDate) : '',
+              intervalIncludeStart: r.intervalIncludeStart ?? true,
             })) || []);
             requestAnimationFrame(() => { editReadyRef.current = true; });
           }}>
