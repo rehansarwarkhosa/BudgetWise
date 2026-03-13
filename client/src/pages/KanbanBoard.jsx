@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import {
   IoAdd, IoTrash, IoCopy, IoSearch, IoClose, IoChevronForward, IoChevronBack,
   IoWallet, IoFlag, IoAlarm, IoCreate, IoSave, IoFilter, IoCalendar,
-  IoArchive, IoArrowUndo, IoChevronDown, IoChevronUp,
+  IoArchive, IoArrowUndo, IoChevronDown, IoChevronUp, IoList, IoGrid,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -37,7 +37,6 @@ function getDueDateColor(dueDate, colorSettings) {
   const overdueColor = colorSettings?.overdueColor || '#dc2626';
   if (daysRemaining < 0) return overdueColor;
 
-  // Dynamic rules: sorted by days ascending, first match where daysRemaining <= rule.days wins
   const rules = colorSettings?.rules || [
     { days: 1, color: '#ef4444' },
     { days: 3, color: '#f59e0b' },
@@ -68,12 +67,18 @@ export default function KanbanBoard() {
   const [showCreate, setShowCreate] = useState(false);
   const [detailId, setDetailId] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [dragId, setDragId] = useState(null);
-  const [dragOverCol, setDragOverCol] = useState(null);
   const [archivedOrders, setArchivedOrders] = useState([]);
   const [showArchived, setShowArchived] = useState(false);
+  const [activeTab, setActiveTab] = useState('todo');
+  const [viewMode, setViewMode] = useState('tabs');
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
+
+  // Swipe-to-move state
+  const [swipingId, setSwipingId] = useState(null);
+  const [swipeX, setSwipeX] = useState(0);
+  const touchStart = useRef({ x: 0, y: 0 });
+  const touchLocked = useRef(false);
 
   const fetchArchived = useCallback(async () => {
     try {
@@ -156,7 +161,7 @@ export default function KanbanBoard() {
     try {
       const notesRes = await getWorkOrderNotes(wo._id);
       const notes = notesRes.data || [];
-      let text = `📋 Work Order: ${wo.title}\n`;
+      let text = `Work Order: ${wo.title}\n`;
       text += `Priority: ${wo.priority.charAt(0).toUpperCase() + wo.priority.slice(1)}\n`;
       text += `Status: ${STATUS_LABELS[wo.status]}\n`;
       if (wo.budgetId) {
@@ -179,34 +184,249 @@ export default function KanbanBoard() {
     } catch (err) { toast.error('Copy failed'); }
   };
 
-  // Drag and drop handlers
-  const onDragStart = (e, id) => { setDragId(id); e.dataTransfer.effectAllowed = 'move'; };
-  const onDragOver = (e, col) => { e.preventDefault(); setDragOverCol(col); };
-  const onDragLeave = () => setDragOverCol(null);
-  const onDrop = (e, col) => {
-    e.preventDefault();
-    setDragOverCol(null);
-    if (dragId) {
-      const wo = workOrders.find(w => w._id === dragId);
-      if (wo && wo.status !== col) handleMove(dragId, col);
+  // Swipe-to-move handlers
+  const handleTouchStart = useCallback((e, id) => {
+    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    touchLocked.current = false;
+    setSwipingId(id);
+    setSwipeX(0);
+  }, []);
+
+  const handleTouchMove = useCallback((e) => {
+    if (!swipingId) return;
+    const dx = e.touches[0].clientX - touchStart.current.x;
+    const dy = e.touches[0].clientY - touchStart.current.y;
+    if (!touchLocked.current) {
+      if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10) {
+        setSwipingId(null);
+        setSwipeX(0);
+        return;
+      }
+      if (Math.abs(dx) > 10) touchLocked.current = true;
     }
-    setDragId(null);
-  };
+    if (touchLocked.current) {
+      e.preventDefault();
+      setSwipeX(Math.max(-120, Math.min(120, dx)));
+    }
+  }, [swipingId]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!swipingId) return;
+    const wo = workOrders.find(w => w._id === swipingId);
+    if (wo) {
+      const colIdx = COLUMNS.indexOf(wo.status);
+      if (swipeX > 70 && colIdx < COLUMNS.length - 1) {
+        handleMove(swipingId, COLUMNS[colIdx + 1]);
+      } else if (swipeX < -70 && colIdx > 0) {
+        handleMove(swipingId, COLUMNS[colIdx - 1]);
+      }
+    }
+    setSwipingId(null);
+    setSwipeX(0);
+  }, [swipingId, swipeX, workOrders]);
 
   const getColumnOrders = (status) => workOrders.filter(w => w.status === status);
+  const totalActive = workOrders.length;
+
+  // Render a single card
+  const renderCard = (wo, colName) => {
+    const isSwiping = swipingId === wo._id;
+    const colIdx = COLUMNS.indexOf(colName);
+    const canLeft = colIdx > 0;
+    const canRight = colIdx < COLUMNS.length - 1;
+    const cardDueColor = wo.status !== 'done' ? getDueDateColor(wo.dueDate, dueDateColors) : null;
+    const colColor = COLUMN_COLORS[colName];
+
+    const swipeBg = swipeX > 30
+      ? (canRight ? COLUMN_COLORS[COLUMNS[colIdx + 1]] : 'var(--text-muted)')
+      : swipeX < -30
+        ? (canLeft ? COLUMN_COLORS[COLUMNS[colIdx - 1]] : 'var(--text-muted)')
+        : 'transparent';
+
+    const swipeLabel = swipeX > 50
+      ? (canRight ? STATUS_LABELS[COLUMNS[colIdx + 1]] : '')
+      : swipeX < -50
+        ? (canLeft ? STATUS_LABELS[COLUMNS[colIdx - 1]] : '')
+        : '';
+
+    return (
+      <div key={wo._id} style={{ position: 'relative', marginBottom: 10 }}>
+        {/* Swipe background indicator */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          borderRadius: 14, background: swipeBg,
+          display: 'flex', alignItems: 'center',
+          justifyContent: swipeX > 0 ? 'flex-end' : 'flex-start',
+          padding: '0 18px',
+          opacity: isSwiping ? Math.min(Math.abs(swipeX) / 80, 1) : 0,
+          transition: isSwiping ? 'none' : 'opacity 0.3s ease',
+        }}>
+          <span style={{
+            color: '#fff', fontWeight: 700, fontSize: 12,
+            textTransform: 'uppercase', letterSpacing: '0.03em',
+          }}>{swipeLabel}</span>
+        </div>
+
+        {/* Card */}
+        <div
+          onTouchStart={(e) => handleTouchStart(e, wo._id)}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onClick={() => !touchLocked.current && setDetailId(wo._id)}
+          style={{
+            background: 'var(--bg-card)',
+            borderRadius: 14,
+            padding: '14px 16px',
+            boxShadow: isSwiping
+              ? '0 8px 24px rgba(0,0,0,0.25)'
+              : '0 2px 8px rgba(0,0,0,0.1)',
+            transform: isSwiping ? `translateX(${swipeX}px) scale(1.02)` : 'translateX(0)',
+            transition: isSwiping ? 'box-shadow 0.2s' : 'all 0.35s cubic-bezier(0.25,0.46,0.45,0.94)',
+            borderLeft: `4px solid ${cardDueColor || colColor}`,
+            cursor: 'pointer',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            touchAction: 'pan-y',
+            position: 'relative',
+            zIndex: isSwiping ? 10 : 1,
+          }}
+        >
+          {/* Title + Priority */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+            <p style={{
+              fontSize: 14, fontWeight: 600, lineHeight: 1.3, flex: 1, marginRight: 8, margin: 0,
+              overflow: 'hidden', textOverflow: 'ellipsis',
+              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+            }}>
+              {wo.title}
+            </p>
+            <span style={{
+              fontSize: 9, fontWeight: 700, padding: '3px 8px',
+              borderRadius: 20, textTransform: 'uppercase', letterSpacing: '0.05em',
+              whiteSpace: 'nowrap',
+              background: PRIORITY_COLORS[wo.priority] + '20',
+              color: PRIORITY_COLORS[wo.priority],
+            }}>{wo.priority}</span>
+          </div>
+
+          {/* Badges row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginBottom: 6 }}>
+            {wo.budgetId && (
+              <span style={{
+                fontSize: 9, fontWeight: 600,
+                background: '#6C63FF20', color: '#6C63FF',
+                padding: '2px 6px', borderRadius: 10,
+                display: 'flex', alignItems: 'center', gap: 2,
+              }}>
+                <IoWallet size={9} /> {formatPKR(wo.budgetAmount)}
+              </span>
+            )}
+            {wo.budgetId && wo.budgetExpenseStatus === 'completed' && (
+              <span style={{
+                fontSize: 9, fontWeight: 600, background: '#22C55E20', color: '#22C55E',
+                padding: '2px 6px', borderRadius: 10,
+              }}>Logged</span>
+            )}
+            {wo.budgetId && wo.budgetExpenseStatus !== 'none' && wo.budgetExpenseStatus !== 'completed' && (
+              <span style={{
+                fontSize: 9, fontWeight: 600,
+                background: wo.budgetExpenseStatus === 'failed' ? '#EF444420' : '#F59E0B20',
+                color: wo.budgetExpenseStatus === 'failed' ? '#EF4444' : '#F59E0B',
+                padding: '2px 6px', borderRadius: 10,
+              }}>
+                {wo.budgetExpenseStatus === 'pending' ? 'Pending' : 'Failed'}
+              </span>
+            )}
+            {wo.dueDate && (
+              <span style={{
+                fontSize: 9, fontWeight: 600,
+                background: (cardDueColor || 'var(--text-muted)') + '20',
+                color: cardDueColor || 'var(--text-muted)',
+                padding: '2px 6px', borderRadius: 10,
+                display: 'flex', alignItems: 'center', gap: 2,
+              }}>
+                <IoCalendar size={8} /> {formatDate(wo.dueDate)}
+              </span>
+            )}
+          </div>
+
+          {/* Created date */}
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8 }}>
+            {formatDateTime(wo.createdAt)}
+          </div>
+
+          {/* Quick-move buttons + actions */}
+          <div style={{
+            display: 'flex', gap: 6, justifyContent: 'space-between', alignItems: 'center',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {canLeft && (
+                <button className="btn-ghost"
+                  onClick={() => handleMove(wo._id, COLUMNS[colIdx - 1])}
+                  style={{
+                    background: COLUMN_COLORS[COLUMNS[colIdx - 1]] + '18',
+                    border: 'none', borderRadius: 10, padding: '5px 10px',
+                    fontSize: 10, fontWeight: 700, color: COLUMN_COLORS[COLUMNS[colIdx - 1]],
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3,
+                  }}
+                >
+                  <IoChevronBack size={10} /> {STATUS_LABELS[COLUMNS[colIdx - 1]]}
+                </button>
+              )}
+              {canRight && (
+                <button className="btn-ghost"
+                  onClick={() => handleMove(wo._id, COLUMNS[colIdx + 1])}
+                  style={{
+                    background: COLUMN_COLORS[COLUMNS[colIdx + 1]] + '18',
+                    border: 'none', borderRadius: 10, padding: '5px 10px',
+                    fontSize: 10, fontWeight: 700, color: COLUMN_COLORS[COLUMNS[colIdx + 1]],
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3,
+                  }}
+                >
+                  {STATUS_LABELS[COLUMNS[colIdx + 1]]} <IoChevronForward size={10} />
+                </button>
+              )}
+              {colName === 'done' && (
+                <button className="btn-ghost"
+                  onClick={() => handleArchive(wo._id)}
+                  style={{
+                    background: '#6B728018', border: 'none', borderRadius: 10, padding: '5px 10px',
+                    fontSize: 10, fontWeight: 700, color: '#6B7280',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3,
+                  }}
+                >
+                  <IoArchive size={10} /> Archive
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 2 }}>
+              <button className="btn-ghost" style={{ padding: 4 }} onClick={() => handleCopy(wo)}>
+                <IoCopy size={12} color="var(--text-muted)" />
+              </button>
+              <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setConfirmDelete(wo)}>
+                <IoTrash size={12} color="var(--danger)" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (loading) return <Spinner />;
 
   return (
     <div>
-      {/* Search & Filter Bar */}
+      {/* Header row: search, filter, view toggle, add */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}>
         {searchMode ? (
           <input ref={searchRef} type="text" placeholder="Search work orders..."
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
             style={{ flex: 1, fontSize: 13 }} autoFocus />
         ) : (
-          <div style={{ flex: 1 }} />
+          <div style={{ flex: 1, fontSize: 11, color: 'var(--text-muted)' }}>
+            {totalActive} task{totalActive !== 1 ? 's' : ''} · Swipe to move
+          </div>
         )}
         <button className="btn-ghost" onClick={() => {
           if (searchMode) { setSearchMode(false); setSearchQuery(''); }
@@ -218,6 +438,32 @@ export default function KanbanBoard() {
           style={{ padding: 6, borderRadius: 8, background: (filterPriority || filterBudgetType) ? 'var(--primary)' + '30' : showFilters ? 'var(--bg-input)' : 'transparent' }}>
           <IoFilter size={18} />
         </button>
+
+        {/* View Toggle */}
+        <div style={{
+          display: 'flex', background: 'var(--bg-input)', borderRadius: 10,
+          padding: 2,
+        }}>
+          <button className="btn-ghost" onClick={() => setViewMode('tabs')}
+            style={{
+              width: 30, height: 30, borderRadius: 8, border: 'none', padding: 0,
+              background: viewMode === 'tabs' ? 'var(--bg-card)' : 'transparent',
+              boxShadow: viewMode === 'tabs' ? '0 1px 4px rgba(0,0,0,0.15)' : 'none',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+            <IoGrid size={14} color={viewMode === 'tabs' ? 'var(--text)' : 'var(--text-muted)'} />
+          </button>
+          <button className="btn-ghost" onClick={() => setViewMode('list')}
+            style={{
+              width: 30, height: 30, borderRadius: 8, border: 'none', padding: 0,
+              background: viewMode === 'list' ? 'var(--bg-card)' : 'transparent',
+              boxShadow: viewMode === 'list' ? '0 1px 4px rgba(0,0,0,0.15)' : 'none',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+            <IoList size={16} color={viewMode === 'list' ? 'var(--text)' : 'var(--text-muted)'} />
+          </button>
+        </div>
+
         <button className="btn-primary" onClick={() => setShowCreate(true)}
           style={{ padding: '6px 12px', fontSize: 13, width: 'auto' }}>
           <IoAdd size={16} />
@@ -247,166 +493,139 @@ export default function KanbanBoard() {
         </div>
       )}
 
-      {/* Kanban Board */}
-      <div style={{
-        display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8,
-        minHeight: 300, WebkitOverflowScrolling: 'touch',
-      }}>
-        {COLUMNS.map(col => (
-          <div key={col}
-            onDragOver={e => onDragOver(e, col)}
-            onDragLeave={onDragLeave}
-            onDrop={e => onDrop(e, col)}
-            style={{
-              flex: '1 0 140px', minWidth: 140,
-              background: dragOverCol === col ? COLUMN_COLORS[col] + '15' : 'var(--bg-card)',
-              borderRadius: 'var(--radius-sm)', padding: 8,
-              border: `1px solid ${dragOverCol === col ? COLUMN_COLORS[col] : 'var(--border)'}`,
-              transition: 'border-color 0.2s, background 0.2s',
-              display: 'flex', flexDirection: 'column',
-            }}>
-            {/* Column Header */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              marginBottom: 8, paddingBottom: 6,
-              borderBottom: `2px solid ${COLUMN_COLORS[col]}`,
-            }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: COLUMN_COLORS[col], textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                {STATUS_LABELS[col]}
-              </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                {col === 'done' && getColumnOrders('done').length > 0 && (
-                  <button className="btn-ghost" onClick={handleBulkArchive} title="Archive all done"
-                    style={{ padding: '2px 5px', fontSize: 9, display: 'flex', alignItems: 'center', gap: 2, color: '#6B7280' }}>
-                    <IoArchive size={11} />
-                  </button>
-                )}
-                <span style={{
-                  fontSize: 10, fontWeight: 600, background: COLUMN_COLORS[col] + '25',
-                  color: COLUMN_COLORS[col], padding: '2px 6px', borderRadius: 10,
-                }}>
-                  {getColumnOrders(col).length}
-                </span>
+      {/* Summary Progress Bar */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        {COLUMNS.map(c => {
+          const count = getColumnOrders(c).length;
+          const pct = totalActive > 0 ? (count / totalActive) * 100 : 0;
+          return (
+            <div key={c} style={{ flex: 1 }}>
+              <div style={{
+                height: 4, borderRadius: 4, background: COLUMN_COLORS[c] + '20',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  height: '100%', width: `${pct}%`,
+                  background: COLUMN_COLORS[c], borderRadius: 4,
+                  transition: 'width 0.5s ease',
+                }} />
               </div>
             </div>
-
-            {/* Cards */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, minHeight: 60 }}>
-              {getColumnOrders(col).length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '16px 4px', color: 'var(--text-muted)', fontSize: 11 }}>
-                  No items
-                </div>
-              ) : getColumnOrders(col).map(wo => {
-                const cardDueColor = wo.status !== 'done' ? getDueDateColor(wo.dueDate, dueDateColors) : null;
-                return (
-                <div key={wo._id} draggable
-                  onDragStart={e => onDragStart(e, wo._id)}
-                  onClick={() => setDetailId(wo._id)}
-                  style={{
-                    background: 'var(--bg)', borderRadius: 'var(--radius-sm)',
-                    padding: 8, cursor: 'pointer',
-                    border: cardDueColor ? `1.5px solid ${cardDueColor}` : '1px solid var(--border)',
-                    borderLeft: cardDueColor ? `3px solid ${cardDueColor}` : undefined,
-                    opacity: dragId === wo._id ? 0.5 : 1,
-                    transition: 'opacity 0.2s, transform 0.1s',
-                  }}>
-                  {/* Title */}
-                  <p style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, lineHeight: 1.3,
-                    overflow: 'hidden', textOverflow: 'ellipsis',
-                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                    {wo.title}
-                  </p>
-
-                  {/* Priority + Budget indicator */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, flexWrap: 'wrap' }}>
-                    <span style={{
-                      fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
-                      background: PRIORITY_COLORS[wo.priority] + '25',
-                      color: PRIORITY_COLORS[wo.priority],
-                      padding: '1px 5px', borderRadius: 4,
-                    }}>
-                      {wo.priority}
-                    </span>
-                    {wo.budgetId && (
-                      <span style={{
-                        fontSize: 9, fontWeight: 600,
-                        background: '#6C63FF25', color: '#6C63FF',
-                        padding: '1px 5px', borderRadius: 4,
-                        display: 'flex', alignItems: 'center', gap: 2,
-                      }}>
-                        <IoWallet size={8} /> {formatPKR(wo.budgetAmount)}
-                      </span>
-                    )}
-                    {wo.budgetId && wo.budgetExpenseStatus !== 'none' && wo.budgetExpenseStatus !== 'completed' && (
-                      <span style={{
-                        fontSize: 9, fontWeight: 600,
-                        background: wo.budgetExpenseStatus === 'failed' ? '#EF444425' : '#F59E0B25',
-                        color: wo.budgetExpenseStatus === 'failed' ? '#EF4444' : '#F59E0B',
-                        padding: '1px 5px', borderRadius: 4,
-                      }}>
-                        {wo.budgetExpenseStatus === 'pending' ? 'Expense Pending' : 'Expense Failed'}
-                      </span>
-                    )}
-                    {wo.budgetId && wo.budgetExpenseStatus === 'completed' && (
-                      <span style={{
-                        fontSize: 9, fontWeight: 600, background: '#22C55E25', color: '#22C55E',
-                        padding: '1px 5px', borderRadius: 4,
-                      }}>
-                        Expense Logged
-                      </span>
-                    )}
-                    {wo.dueDate && (
-                      <span style={{
-                        fontSize: 9, fontWeight: 600,
-                        background: (cardDueColor || 'var(--text-muted)') + '20',
-                        color: cardDueColor || 'var(--text-muted)',
-                        padding: '1px 5px', borderRadius: 4,
-                        display: 'flex', alignItems: 'center', gap: 2,
-                      }}>
-                        <IoCalendar size={8} /> {formatDate(wo.dueDate)}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Date + Actions */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
-                      {formatDateTime(wo.createdAt)}
-                    </span>
-                    <div style={{ display: 'flex', gap: 2 }} onClick={e => e.stopPropagation()}>
-                      {col !== 'todo' && (
-                        <button className="btn-ghost" style={{ padding: 2 }}
-                          onClick={() => handleMove(wo._id, COLUMNS[COLUMNS.indexOf(col) - 1])}>
-                          <IoChevronBack size={12} color="var(--text-muted)" />
-                        </button>
-                      )}
-                      {col !== 'done' && (
-                        <button className="btn-ghost" style={{ padding: 2 }}
-                          onClick={() => handleMove(wo._id, COLUMNS[COLUMNS.indexOf(col) + 1])}>
-                          <IoChevronForward size={12} color="var(--text-muted)" />
-                        </button>
-                      )}
-                      {col === 'done' && (
-                        <button className="btn-ghost" style={{ padding: 2 }} title="Archive"
-                          onClick={() => handleArchive(wo._id)}>
-                          <IoArchive size={11} color="#6B7280" />
-                        </button>
-                      )}
-                      <button className="btn-ghost" style={{ padding: 2 }} onClick={() => handleCopy(wo)}>
-                        <IoCopy size={11} color="var(--text-muted)" />
-                      </button>
-                      <button className="btn-ghost" style={{ padding: 2 }} onClick={() => setConfirmDelete(wo)}>
-                        <IoTrash size={11} color="var(--danger)" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {/* Tab View */}
+      {viewMode === 'tabs' && (
+        <>
+          {/* Column Tabs */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+            {COLUMNS.map(c => {
+              const active = c === activeTab;
+              const count = getColumnOrders(c).length;
+              const color = COLUMN_COLORS[c];
+              return (
+                <button key={c} onClick={() => setActiveTab(c)}
+                  style={{
+                    flex: 1, padding: '10px 6px', borderRadius: 12,
+                    border: active ? `2px solid ${color}` : '2px solid transparent',
+                    background: active ? color + '15' : 'var(--bg-card)',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  <div style={{
+                    width: 7, height: 7, borderRadius: '50%',
+                    background: active ? color : 'var(--text-muted)',
+                    transition: 'all 0.3s ease',
+                  }} />
+                  <span style={{
+                    fontWeight: active ? 700 : 500, fontSize: 12,
+                    color: active ? color : 'var(--text-muted)',
+                    transition: 'all 0.3s ease',
+                  }}>{STATUS_LABELS[c]}</span>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700,
+                    color: active ? color : 'var(--text-muted)',
+                    background: active ? color + '20' : 'transparent',
+                    padding: '1px 8px', borderRadius: 10,
+                  }}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Bulk archive for done tab */}
+          {activeTab === 'done' && getColumnOrders('done').length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+              <button className="btn-ghost" onClick={handleBulkArchive}
+                style={{
+                  padding: '4px 10px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4,
+                  color: '#6B7280', background: '#6B728015', borderRadius: 8,
+                }}>
+                <IoArchive size={12} /> Archive All Done
+              </button>
+            </div>
+          )}
+
+          {/* Cards */}
+          <div>
+            {getColumnOrders(activeTab).length === 0 ? (
+              <div style={{
+                textAlign: 'center', padding: 40, color: 'var(--text-muted)', fontSize: 13,
+              }}>
+                No tasks here yet
+              </div>
+            ) : (
+              getColumnOrders(activeTab).map(wo => renderCard(wo, activeTab))
+            )}
+          </div>
+        </>
+      )}
+
+      {/* List View */}
+      {viewMode === 'list' && (
+        <div>
+          {COLUMNS.map(colName => {
+            const columnTasks = getColumnOrders(colName);
+            const color = COLUMN_COLORS[colName];
+            return (
+              <div key={colName} style={{ marginBottom: 20 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  marginBottom: 10, paddingBottom: 6,
+                  borderBottom: `2px solid ${color}30`,
+                }}>
+                  <div style={{
+                    width: 8, height: 8, borderRadius: '50%', background: color,
+                  }} />
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>
+                    {STATUS_LABELS[colName]}
+                  </span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, color,
+                    background: color + '20', padding: '2px 8px', borderRadius: 10,
+                  }}>{columnTasks.length}</span>
+                  {colName === 'done' && columnTasks.length > 0 && (
+                    <button className="btn-ghost" onClick={handleBulkArchive}
+                      style={{ marginLeft: 'auto', padding: '2px 6px', fontSize: 10, display: 'flex', alignItems: 'center', gap: 3, color: '#6B7280' }}>
+                      <IoArchive size={11} /> Archive All
+                    </button>
+                  )}
+                </div>
+                {columnTasks.length === 0 ? (
+                  <div style={{
+                    textAlign: 'center', padding: 16, color: 'var(--text-muted)', fontSize: 12,
+                  }}>Empty</div>
+                ) : (
+                  columnTasks.map(wo => renderCard(wo, colName))
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Archived Section */}
       {archivedOrders.length > 0 && (
@@ -415,14 +634,14 @@ export default function KanbanBoard() {
             style={{
               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '10px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--text-secondary)',
+              borderRadius: 12, cursor: 'pointer', color: 'var(--text-secondary)',
             }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <IoArchive size={14} color="#6B7280" />
               <span style={{ fontSize: 13, fontWeight: 600 }}>Archived</span>
               <span style={{
-                fontSize: 10, fontWeight: 600, background: '#6B728025',
-                color: '#6B7280', padding: '2px 6px', borderRadius: 10,
+                fontSize: 10, fontWeight: 600, background: '#6B728020',
+                color: '#6B7280', padding: '2px 8px', borderRadius: 10,
               }}>
                 {archivedOrders.length}
               </span>
@@ -431,33 +650,29 @@ export default function KanbanBoard() {
           </button>
 
           {showArchived && (
-            <div style={{
-              marginTop: 6, display: 'grid', gap: 6,
-              maxHeight: 400, overflowY: 'auto', padding: '2px 0',
-            }}>
+            <div style={{ marginTop: 8, display: 'grid', gap: 8, maxHeight: 400, overflowY: 'auto' }}>
               {archivedOrders.map(wo => (
                 <div key={wo._id} onClick={() => setDetailId(wo._id)}
                   style={{
-                    background: 'var(--bg-card)', borderRadius: 'var(--radius-sm)',
-                    padding: '10px 12px', cursor: 'pointer',
-                    border: '1px solid var(--border)',
-                    borderLeft: '3px solid #6B7280',
-                    opacity: 0.75,
+                    background: 'var(--bg-card)', borderRadius: 14,
+                    padding: '12px 14px', cursor: 'pointer',
+                    borderLeft: '4px solid #6B7280',
+                    opacity: 0.7,
                   }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{
-                        fontSize: 12, fontWeight: 600, marginBottom: 4,
+                        fontSize: 13, fontWeight: 600, marginBottom: 4, margin: 0,
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       }}>
                         {wo.title}
                       </p>
-                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                         <span style={{
                           fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
-                          background: PRIORITY_COLORS[wo.priority] + '25',
+                          background: PRIORITY_COLORS[wo.priority] + '20',
                           color: PRIORITY_COLORS[wo.priority],
-                          padding: '1px 5px', borderRadius: 4,
+                          padding: '2px 6px', borderRadius: 10,
                         }}>
                           {wo.priority}
                         </span>
@@ -466,14 +681,14 @@ export default function KanbanBoard() {
                         </span>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 2 }} onClick={e => e.stopPropagation()}>
-                      <button className="btn-ghost" style={{ padding: 3 }} title="Unarchive"
+                    <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                      <button className="btn-ghost" style={{ padding: 4 }} title="Unarchive"
                         onClick={() => handleUnarchive(wo._id)}>
-                        <IoArrowUndo size={13} color="var(--primary)" />
+                        <IoArrowUndo size={14} color="var(--primary)" />
                       </button>
-                      <button className="btn-ghost" style={{ padding: 3 }}
+                      <button className="btn-ghost" style={{ padding: 4 }}
                         onClick={() => setConfirmDelete(wo)}>
-                        <IoTrash size={12} color="var(--danger)" />
+                        <IoTrash size={13} color="var(--danger)" />
                       </button>
                     </div>
                   </div>
@@ -721,7 +936,6 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
         toast.success('Note added');
       }
       if (noteEditorRef.current) noteEditorRef.current.innerHTML = '';
-      // Reload notes
       const notesRes = await getWorkOrderNotes(workOrderId);
       setNotes(notesRes.data);
     } catch (err) { toast.error(err.message); }
@@ -936,9 +1150,8 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
             <div style={{ display: 'flex', gap: 8, marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
               <button className="btn-outline" onClick={() => {
                 const wo2 = wo;
-                // Reuse parent's copy logic
                 (async () => {
-                  let text = `📋 Work Order: ${wo2.title}\n`;
+                  let text = `Work Order: ${wo2.title}\n`;
                   text += `Priority: ${wo2.priority.charAt(0).toUpperCase() + wo2.priority.slice(1)}\n`;
                   text += `Status: ${STATUS_LABELS[wo2.status]}\n`;
                   if (wo2.budgetId) {
