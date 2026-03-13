@@ -109,7 +109,7 @@ export default function StockList({ categoryNames, categoryColorMap }) {
         <div style={{ display: 'grid', gap: 8 }}>
           {items.map(item => {
             const sc = STATUS_CONFIG[item.status] || STATUS_CONFIG.in_stock;
-            const catColor = categoryColorMap?.[item.category] || '#6C63FF';
+            const catColor = categoryColorMap?.[item.category] || '#3AAFB9';
             return (
               <div key={item._id} className="card" style={{
                 cursor: 'pointer', padding: '12px 14px',
@@ -269,7 +269,7 @@ function StockDetailModal({ open, item, onClose, onDone, categoryNames }) {
   const [editingNoteId, setEditingNoteId] = useState(null);
   const noteEditorRef = useRef(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [customColor, setCustomColor] = useState('#6C63FF');
+  const [customColor, setCustomColor] = useState('#3AAFB9');
 
   const detailSwipe = useSwipeTabs(['info', 'notes', 'history'], tab, setTab);
 

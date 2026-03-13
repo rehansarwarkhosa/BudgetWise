@@ -341,7 +341,7 @@ export default function Notes() {
                       <>
                         <span onClick={() => handleTopicColorClick(topic._id)}
                           title="Change color" style={{
-                            width: 14, height: 14, borderRadius: '50%', background: topic.color || '#6C63FF',
+                            width: 14, height: 14, borderRadius: '50%', background: topic.color || '#3AAFB9',
                             border: '1px solid var(--border)', cursor: 'pointer', flexShrink: 0,
                           }} />
                         <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => toggleTopic(topic._id)}>
@@ -472,7 +472,7 @@ export default function Notes() {
 
       {/* Hidden color picker for topic color editing */}
       <input ref={topicColorRef} type="color"
-        value={tree.find(t => t._id === editingTopicColor)?.color || '#6C63FF'}
+        value={tree.find(t => t._id === editingTopicColor)?.color || '#3AAFB9'}
         onChange={handleTopicColorChange}
         style={{ position: 'fixed', top: -100, left: -100, width: 0, height: 0, opacity: 0, pointerEvents: 'none' }} />
 
@@ -504,7 +504,7 @@ export default function Notes() {
 // ─── Preset Colors ───
 
 const PRESET_COLORS = [
-  { name: 'Purple', hex: '#6C63FF' },
+  { name: 'Teal', hex: '#3AAFB9' },
   { name: 'Green', hex: '#22c55e' },
   { name: 'Blue', hex: '#3b82f6' },
   { name: 'Amber', hex: '#f59e0b' },
@@ -518,8 +518,8 @@ const PRESET_COLORS = [
 
 function CreateTopicModal({ open, onClose, onDone }) {
   const [name, setName] = useState('');
-  const [color, setColor] = useState('#6C63FF');
-  const [hexInput, setHexInput] = useState('#6C63FF');
+  const [color, setColor] = useState('#3AAFB9');
+  const [hexInput, setHexInput] = useState('#3AAFB9');
   const [loading, setLoading] = useState(false);
   const colorPickerRef = useRef(null);
 
@@ -539,7 +539,7 @@ function CreateTopicModal({ open, onClose, onDone }) {
     try {
       await createTopic({ name, color });
       toast.success('Topic created');
-      setName(''); setColor('#6C63FF'); setHexInput('#6C63FF');
+      setName(''); setColor('#3AAFB9'); setHexInput('#3AAFB9');
       onClose(); onDone();
     } catch (err) { toast.error(err.message); }
     finally { setLoading(false); }
@@ -575,7 +575,7 @@ function CreateTopicModal({ open, onClose, onDone }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ width: 20, height: 20, borderRadius: '50%', background: color, flexShrink: 0, border: '1px solid var(--border)' }} />
             <input type="text" value={hexInput} onChange={(e) => handleHexInput(e.target.value)}
-              placeholder="#6C63FF" style={{ flex: 1, fontSize: 13, fontFamily: 'monospace', padding: '4px 8px' }} />
+              placeholder="#3AAFB9" style={{ flex: 1, fontSize: 13, fontFamily: 'monospace', padding: '4px 8px' }} />
           </div>
         </div>
         <button type="submit" className="btn-primary" disabled={loading}>
@@ -758,7 +758,7 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
 
 function TagManagerModal({ open, tags, onClose, onDone }) {
   const [name, setName] = useState('');
-  const [color, setColor] = useState('#6C63FF');
+  const [color, setColor] = useState('#3AAFB9');
   const [loading, setLoading] = useState(false);
   const [editingTag, setEditingTag] = useState(null);
   const [confirmDeleteTag, setConfirmDeleteTag] = useState(null);
@@ -776,7 +776,7 @@ function TagManagerModal({ open, tags, onClose, onDone }) {
         await createTag({ name, color });
         toast.success('Tag created');
       }
-      setName(''); setColor('#6C63FF');
+      setName(''); setColor('#3AAFB9');
       onDone();
     } catch (err) { toast.error(err.message); }
     finally { setLoading(false); }
@@ -808,7 +808,7 @@ function TagManagerModal({ open, tags, onClose, onDone }) {
           {editingTag ? 'Update' : 'Add'}
         </button>
         {editingTag && (
-          <button type="button" className="btn-ghost" onClick={() => { setEditingTag(null); setName(''); setColor('#6C63FF'); }}
+          <button type="button" className="btn-ghost" onClick={() => { setEditingTag(null); setName(''); setColor('#3AAFB9'); }}
             style={{ padding: '10px 12px' }}>
             <IoClose size={16} />
           </button>

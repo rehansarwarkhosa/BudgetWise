@@ -32,7 +32,7 @@ export default function PriceList({ categoryColorMap: propColorMap }) {
     getBudgetCategories().then(res => {
       setCategories(res.data);
       const map = {};
-      res.data.forEach(c => { map[c.name] = c.color || '#6C63FF'; });
+      res.data.forEach(c => { map[c.name] = c.color || '#3AAFB9'; });
       setCategoryColorMap(map);
     }).catch(() => {});
   }, []);
@@ -136,14 +136,14 @@ export default function PriceList({ categoryColorMap: propColorMap }) {
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
                 padding: '6px 10px', borderRadius: 'var(--radius-sm)',
-                background: (categoryColorMap[cat] || '#6C63FF') + '15',
-                borderLeft: `3px solid ${categoryColorMap[cat] || '#6C63FF'}`,
+                background: (categoryColorMap[cat] || '#3AAFB9') + '15',
+                borderLeft: `3px solid ${categoryColorMap[cat] || '#3AAFB9'}`,
               }}>
                 <span style={{
                   width: 8, height: 8, borderRadius: '50%',
-                  background: categoryColorMap[cat] || '#6C63FF', flexShrink: 0,
+                  background: categoryColorMap[cat] || '#3AAFB9', flexShrink: 0,
                 }} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: categoryColorMap[cat] || '#6C63FF' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: categoryColorMap[cat] || '#3AAFB9' }}>
                   {cat}
                 </span>
                 <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }}>
@@ -405,7 +405,7 @@ function PriceItemDetailModal({ itemId, categories, categoryColorMap, onClose, o
   );
   if (!item) return null;
 
-  const catColor = categoryColorMap[item.category] || '#6C63FF';
+  const catColor = categoryColorMap[item.category] || '#3AAFB9';
 
   return (
     <div style={modalBackdrop} onClick={onClose}>

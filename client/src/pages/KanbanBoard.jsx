@@ -21,7 +21,7 @@ import {
 const PRIORITY_COLORS = { low: '#22C55E', medium: '#F59E0B', high: '#EF4444' };
 const STATUS_LABELS = { todo: 'Todo', doing: 'Doing', done: 'Done', archived: 'Archived' };
 const COLUMNS = ['todo', 'doing', 'done'];
-const COLUMN_COLORS = { todo: '#6C63FF', doing: '#F59E0B', done: '#22C55E', archived: '#6B7280' };
+const COLUMN_COLORS = { todo: '#3AAFB9', doing: '#F59E0B', done: '#22C55E', archived: '#6B7280' };
 
 const RICH_COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
 
@@ -314,7 +314,7 @@ export default function KanbanBoard() {
             {wo.budgetId && (
               <span style={{
                 fontSize: 9, fontWeight: 600,
-                background: '#6C63FF20', color: '#6C63FF',
+                background: '#3AAFB920', color: '#3AAFB9',
                 padding: '2px 6px', borderRadius: 10,
                 display: 'flex', alignItems: 'center', gap: 2,
               }}>
@@ -858,7 +858,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   const [editingNoteId, setEditingNoteId] = useState(null);
   const noteEditorRef = useRef(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [customColor, setCustomColor] = useState('#6C63FF');
+  const [customColor, setCustomColor] = useState('#3AAFB9');
 
   // Reminders state
   const [reminders, setReminders] = useState([]);
@@ -1009,7 +1009,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
                 padding: '2px 6px', borderRadius: 4,
               }}>{STATUS_LABELS[wo.status]}</span>
               {hasBudget && (
-                <span style={{ fontSize: 10, fontWeight: 600, background: '#6C63FF25', color: '#6C63FF', padding: '2px 6px', borderRadius: 4 }}>
+                <span style={{ fontSize: 10, fontWeight: 600, background: '#3AAFB925', color: '#3AAFB9', padding: '2px 6px', borderRadius: 4 }}>
                   <IoWallet size={9} style={{ marginRight: 2, verticalAlign: 'middle' }} />
                   {wo.budgetId?.name || 'Budget'} — {formatPKR(wo.budgetAmount)}
                 </span>

@@ -268,7 +268,7 @@ function CategoryColorEditor({ categories, newName, setNewName, newColor, setNew
       {/* Saved categories */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {categories.map((cat) => {
-          const cc = cat.color || '#6C63FF';
+          const cc = cat.color || '#3AAFB9';
           return (
             <div key={cat._id} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -327,7 +327,7 @@ export default function Settings() {
   const [confirmClearAudit, setConfirmClearAudit] = useState(false);
   const [categories, setCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryColor, setNewCategoryColor] = useState('#6C63FF');
+  const [newCategoryColor, setNewCategoryColor] = useState('#3AAFB9');
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState(null);
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
@@ -411,7 +411,7 @@ export default function Settings() {
       await addBudgetCategory({ name: newCategoryName.trim(), color: newCategoryColor });
       toast.success('Category added');
       setNewCategoryName('');
-      setNewCategoryColor('#6C63FF');
+      setNewCategoryColor('#3AAFB9');
       fetchCategories();
     } catch (err) { toast.error(err.message); }
     finally { setCategoryLoading(false); }

@@ -644,7 +644,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const [editingNoteId, setEditingNoteId] = useState(null);
   const noteEditorRef = useRef(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [customColor, setCustomColor] = useState('#6C63FF');
+  const [customColor, setCustomColor] = useState('#3AAFB9');
   const detailSwipe = useSwipeTabs(['info', 'notes'], detailTab, setDetailTab);
 
   const editAutoCalc = calcEntriesFromReminders(editDueDate, editReminders);

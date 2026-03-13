@@ -27,7 +27,7 @@ export default function Budget() {
   const { data: categoriesData } = useFetch(getBudgetCategories);
   const categoryNames = categoriesData?.map(c => c.name) || ['General'];
   const categoryColorMap = {};
-  categoriesData?.forEach(c => { categoryColorMap[c.name] = c.color || '#6C63FF'; });
+  categoriesData?.forEach(c => { categoryColorMap[c.name] = c.color || '#3AAFB9'; });
 
   const [activeView, setActiveView] = useState('budgets'); // 'budgets' or 'templates'
   const onOverflow = useMenuSwipe();
@@ -155,7 +155,7 @@ export default function Budget() {
             <EmptyState icon={<IoWallet />} title="No budgets yet" subtitle="Tap + to create your first budget" />
           ) : (
             categories.map((cat) => {
-              const catColor = categoryColorMap[cat] || '#6C63FF';
+              const catColor = categoryColorMap[cat] || '#3AAFB9';
               return (
                 <div key={cat} style={{ marginBottom: 16 }}>
                   <div style={{
@@ -305,7 +305,7 @@ function TemplatesView({ categoryColorMap, categoryNames, onBudgetsChanged }) {
                 {/* Category color dots */}
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                   {Object.keys(tplGrouped).sort().map(cat => {
-                    const cc = categoryColorMap[cat] || '#6C63FF';
+                    const cc = categoryColorMap[cat] || '#3AAFB9';
                     return (
                       <span key={cat} style={{
                         display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -485,7 +485,7 @@ function TemplateDetailModal({ open, template, onClose, categoryColorMap }) {
       </div>
 
       {Object.keys(grouped).sort().map(cat => {
-        const cc = categoryColorMap[cat] || '#6C63FF';
+        const cc = categoryColorMap[cat] || '#3AAFB9';
         return (
           <div key={cat} style={{ marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
