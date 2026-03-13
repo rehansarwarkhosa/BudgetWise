@@ -353,6 +353,58 @@ function ReminderEditor({ reminders, setReminders }) {
   );
 }
 
+// Compute all upcoming active dates for schedule-based reminders (interval, custom_days, custom_dates)
+function getScheduleDates(dueDate, reminders, maxDates = 60) {
+  if (!dueDate || !reminders?.length) return [];
+  const nowPKT = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+  const today = new Date(nowPKT);
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate + (dueDate.includes('T') ? '' : 'T23:59:59'));
+  due.setHours(23, 59, 59, 999);
+  if (due < today) return [];
+
+  const enabled = reminders.filter(r => r.enabled && ['interval', 'custom_days', 'custom_dates'].includes(r.type));
+  if (enabled.length === 0) return [];
+
+  const dates = [];
+  const d = new Date(today);
+  while (d <= due && dates.length < maxDates) {
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dow = d.getDay();
+    let match = false;
+
+    for (const rem of enabled) {
+      if (rem.type === 'custom_days') {
+        if ((rem.days || []).includes(dow)) { match = true; break; }
+      } else if (rem.type === 'custom_dates') {
+        if ((rem.dates || []).some(cd => {
+          const cds = new Date(cd);
+          cds.setHours(0, 0, 0, 0);
+          return cds.getTime() === d.getTime();
+        })) { match = true; break; }
+      } else if (rem.type === 'interval') {
+        if (!rem.intervalDays || rem.intervalDays < 1 || !rem.intervalStartDate) continue;
+        const rawStart = typeof rem.intervalStartDate === 'string' && rem.intervalStartDate.includes('T') ? rem.intervalStartDate.split('T')[0] : rem.intervalStartDate;
+        const startD = new Date(rawStart);
+        startD.setHours(0, 0, 0, 0);
+        if (d < startD) continue;
+        if (rem.intervalEndDate) {
+          const rawEnd = typeof rem.intervalEndDate === 'string' && rem.intervalEndDate.includes('T') ? rem.intervalEndDate.split('T')[0] : rem.intervalEndDate;
+          const endD = new Date(rawEnd);
+          endD.setHours(0, 0, 0, 0);
+          if (d > endD) continue;
+        }
+        const diffDays = Math.round((d - startD) / 86400000);
+        if (diffDays === 0 && rem.intervalIncludeStart === false) continue;
+        if (diffDays % rem.intervalDays === 0) { match = true; break; }
+      }
+    }
+    if (match) dates.push(dateStr);
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
+}
+
 function calcEntriesFromReminders(dueDate, reminders) {
   if (!dueDate || reminders.length === 0) return 0;
   const nowPKT = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
@@ -669,7 +721,10 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const noteEditorRef = useRef(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [customColor, setCustomColor] = useState('#3AAFB9');
-  const detailSwipe = useSwipeTabs(['info', 'notes'], detailTab, setDetailTab, undefined, detailSettings?.tabSwipeRoutines !== false);
+  // Check if routine has schedule-based reminders
+  const hasScheduleReminders = routine?.reminders?.some(r => r.enabled && ['interval', 'custom_days', 'custom_dates'].includes(r.type));
+  const detailTabs = hasScheduleReminders ? ['info', 'schedule', 'notes'] : ['info', 'notes'];
+  const detailSwipe = useSwipeTabs(detailTabs, detailTab, setDetailTab, undefined, detailSettings?.tabSwipeRoutines !== false);
 
   const editAutoCalc = calcEntriesFromReminders(editDueDate, editReminders);
   const editAutoDaily = calcMaxDailyEntries(Number(editTargetEntries) || 0, editDueDate, editReminders);
@@ -832,7 +887,11 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
       <div onTouchStart={e => { e.stopPropagation(); detailSwipe.onTouchStart(e); }} onTouchEnd={e => { e.stopPropagation(); detailSwipe.onTouchEnd(e); }}>
       {/* Tab switcher */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--border)' }}>
-        {[{ key: 'info', label: 'Info' }, { key: 'notes', label: `Notes${notes.length ? ` (${notes.length})` : ''}` }].map(t => (
+        {[
+          { key: 'info', label: 'Info' },
+          ...(hasScheduleReminders ? [{ key: 'schedule', label: 'Schedule' }] : []),
+          { key: 'notes', label: `Notes${notes.length ? ` (${notes.length})` : ''}` },
+        ].map(t => (
           <button key={t.key} onClick={() => setDetailTab(t.key)}
             style={{
               flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer',
@@ -1087,6 +1146,87 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
         );
       })()}
       </>)}
+
+      {detailTab === 'schedule' && hasScheduleReminders && (() => {
+        const dueDateStr = routine?.dueDate ? (routine.dueDate.includes('T') ? routine.dueDate.split('T')[0] : routine.dueDate) : '';
+        const scheduleDates = getScheduleDates(dueDateStr, routine?.reminders);
+        const nowPKT = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+        const todayStr = `${nowPKT.getFullYear()}-${String(nowPKT.getMonth() + 1).padStart(2, '0')}-${String(nowPKT.getDate()).padStart(2, '0')}`;
+        const tmrw = new Date(nowPKT);
+        tmrw.setDate(tmrw.getDate() + 1);
+        const tmrwStr = `${tmrw.getFullYear()}-${String(tmrw.getMonth() + 1).padStart(2, '0')}-${String(tmrw.getDate()).padStart(2, '0')}`;
+
+        // Group by month
+        const months = {};
+        for (const ds of scheduleDates) {
+          const key = ds.slice(0, 7); // YYYY-MM
+          if (!months[key]) months[key] = [];
+          months[key].push(ds);
+        }
+
+        return (
+          <div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+              {scheduleDates.length} active log date{scheduleDates.length !== 1 ? 's' : ''} remaining
+            </p>
+            {scheduleDates.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
+                No upcoming log dates
+              </div>
+            ) : (
+              Object.entries(months).map(([monthKey, dates]) => {
+                const monthLabel = new Date(monthKey + '-15').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                return (
+                  <div key={monthKey} style={{ marginBottom: 14 }}>
+                    <div style={{
+                      fontSize: 12, fontWeight: 700, color: 'var(--primary)',
+                      padding: '6px 0 4px', borderBottom: '1px solid var(--border)', marginBottom: 6,
+                    }}>
+                      {monthLabel}
+                      <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>
+                        {dates.length} day{dates.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {dates.map(ds => {
+                        const isToday = ds === todayStr;
+                        const isTmrw = ds === tmrwStr;
+                        const isPast = ds < todayStr;
+                        const d = new Date(ds + 'T12:00:00');
+                        const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+                        const dayNum = d.getDate();
+                        return (
+                          <div key={ds} style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center',
+                            width: 52, padding: '6px 4px', borderRadius: 10,
+                            background: isToday ? 'var(--primary)' : isTmrw ? 'var(--primary)' + '20' : 'var(--bg-input)',
+                            border: isToday ? 'none' : isTmrw ? '1px solid var(--primary)' : '1px solid transparent',
+                            opacity: isPast ? 0.4 : 1,
+                          }}>
+                            <span style={{
+                              fontSize: 9, fontWeight: 600, textTransform: 'uppercase',
+                              color: isToday ? 'white' : 'var(--text-muted)',
+                              marginBottom: 2,
+                            }}>
+                              {isToday ? 'Today' : isTmrw ? 'Tmrw' : dayName}
+                            </span>
+                            <span style={{
+                              fontSize: 16, fontWeight: 700,
+                              color: isToday ? 'white' : isTmrw ? 'var(--primary)' : 'var(--text-primary)',
+                            }}>
+                              {dayNum}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        );
+      })()}
 
       {detailTab === 'notes' && (
         <div>
