@@ -79,7 +79,8 @@ export default function QuickTrail() {
   const [detailEntry, setDetailEntry] = useState(null);
   const [activeTab, setActiveTab] = useState('trail');
   const onOverflow = useMenuSwipe();
-  const swipe = useSwipeTabs(['trail', 'board'], activeTab, setActiveTab, onOverflow);
+  const tabSwipeEnabled = settings?.tabSwipeTrail !== false;
+  const swipe = useSwipeTabs(['trail', 'board'], activeTab, setActiveTab, onOverflow, tabSwipeEnabled);
   const inputRef = useRef(null);
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
@@ -459,8 +460,9 @@ const modalContent = {
 };
 
 function TrailDetailModal({ entry, onClose, onUpdated }) {
+  const { settings: detailSettings } = useSettings();
   const [tab, setTab] = useState('reminders');
-  const detailSwipe = useSwipeTabs(['reminders', 'notes'], tab, setTab);
+  const detailSwipe = useSwipeTabs(['reminders', 'notes'], tab, setTab, undefined, detailSettings?.tabSwipeTrail !== false);
 
   // Notes
   const [notes, setNotes] = useState([]);

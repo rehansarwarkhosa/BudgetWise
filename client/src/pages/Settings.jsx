@@ -344,6 +344,10 @@ export default function Settings() {
   ]);
   const [kanbanOverdueColor, setKanbanOverdueColor] = useState('#dc2626');
   const [menuSwipeEnabled, setMenuSwipeEnabled] = useState(true);
+  const [tabSwipeTrail, setTabSwipeTrail] = useState(true);
+  const [tabSwipeBudget, setTabSwipeBudget] = useState(true);
+  const [tabSwipeRoutines, setTabSwipeRoutines] = useState(true);
+  const [tabSwipeNotes, setTabSwipeNotes] = useState(true);
 
   useEffect(() => {
     if (settings && !initialized) {
@@ -367,6 +371,10 @@ export default function Settings() {
       }
       setKanbanOverdueColor(kdc.overdueColor || '#dc2626');
       setMenuSwipeEnabled(settings.menuSwipeEnabled ?? true);
+      setTabSwipeTrail(settings.tabSwipeTrail ?? true);
+      setTabSwipeBudget(settings.tabSwipeBudget ?? true);
+      setTabSwipeRoutines(settings.tabSwipeRoutines ?? true);
+      setTabSwipeNotes(settings.tabSwipeNotes ?? true);
       setInitialized(true);
     }
   }, [settings, initialized]);
@@ -635,6 +643,48 @@ export default function Settings() {
             </span>
           </label>
         </div>
+      </div>
+
+      {/* Tab Swipe Navigation */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Tab Swipe Navigation</h3>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Enable or disable swiping between tabs within each menu. Disabling also disables child tab swiping.
+        </p>
+        {[
+          { key: 'tabSwipeTrail', label: 'Trail', desc: 'Trail & Board tabs, detail sub-tabs', state: tabSwipeTrail, setter: setTabSwipeTrail },
+          { key: 'tabSwipeBudget', label: 'Budget', desc: 'Budgets, Templates, Prices, Stock tabs & detail sub-tabs', state: tabSwipeBudget, setter: setTabSwipeBudget },
+          { key: 'tabSwipeRoutines', label: 'Routines', desc: 'Pending, Done, Scheduled, Expired tabs & detail sub-tabs', state: tabSwipeRoutines, setter: setTabSwipeRoutines },
+          { key: 'tabSwipeNotes', label: 'Notes', desc: 'Tree & Recent tabs', state: tabSwipeNotes, setter: setTabSwipeNotes },
+        ].map(({ key, label, desc, state, setter }) => (
+          <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 500 }}>{label}</span>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{desc}</p>
+            </div>
+            <label style={{ position: 'relative', display: 'inline-block', width: 44, height: 24, flexShrink: 0 }}>
+              <input type="checkbox" checked={state} onChange={async (e) => {
+                const val = e.target.checked;
+                setter(val);
+                try {
+                  await updateSettings({ [key]: val });
+                  await refetchSettings();
+                  setInitialized(false);
+                } catch {}
+              }} style={{ opacity: 0, width: 0, height: 0 }} />
+              <span style={{
+                position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                background: state ? 'var(--primary)' : 'var(--bg-input)',
+                borderRadius: 24, transition: '0.2s',
+              }}>
+                <span style={{
+                  position: 'absolute', height: 18, width: 18, left: state ? 22 : 3, bottom: 3,
+                  background: 'white', borderRadius: '50%', transition: '0.2s',
+                }} />
+              </span>
+            </label>
+          </div>
+        ))}
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>

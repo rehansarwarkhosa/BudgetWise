@@ -48,7 +48,7 @@ router.get('/', async (req, res, next) => {
 // Update settings
 router.put('/', async (req, res, next) => {
   try {
-    const { mode, negativeLimit, currentPeriod, notificationEmail, emailNotificationsEnabled, theme, trailBoldText, trailHighlights, routineHighlights, kanbanDueDateColors, menuSwipeEnabled } = req.body;
+    const { mode, negativeLimit, currentPeriod, notificationEmail, emailNotificationsEnabled, theme, trailBoldText, trailHighlights, routineHighlights, kanbanDueDateColors, menuSwipeEnabled, tabSwipeTrail, tabSwipeBudget, tabSwipeRoutines, tabSwipeNotes } = req.body;
     let settings = await Settings.findOne();
     if (!settings) {
       const period = getCurrentPeriod();
@@ -73,6 +73,11 @@ router.put('/', async (req, res, next) => {
     if (kanbanDueDateColors !== undefined) { settings.kanbanDueDateColors = kanbanDueDateColors; changes.push('kanbanDueDateColors updated'); }
     if (menuSwipeEnabled !== undefined && menuSwipeEnabled !== settings.menuSwipeEnabled) { changes.push(`menuSwipeEnabled: ${settings.menuSwipeEnabled} -> ${menuSwipeEnabled}`); settings.menuSwipeEnabled = menuSwipeEnabled; }
     else if (menuSwipeEnabled !== undefined) settings.menuSwipeEnabled = menuSwipeEnabled;
+    for (const [key, label] of [['tabSwipeTrail', 'Trail'], ['tabSwipeBudget', 'Budget'], ['tabSwipeRoutines', 'Routines'], ['tabSwipeNotes', 'Notes']]) {
+      const val = req.body[key];
+      if (val !== undefined && val !== settings[key]) { changes.push(`${key}: ${settings[key]} -> ${val}`); settings[key] = val; }
+      else if (val !== undefined) settings[key] = val;
+    }
     await settings.save();
 
     if (changes.length) {

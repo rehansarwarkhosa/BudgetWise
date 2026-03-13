@@ -18,14 +18,16 @@ import {
 import { formatDateTime } from '../utils/format';
 import useSwipeTabs from '../hooks/useSwipeTabs';
 import useMenuSwipe from '../hooks/useMenuSwipe';
+import { useSettings } from '../context/SettingsContext';
 
 // ─── Main Page ───
 
 export default function Notes() {
+  const { settings: appSettings } = useSettings();
   // Tab: 'tree' | 'recent' | 'search'
   const [tab, setTab] = useState('tree');
   const onOverflow = useMenuSwipe();
-  const swipe = useSwipeTabs(['tree', 'recent'], tab, setTab, onOverflow);
+  const swipe = useSwipeTabs(['tree', 'recent'], tab, setTab, onOverflow, appSettings?.tabSwipeNotes !== false);
 
   // Tree data
   const [tree, setTree] = useState([]);

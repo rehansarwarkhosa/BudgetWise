@@ -843,7 +843,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('info');
-  const detailSwipe = useSwipeTabs(['info', 'notes', 'reminders'], tab, setTab);
+  const detailSwipe = useSwipeTabs(['info', 'notes', 'reminders'], tab, setTab, undefined, settings?.tabSwipeTrail !== false);
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editPriority, setEditPriority] = useState('');

@@ -41,9 +41,10 @@ export default function Routines() {
   const [createModal, setCreateModal] = useState(false);
   const [detailRoutine, setDetailRoutine] = useState(null);
   const [cloneSource, setCloneSource] = useState(null);
+  const tabSwipeEnabled = settings?.tabSwipeRoutines !== false;
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'done_today' | 'scheduled' | 'expired'
   const onOverflow = useMenuSwipe();
-  const swipe = useSwipeTabs(['pending', 'done_today', 'scheduled', 'expired'], activeTab, setActiveTab, onOverflow);
+  const swipe = useSwipeTabs(['pending', 'done_today', 'scheduled', 'expired'], activeTab, setActiveTab, onOverflow, tabSwipeEnabled);
 
   if (loading && !routines) return <Spinner />;
 
@@ -620,6 +621,7 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
 }
 
 function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
+  const { settings: detailSettings } = useSettings();
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [logModal, setLogModal] = useState(false);
@@ -645,7 +647,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const noteEditorRef = useRef(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [customColor, setCustomColor] = useState('#3AAFB9');
-  const detailSwipe = useSwipeTabs(['info', 'notes'], detailTab, setDetailTab);
+  const detailSwipe = useSwipeTabs(['info', 'notes'], detailTab, setDetailTab, undefined, detailSettings?.tabSwipeRoutines !== false);
 
   const editAutoCalc = calcEntriesFromReminders(editDueDate, editReminders);
   const editAutoDaily = calcMaxDailyEntries(Number(editTargetEntries) || 0, editDueDate, editReminders);

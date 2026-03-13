@@ -28,6 +28,10 @@ const settingsSchema = new mongoose.Schema({
     overdueColor: { type: String, default: '#dc2626' },
   },
   menuSwipeEnabled: { type: Boolean, default: true },
+  tabSwipeTrail: { type: Boolean, default: true },
+  tabSwipeBudget: { type: Boolean, default: true },
+  tabSwipeRoutines: { type: Boolean, default: true },
+  tabSwipeNotes: { type: Boolean, default: true },
 }, { timestamps: true });
 
 export default mongoose.model('Settings', settingsSchema);

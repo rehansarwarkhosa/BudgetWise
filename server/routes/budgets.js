@@ -69,6 +69,51 @@ router.get('/period/:month/:year', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Get comprehensive export data for a period (for PDF)
+router.get('/export-data/:month/:year', async (req, res, next) => {
+  try {
+    const month = parseInt(req.params.month);
+    const year = parseInt(req.params.year);
+
+    // Get all incomes for the period
+    const incomes = await Income.find({ 'period.month': month, 'period.year': year }).sort({ date: 1 });
+    const totalIncome = incomes.reduce((sum, i) => sum + i.amount, 0);
+
+    // Get all budgets with expense stats
+    const budgets = await Budget.find({ 'period.month': month, 'period.year': year }).sort({ sortOrder: 1, createdAt: -1 });
+    const totalAllocated = budgets.reduce((sum, b) => sum + b.allocatedAmount, 0);
+    const balance = round2(totalIncome - totalAllocated);
+
+    // For each budget, get expenses and fund entries
+    const budgetsDetailed = [];
+    for (const b of budgets) {
+      const expenses = await Expense.find({ budgetId: b._id }).sort({ date: 1 });
+      const funds = await FundEntry.find({ budgetId: b._id }).sort({ date: 1 });
+      const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
+      budgetsDetailed.push({
+        ...b.toObject(),
+        expenses,
+        fundEntries: funds,
+        totalSpent: round2(totalSpent),
+      });
+    }
+
+    await AuditLog.create({
+      action: 'EXPORT', entity: 'Budget',
+      details: `Exported budget PDF report for ${month}/${year}`,
+    });
+
+    success(res, {
+      period: { month, year },
+      incomes,
+      totalIncome: round2(totalIncome),
+      totalAllocated: round2(totalAllocated),
+      balance,
+      budgets: budgetsDetailed,
+    });
+  } catch (err) { next(err); }
+});
+
 // Create budget
 router.post('/', async (req, res, next) => {
   try {

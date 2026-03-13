@@ -21,6 +21,7 @@ export const deleteIncome = (id) => api.delete(`/income/${id}`);
 // Budgets
 export const getBudgets = () => api.get('/budgets');
 export const getBudgetsByPeriod = (month, year) => api.get(`/budgets/period/${month}/${year}`);
+export const getBudgetExportData = (month, year) => api.get(`/budgets/export-data/${month}/${year}`);
 export const createBudget = (data) => api.post('/budgets', data);
 export const updateBudget = (id, data) => api.put(`/budgets/${id}`, data);
 export const addFundsToBudget = (id, data) => api.post(`/budgets/${id}/add-funds`, data);

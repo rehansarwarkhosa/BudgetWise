@@ -6,6 +6,7 @@ import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import useSwipeTabs from '../hooks/useSwipeTabs';
+import { useSettings } from '../context/SettingsContext';
 import { formatDateTime } from '../utils/format';
 import {
   getStockItems, createStockItem, updateStockItem, deleteStockItem,
@@ -251,6 +252,7 @@ function CreateStockModal({ open, onClose, onDone, categoryNames }) {
 }
 
 function StockDetailModal({ open, item, onClose, onDone, categoryNames }) {
+  const { settings: detailSettings } = useSettings();
   const [current, setCurrent] = useState(item);
   const [tab, setTab] = useState('info');
   const [editing, setEditing] = useState(false);
@@ -271,7 +273,7 @@ function StockDetailModal({ open, item, onClose, onDone, categoryNames }) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [customColor, setCustomColor] = useState('#3AAFB9');
 
-  const detailSwipe = useSwipeTabs(['info', 'notes', 'history'], tab, setTab);
+  const detailSwipe = useSwipeTabs(['info', 'notes', 'history'], tab, setTab, undefined, detailSettings?.tabSwipeBudget !== false);
 
   useEffect(() => {
     if (item) {

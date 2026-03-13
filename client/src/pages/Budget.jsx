@@ -11,6 +11,7 @@ import useFetch from '../hooks/useFetch';
 import useSwipeTabs from '../hooks/useSwipeTabs';
 import useMenuSwipe from '../hooks/useMenuSwipe';
 import { formatPKR, formatDate } from '../utils/format';
+import { useSettings } from '../context/SettingsContext';
 import {
   getIncomeSummary, getIncomes, addIncome, deleteIncome,
   getBudgets, createBudget, updateBudget, deleteBudget, addFundsToBudget,
@@ -29,9 +30,11 @@ export default function Budget() {
   const categoryColorMap = {};
   categoriesData?.forEach(c => { categoryColorMap[c.name] = c.color || '#3AAFB9'; });
 
+  const { settings: appSettings } = useSettings();
+  const tabSwipeEnabled = appSettings?.tabSwipeBudget !== false;
   const [activeView, setActiveView] = useState('budgets'); // 'budgets' or 'templates'
   const onOverflow = useMenuSwipe();
-  const mainSwipe = useSwipeTabs(['budgets', 'templates', 'prices', 'stock'], activeView, setActiveView, onOverflow);
+  const mainSwipe = useSwipeTabs(['budgets', 'templates', 'prices', 'stock'], activeView, setActiveView, onOverflow, tabSwipeEnabled);
   const [incomeModal, setIncomeModal] = useState(false);
   const [budgetModal, setBudgetModal] = useState(false);
   const [expenseModal, setExpenseModal] = useState(null);
@@ -741,11 +744,12 @@ function AddFundsModal({ open, budgetId, onClose, onDone }) {
 }
 
 function BudgetDetailModal({ open, budget, onClose, onDone, categories, categoryColorMap }) {
+  const { settings: detailSettings } = useSettings();
   const [expenses, setExpenses] = useState([]);
   const [funds, setFunds] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('expenses');
-  const budgetSwipe = useSwipeTabs(['expenses', 'funds'], activeTab, setActiveTab);
+  const budgetSwipe = useSwipeTabs(['expenses', 'funds'], activeTab, setActiveTab, undefined, detailSettings?.tabSwipeBudget !== false);
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetName, setBudgetName] = useState('');
   const [budgetCategory, setBudgetCategory] = useState('');

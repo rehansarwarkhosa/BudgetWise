@@ -1,6 +1,8 @@
 import { useRef, useCallback } from 'react';
 
-export default function useSwipeTabs(tabKeys, activeTab, setActiveTab, onOverflow) {
+const NOOP = { onTouchStart: () => {}, onTouchEnd: () => {} };
+
+export default function useSwipeTabs(tabKeys, activeTab, setActiveTab, onOverflow, enabled = true) {
   const touchStartRef = useRef(null);
   const touchStartYRef = useRef(null);
 
@@ -35,6 +37,8 @@ export default function useSwipeTabs(tabKeys, activeTab, setActiveTab, onOverflo
       }
     }
   }, [tabKeys, activeTab, setActiveTab, onOverflow]);
+
+  if (!enabled) return NOOP;
 
   return { onTouchStart, onTouchEnd };
 }
