@@ -19,6 +19,19 @@ import { useSettings } from '../context/SettingsContext';
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const RICH_COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
 
+function getNextLogLabel(nextLogDate) {
+  if (!nextLogDate) return null;
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const tmrw = new Date(now);
+  tmrw.setDate(tmrw.getDate() + 1);
+  const tmrwStr = `${tmrw.getFullYear()}-${String(tmrw.getMonth() + 1).padStart(2, '0')}-${String(tmrw.getDate()).padStart(2, '0')}`;
+  if (nextLogDate === todayStr) return 'Today';
+  if (nextLogDate === tmrwStr) return 'Tomorrow';
+  const d = new Date(nextLogDate + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
 function getRoutineHighlight(text, highlights) {
   if (!highlights?.length) return null;
   const lower = text.toLowerCase();
@@ -135,11 +148,21 @@ export default function Routines() {
                   <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
                     Today: {r.todayCompleteCount}/{r.maxDailyEntries} daily
                     {r.dueDate && <> &middot; Due: <span style={{ color: 'var(--warning)' }}>{formatDate(r.dueDate)}</span></>}
+                    {r.nextLogDate && r.isDoneForToday && (() => {
+                      const lbl = getNextLogLabel(r.nextLogDate);
+                      return lbl && lbl !== 'Today' ? <> &middot; Next: <span style={{ color: 'var(--primary)' }}>{lbl}</span></> : null;
+                    })()}
                   </p>
                 )}
                 {!r.isExpired && r.isActiveToday === false && (
                   <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    {r.dueDate && <>Due: <span style={{ color: 'var(--warning)' }}>{formatDate(r.dueDate)}</span></>}
+                    {r.nextLogDate && (
+                      <>
+                        <IoCalendar size={10} style={{ verticalAlign: -1, marginRight: 3 }} />
+                        Next log: <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{getNextLogLabel(r.nextLogDate)}</span>
+                      </>
+                    )}
+                    {r.dueDate && <> &middot; Due: <span style={{ color: 'var(--warning)' }}>{formatDate(r.dueDate)}</span></>}
                   </p>
                 )}
                 {r.isExpired && r.dueDate && (
@@ -852,6 +875,18 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
           &middot; Today: <strong style={{ color: routine?.isDoneForToday ? 'var(--success)' : 'var(--warning)' }}>
             {routine?.todayCompleteCount || 0}/{maxDailyEntries}
           </strong>
+          {routine?.nextLogDate && (() => {
+            const lbl = getNextLogLabel(routine.nextLogDate);
+            if (!lbl) return null;
+            const isToday = lbl === 'Today';
+            return (
+              <>
+                <br />
+                <IoCalendar size={11} style={{ verticalAlign: -1, marginRight: 3 }} />
+                Next log: <strong style={{ color: isToday ? 'var(--success)' : 'var(--primary)' }}>{lbl}</strong>
+              </>
+            );
+          })()}
         </div>
       )}
 

@@ -123,6 +123,33 @@ const reminderMatchesDay = (reminder, todayStr, weekday) => {
   }
 };
 
+// Find the next date (from startStr, inclusive or exclusive) where any reminder matches.
+// Returns null if no match found within 365 days or routine expires first.
+const getNextLogDate = (reminders, startStr, dueDateStr, includeStart = true) => {
+  const enabledReminders = (reminders || []).filter(r => r.enabled && !(r.type === 'once' && r.fired));
+  // Only compute for schedule-based types (interval, custom_days, custom_dates)
+  const scheduledReminders = enabledReminders.filter(r =>
+    ['interval', 'custom_days', 'custom_dates'].includes(r.type)
+  );
+  if (scheduledReminders.length === 0) return null;
+
+  const startDate = new Date(startStr + 'T12:00:00+05:00');
+  const maxDays = 365;
+
+  for (let i = includeStart ? 0 : 1; i <= maxDays; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    const dStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    // Stop if past due date
+    if (dueDateStr && dStr > dueDateStr) return null;
+    const dow = new Date(dStr + 'T12:00:00+05:00').getDay();
+    if (scheduledReminders.some(rem => reminderMatchesDay(rem, dStr, dow))) {
+      return dStr;
+    }
+  }
+  return null;
+};
+
 // Get all routines
 router.get('/', async (req, res, next) => {
   try {
@@ -194,11 +221,21 @@ router.get('/', async (req, res, next) => {
         const isActiveToday = enabledReminders.length === 0
           || enabledReminders.some(rem => reminderMatchesDay(rem, todayStr, pktWeekday));
 
+        // Compute next log date for schedule-based routines
+        let nextLogDate = null;
+        if (!isExpired) {
+          if (isActiveToday && !isDoneForToday) {
+            nextLogDate = todayStr; // today is the next log date
+          } else {
+            nextLogDate = getNextLogDate(r.reminders, todayStr, dueDateStr, false);
+          }
+        }
+
         return {
           ...r.toObject(), entryCount, completedEntries, targetEntries,
           progress, isExpired, lastEntry,
           todayCompleteCount, maxDailyEntries: effectiveMaxDaily, isDoneForToday,
-          isActiveToday,
+          isActiveToday, nextLogDate,
         };
       })
     );
