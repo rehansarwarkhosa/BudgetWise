@@ -5,11 +5,8 @@ import autoTable from 'jspdf-autotable';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
-import useSwipeTabs from '../hooks/useSwipeTabs';
-import useMenuSwipe from '../hooks/useMenuSwipe';
-import { formatPKR, monthName, formatDate } from '../utils/format';
+import { formatPKR, monthName } from '../utils/format';
 import { getBudgetsByPeriod, getExpenses, triggerRollover, getBudgetExportData } from '../api';
-import { useSettings } from '../context/SettingsContext';
 
 const FULL_MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -33,10 +30,6 @@ function fmtDateTime(date) {
 }
 
 export default function History() {
-  const { settings } = useSettings();
-  const [dummy] = useState('main');
-  const onOverflow = useMenuSwipe();
-  const swipe = useSwipeTabs(['main'], dummy, () => {}, onOverflow);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [budgets, setBudgets] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -570,7 +563,7 @@ export default function History() {
   };
 
   return (
-    <div className="page" onTouchStart={swipe.onTouchStart} onTouchEnd={swipe.onTouchEnd}>
+    <div className="page">
       <h1 className="page-title">History</h1>
 
       {/* Export PDF Section */}

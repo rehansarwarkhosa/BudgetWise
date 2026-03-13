@@ -2,8 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useSettings } from '../context/SettingsContext';
-import useSwipeTabs from '../hooks/useSwipeTabs';
-import useMenuSwipe from '../hooks/useMenuSwipe';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
 import { IoSunny, IoMoon, IoTrash, IoAdd } from 'react-icons/io5';
@@ -300,9 +298,6 @@ function CategoryColorEditor({ categories, newName, setNewName, newColor, setNew
 
 export default function Settings() {
   const { settings, loading, refetchSettings } = useSettings();
-  const [dummy] = useState('main');
-  const onOverflow = useMenuSwipe();
-  const menuSwipe = useSwipeTabs(['main'], dummy, () => {}, onOverflow);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
@@ -581,7 +576,7 @@ export default function Settings() {
   if (loading && !settings) return <Spinner />;
 
   return (
-    <div className="page" onTouchStart={menuSwipe.onTouchStart} onTouchEnd={menuSwipe.onTouchEnd}>
+    <div className="page">
       <h1 className="page-title">Settings</h1>
 
       {/* Theme Toggle */}

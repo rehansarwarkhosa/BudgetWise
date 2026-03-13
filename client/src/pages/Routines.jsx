@@ -7,7 +7,7 @@ import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import useFetch from '../hooks/useFetch';
 import useSwipeTabs from '../hooks/useSwipeTabs';
-import useMenuSwipe from '../hooks/useMenuSwipe';
+
 import { formatDateTime, formatDate } from '../utils/format';
 import {
   getRoutines, createRoutine, deleteRoutine, updateRoutine,
@@ -43,8 +43,7 @@ export default function Routines() {
   const [cloneSource, setCloneSource] = useState(null);
   const tabSwipeEnabled = settings?.tabSwipeRoutines !== false;
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'done_today' | 'scheduled' | 'expired'
-  const onOverflow = useMenuSwipe();
-  const swipe = useSwipeTabs(['pending', 'done_today', 'scheduled', 'expired'], activeTab, setActiveTab, onOverflow, tabSwipeEnabled);
+  const swipe = useSwipeTabs(['pending', 'done_today', 'scheduled', 'expired'], activeTab, setActiveTab, undefined, tabSwipeEnabled);
 
   if (loading && !routines) return <Spinner />;
 

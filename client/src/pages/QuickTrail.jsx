@@ -6,7 +6,7 @@ import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
 import { useSettings } from '../context/SettingsContext';
 import useSwipeTabs from '../hooks/useSwipeTabs';
-import useMenuSwipe from '../hooks/useMenuSwipe';
+
 import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote } from '../api';
 import { formatDateTime } from '../utils/format';
 import KanbanBoard from './KanbanBoard';
@@ -78,9 +78,8 @@ export default function QuickTrail() {
   const [showFilter, setShowFilter] = useState(false);
   const [detailEntry, setDetailEntry] = useState(null);
   const [activeTab, setActiveTab] = useState('trail');
-  const onOverflow = useMenuSwipe();
   const tabSwipeEnabled = settings?.tabSwipeTrail !== false;
-  const swipe = useSwipeTabs(['trail', 'board'], activeTab, setActiveTab, onOverflow, tabSwipeEnabled);
+  const swipe = useSwipeTabs(['trail', 'board'], activeTab, setActiveTab, undefined, tabSwipeEnabled);
   const inputRef = useRef(null);
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
@@ -93,8 +92,11 @@ export default function QuickTrail() {
   }, []);
 
   const toggleGroup = useCallback((date) => {
-    setCollapsedGroups(prev => ({ ...prev, [date]: !prev[date] }));
-  }, []);
+    setCollapsedGroups(prev => {
+      const currentState = prev[date] !== undefined ? prev[date] : (date !== todayStr);
+      return { ...prev, [date]: !currentState };
+    });
+  }, [todayStr]);
 
   const fetchTrails = async (p = 1, append = false, search = searchQuery, filter = filterMode, date = dateFilter) => {
     try {
@@ -111,9 +113,24 @@ export default function QuickTrail() {
   }, []);
 
   // Auto-focus trail input when trail tab is active
+  // On Android, programmatic focus() doesn't open the keyboard unless it
+  // happens within a user gesture. We attach a one-time touchstart listener
+  // that focuses the input on the first tap anywhere on the page.
+  const keyboardTriggered = useRef(false);
   useEffect(() => {
     if (activeTab === 'trail' && !searchMode) {
-      setTimeout(() => inputRef.current?.focus(), 100);
+      // Try immediate focus (works on desktop, sets cursor on mobile)
+      inputRef.current?.focus();
+      // Reset the one-time touch trigger when switching to trail tab
+      keyboardTriggered.current = false;
+      const handler = () => {
+        if (!keyboardTriggered.current && inputRef.current && document.activeElement !== inputRef.current) {
+          inputRef.current.focus();
+          keyboardTriggered.current = true;
+        }
+      };
+      document.addEventListener('touchstart', handler, { once: true, passive: true });
+      return () => document.removeEventListener('touchstart', handler);
     }
   }, [activeTab, searchMode, loading]);
 

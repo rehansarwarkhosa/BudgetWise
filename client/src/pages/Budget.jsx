@@ -9,7 +9,7 @@ import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import useFetch from '../hooks/useFetch';
 import useSwipeTabs from '../hooks/useSwipeTabs';
-import useMenuSwipe from '../hooks/useMenuSwipe';
+
 import { formatPKR, formatDate } from '../utils/format';
 import { useSettings } from '../context/SettingsContext';
 import {
@@ -33,8 +33,7 @@ export default function Budget() {
   const { settings: appSettings } = useSettings();
   const tabSwipeEnabled = appSettings?.tabSwipeBudget !== false;
   const [activeView, setActiveView] = useState('budgets'); // 'budgets' or 'templates'
-  const onOverflow = useMenuSwipe();
-  const mainSwipe = useSwipeTabs(['budgets', 'templates', 'prices', 'stock'], activeView, setActiveView, onOverflow, tabSwipeEnabled);
+  const mainSwipe = useSwipeTabs(['budgets', 'templates', 'prices', 'stock'], activeView, setActiveView, undefined, tabSwipeEnabled);
   const [incomeModal, setIncomeModal] = useState(false);
   const [budgetModal, setBudgetModal] = useState(false);
   const [expenseModal, setExpenseModal] = useState(null);

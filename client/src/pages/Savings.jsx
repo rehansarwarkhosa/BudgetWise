@@ -1,17 +1,11 @@
-import { useState } from 'react';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import useFetch from '../hooks/useFetch';
-import useSwipeTabs from '../hooks/useSwipeTabs';
-import useMenuSwipe from '../hooks/useMenuSwipe';
 import { formatPKR, monthName } from '../utils/format';
 import { getSavings } from '../api';
 
 export default function Savings() {
   const { data, loading } = useFetch(getSavings);
-  const [dummy] = useState('main');
-  const onOverflow = useMenuSwipe();
-  const swipe = useSwipeTabs(['main'], dummy, () => {}, onOverflow);
 
   if (loading && !data) return <Spinner />;
 
@@ -19,7 +13,7 @@ export default function Savings() {
   const years = Object.keys(grouped).sort((a, b) => b - a);
 
   return (
-    <div className="page" onTouchStart={swipe.onTouchStart} onTouchEnd={swipe.onTouchEnd}>
+    <div className="page">
       <h1 className="page-title">Savings</h1>
 
       {years.length === 0 ? (
