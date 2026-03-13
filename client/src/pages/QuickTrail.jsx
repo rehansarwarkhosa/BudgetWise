@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoColorPalette, IoSave, IoChevronDown, IoChevronForward } from 'react-icons/io5';
+import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoColorPalette, IoSave, IoChevronDown, IoChevronForward, IoTime } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
@@ -68,6 +68,10 @@ export default function QuickTrail() {
   const { settings } = useSettings();
   const trailBold = settings?.trailBoldText || false;
   const trailHighlights = useMemo(() => settings?.trailHighlights || [], [settings?.trailHighlights]);
+  const reorderEnabled = settings?.trailReorderEnabled !== false;
+  const reorderTapsNeeded = settings?.trailReorderTaps || 2;
+  const detailEnabled = settings?.trailDetailEnabled !== false;
+  const detailTapsNeeded = settings?.trailDetailTaps || 3;
   const [entries, setEntries] = useState([]);
   const [text, setText] = useState('');
   const [page, setPage] = useState(1);
@@ -97,6 +101,7 @@ export default function QuickTrail() {
   const [dragOverIdx, setDragOverIdx] = useState(null);
 
   const handleReorderTap = useCallback((entryId) => {
+    if (!reorderEnabled) return;
     const now = Date.now();
     const prev = reorderTapCount.current[entryId] || { count: 0, last: 0 };
     if (now - prev.last < 400) {
@@ -107,7 +112,7 @@ export default function QuickTrail() {
     prev.last = now;
     reorderTapCount.current[entryId] = prev;
     clearTimeout(reorderTapTimer.current);
-    if (prev.count >= 2) {
+    if (prev.count >= reorderTapsNeeded) {
       if (reorderEntryId === entryId) {
         setReorderEntryId(null);
         toast('Reorder locked', { icon: '🔒', duration: 1000 });
@@ -121,7 +126,7 @@ export default function QuickTrail() {
         reorderTapCount.current[entryId] = { count: 0, last: 0 };
       }, 500);
     }
-  }, [reorderEntryId]);
+  }, [reorderEntryId, reorderEnabled, reorderTapsNeeded]);
 
   const handleDrop = useCallback(async (groupEntries, fromIdx, toIdx) => {
     if (fromIdx === toIdx) return;
@@ -260,7 +265,8 @@ export default function QuickTrail() {
   };
 
   const tripleTapRef = useRef({});
-  const handleTripleTap = (entry) => {
+  const handleMultiTap = (entry) => {
+    if (!detailEnabled) return;
     const now = Date.now();
     const prev = tripleTapRef.current[entry._id] || { count: 0, last: 0 };
     if (now - prev.last < 400) {
@@ -270,7 +276,7 @@ export default function QuickTrail() {
     }
     prev.last = now;
     tripleTapRef.current[entry._id] = prev;
-    if (prev.count >= 3) {
+    if (prev.count >= detailTapsNeeded) {
       prev.count = 0;
       setDetailEntry(entry);
     }
@@ -481,7 +487,7 @@ export default function QuickTrail() {
                             return;
                           }
                           handleReorderTap(entry._id);
-                          handleTripleTap(entry);
+                          handleMultiTap(entry);
                         }}
                         draggable={isUnlocked}
                         onDragStart={(e) => {
@@ -524,6 +530,9 @@ export default function QuickTrail() {
                                 <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                                   {formatDateTime(entry.createdAt)}
                                 </span>
+                                {entry.adjustedAt && (
+                                  <IoTime size={12} color="#F59E0B" title="Time adjusted" />
+                                )}
                                 {hasReminders && (
                                   <IoAlarm size={12} color="var(--primary)" title="Has reminders" />
                                 )}
@@ -600,7 +609,7 @@ const modalContent = {
 function TrailDetailModal({ entry, onClose, onUpdated }) {
   const { settings: detailSettings } = useSettings();
   const [tab, setTab] = useState('reminders');
-  const detailSwipe = useSwipeTabs(['reminders', 'notes'], tab, setTab, undefined, detailSettings?.tabSwipeTrail !== false);
+  const detailSwipe = useSwipeTabs(['reminders', 'adjust', 'notes'], tab, setTab, undefined, detailSettings?.tabSwipeTrail !== false);
 
   // Notes
   const [notes, setNotes] = useState([]);
@@ -614,9 +623,18 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
   const [remindersDirty, setRemindersDirty] = useState(false);
   const [savingReminders, setSavingReminders] = useState(false);
 
+  // Adjust time
+  const [adjustTime, setAdjustTime] = useState('');
+  const [adjustDate, setAdjustDate] = useState('');
+  const [savingAdjust, setSavingAdjust] = useState(false);
+
   useEffect(() => {
     loadNotes();
     setReminders(entry.reminders || []);
+    // Initialize adjust time/date from entry's createdAt
+    const d = new Date(new Date(entry.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+    setAdjustTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+    setAdjustDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
   }, [entry._id]);
 
   const loadNotes = async () => {
@@ -691,6 +709,19 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
     finally { setSavingReminders(false); }
   };
 
+  const handleAdjustTime = async () => {
+    if (!adjustDate || !adjustTime) return;
+    setSavingAdjust(true);
+    try {
+      const adjustedAt = new Date(`${adjustDate}T${adjustTime}:00+05:00`).toISOString();
+      const res = await updateTrail(entry._id, { adjustedAt });
+      onUpdated(res.data);
+      toast.success('Time adjusted');
+      onClose();
+    } catch (err) { toast.error(err.message); }
+    finally { setSavingAdjust(false); }
+  };
+
   return (
     <div style={modalBackdrop} onClick={onClose}>
       <div style={{ ...modalContent, maxHeight: '85vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}
@@ -702,14 +733,17 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
             <p style={{ fontSize: 14, fontWeight: 600, marginBottom: 4, whiteSpace: 'pre-wrap', lineHeight: 1.4 }}>
               {entry.text.length > 100 ? entry.text.slice(0, 100) + '...' : entry.text}
             </p>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatDateTime(entry.createdAt)}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatDateTime(entry.createdAt)}</span>
+              {entry.adjustedAt && <IoTime size={11} color="#F59E0B" title="Time adjusted" />}
+            </div>
           </div>
           <button className="btn-ghost" onClick={onClose} style={{ padding: 4 }}><IoClose size={20} /></button>
         </div>
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '1px solid var(--border)' }}>
-          {[{ key: 'reminders', label: 'Reminders' }, { key: 'notes', label: 'Notes' }].map(t => (
+          {[{ key: 'reminders', label: 'Reminders' }, { key: 'adjust', label: 'Adjust' }, { key: 'notes', label: 'Notes' }].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               style={{
                 flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600,
@@ -723,6 +757,39 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
               )}
             </button>
           ))}
+        </div>
+
+        {/* Adjust Time Tab */}
+        <div style={{ display: tab === 'adjust' ? 'block' : 'none' }}>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+            Adjust the time/date of this entry to place it in the correct position.
+          </p>
+
+          {/* Time input - primary focus */}
+          <div className="form-group" style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: 'block' }}>Time</label>
+            <input type="time" value={adjustTime} onChange={e => setAdjustTime(e.target.value)}
+              autoFocus
+              style={{ width: '100%', fontSize: 16, padding: '10px 12px', borderRadius: 8 }} />
+          </div>
+
+          {/* Date input - secondary */}
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: 'block', color: 'var(--text-muted)' }}>Date <span style={{ fontSize: 11, fontWeight: 400 }}>(change only if needed)</span></label>
+            <input type="date" value={adjustDate} onChange={e => setAdjustDate(e.target.value)}
+              style={{ width: '100%', fontSize: 14, padding: '8px 12px', borderRadius: 8 }} />
+          </div>
+
+          {entry.adjustedAt && (
+            <p style={{ fontSize: 11, color: '#F59E0B', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <IoTime size={12} /> Previously adjusted on {formatDateTime(entry.adjustedAt)}
+            </p>
+          )}
+
+          <button className="btn-primary" onClick={handleAdjustTime} disabled={savingAdjust || !adjustTime || !adjustDate}
+            style={{ width: '100%', fontSize: 14, fontWeight: 700, padding: '12px 0' }}>
+            {savingAdjust ? 'Saving...' : 'Save Adjusted Time'}
+          </button>
         </div>
 
         {/* Notes Tab */}

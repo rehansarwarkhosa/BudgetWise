@@ -32,6 +32,10 @@ const settingsSchema = new mongoose.Schema({
   tabSwipeBudget: { type: Boolean, default: true },
   tabSwipeRoutines: { type: Boolean, default: true },
   tabSwipeNotes: { type: Boolean, default: true },
+  trailReorderEnabled: { type: Boolean, default: true },
+  trailReorderTaps: { type: Number, default: 2, min: 2, max: 5 },
+  trailDetailEnabled: { type: Boolean, default: true },
+  trailDetailTaps: { type: Number, default: 3, min: 2, max: 5 },
 }, { timestamps: true });
 
 export default mongoose.model('Settings', settingsSchema);

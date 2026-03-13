@@ -137,6 +137,15 @@ router.put('/:id', async (req, res, next) => {
     const changes = [];
     if (req.body.text !== undefined) { trail.text = req.body.text; changes.push('text updated'); }
     if (req.body.reminders !== undefined) { trail.reminders = req.body.reminders; changes.push(`reminders updated (${req.body.reminders.length})`); }
+    if (req.body.adjustedAt !== undefined) {
+      const oldDate = trail.createdAt;
+      trail.createdAt = new Date(req.body.adjustedAt);
+      trail.adjustedAt = new Date();
+      trail.sortOrder = 0;
+      const oldStr = oldDate.toLocaleString('en-US', { timeZone: 'Asia/Karachi', dateStyle: 'short', timeStyle: 'short' });
+      const newStr = trail.createdAt.toLocaleString('en-US', { timeZone: 'Asia/Karachi', dateStyle: 'short', timeStyle: 'short' });
+      changes.push(`time adjusted: ${oldStr} → ${newStr}`);
+    }
     await trail.save();
     if (changes.length) {
       await AuditLog.create({ action: 'UPDATE', entity: 'Trail', entityId: trail._id, details: changes.join(', ') });

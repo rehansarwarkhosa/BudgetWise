@@ -343,6 +343,10 @@ export default function Settings() {
   const [tabSwipeBudget, setTabSwipeBudget] = useState(true);
   const [tabSwipeRoutines, setTabSwipeRoutines] = useState(true);
   const [tabSwipeNotes, setTabSwipeNotes] = useState(true);
+  const [trailReorderEnabled, setTrailReorderEnabled] = useState(true);
+  const [trailReorderTaps, setTrailReorderTaps] = useState(2);
+  const [trailDetailEnabled, setTrailDetailEnabled] = useState(true);
+  const [trailDetailTaps, setTrailDetailTaps] = useState(3);
 
   useEffect(() => {
     if (settings && !initialized) {
@@ -370,6 +374,10 @@ export default function Settings() {
       setTabSwipeBudget(settings.tabSwipeBudget ?? true);
       setTabSwipeRoutines(settings.tabSwipeRoutines ?? true);
       setTabSwipeNotes(settings.tabSwipeNotes ?? true);
+      setTrailReorderEnabled(settings.trailReorderEnabled ?? true);
+      setTrailReorderTaps(settings.trailReorderTaps ?? 2);
+      setTrailDetailEnabled(settings.trailDetailEnabled ?? true);
+      setTrailDetailTaps(settings.trailDetailTaps ?? 3);
       setInitialized(true);
     }
   }, [settings, initialized]);
@@ -824,6 +832,82 @@ export default function Settings() {
           onRemove={handleRemoveHighlight}
           onUpdateColor={handleUpdateHighlightColor}
         />
+      </div>
+
+      {/* Trail Interactions */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Trail Interactions</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Configure tap-based reorder and detail popup behavior.
+        </p>
+
+        {/* Reorder toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <span style={{ fontSize: 14 }}>Tap to reorder</span>
+          <button onClick={async () => {
+            const next = !trailReorderEnabled;
+            setTrailReorderEnabled(next);
+            try { await updateSettings({ trailReorderEnabled: next }); await refetchSettings(); setInitialized(false); }
+            catch (err) { toast.error(err.message); setTrailReorderEnabled(!next); }
+          }} style={{
+            width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+            background: trailReorderEnabled ? 'var(--primary)' : 'var(--bg-input)',
+            position: 'relative', transition: 'background 0.2s',
+          }}>
+            <span style={{
+              position: 'absolute', top: 2, left: trailReorderEnabled ? 22 : 2,
+              width: 20, height: 20, borderRadius: '50%', background: 'white',
+              transition: 'left 0.2s',
+            }} />
+          </button>
+        </div>
+        {trailReorderEnabled && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingLeft: 12 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Taps to unlock reorder</span>
+            <select value={trailReorderTaps} onChange={async (e) => {
+              const val = parseInt(e.target.value);
+              setTrailReorderTaps(val);
+              try { await updateSettings({ trailReorderTaps: val }); await refetchSettings(); setInitialized(false); }
+              catch (err) { toast.error(err.message); }
+            }} style={{ fontSize: 13, padding: '4px 8px', width: 60 }}>
+              {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* Detail popup toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <span style={{ fontSize: 14 }}>Tap to open detail</span>
+          <button onClick={async () => {
+            const next = !trailDetailEnabled;
+            setTrailDetailEnabled(next);
+            try { await updateSettings({ trailDetailEnabled: next }); await refetchSettings(); setInitialized(false); }
+            catch (err) { toast.error(err.message); setTrailDetailEnabled(!next); }
+          }} style={{
+            width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+            background: trailDetailEnabled ? 'var(--primary)' : 'var(--bg-input)',
+            position: 'relative', transition: 'background 0.2s',
+          }}>
+            <span style={{
+              position: 'absolute', top: 2, left: trailDetailEnabled ? 22 : 2,
+              width: 20, height: 20, borderRadius: '50%', background: 'white',
+              transition: 'left 0.2s',
+            }} />
+          </button>
+        </div>
+        {trailDetailEnabled && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4, paddingLeft: 12 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Taps to open detail</span>
+            <select value={trailDetailTaps} onChange={async (e) => {
+              const val = parseInt(e.target.value);
+              setTrailDetailTaps(val);
+              try { await updateSettings({ trailDetailTaps: val }); await refetchSettings(); setInitialized(false); }
+              catch (err) { toast.error(err.message); }
+            }} style={{ fontSize: 13, padding: '4px 8px', width: 60 }}>
+              {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Routine Highlights */}
