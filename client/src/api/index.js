@@ -144,5 +144,5 @@ export const updateStockNote = (noteId, data) => api.put(`/stock/notes/${noteId}
 export const deleteStockNote = (noteId) => api.delete(`/stock/notes/${noteId}`);
 
 // Audit Logs
-export const getAuditLogs = (page = 1) => api.get(`/audit-logs?page=${page}&limit=50`);
+export const getAuditLogs = (page = 1, { date, action } = {}) => api.get('/audit-logs', { params: { page, limit: 50, ...(date ? { date } : {}), ...(action ? { action } : {}) } });
 export const clearAuditLogs = () => api.delete('/audit-logs');

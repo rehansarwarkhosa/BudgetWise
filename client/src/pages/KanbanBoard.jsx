@@ -16,6 +16,7 @@ import {
   getWorkOrders, createWorkOrder, updateWorkOrder, moveWorkOrder, deleteWorkOrder,
   getWorkOrderNotes, addWorkOrderNote, updateWorkOrderNote, deleteWorkOrderNote,
   logWorkOrderExpense, getBudgets, bulkArchiveWorkOrders, getArchivedWorkOrders,
+  getPriceItems,
 } from '../api';
 
 const PRIORITY_COLORS = { low: '#22C55E', medium: '#F59E0B', high: '#EF4444' };
@@ -905,9 +906,48 @@ function CreateWorkOrderModal({ onClose, onCreated }) {
   const [budgetAmount, setBudgetAmount] = useState('');
   const [budgets, setBudgets] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [priceItems, setPriceItems] = useState([]);
+  const [showPriceSuggestions, setShowPriceSuggestions] = useState(false);
+  const [selectedPriceItem, setSelectedPriceItem] = useState(null);
+  const titleRef = useRef(null);
+  const suggestionsRef = useRef(null);
 
   useEffect(() => {
     getBudgets().then(res => setBudgets(res.data)).catch(() => {});
+    getPriceItems().then(res => setPriceItems(res.data || [])).catch(() => {});
+  }, []);
+
+  const filteredPriceItems = priceItems.filter(item =>
+    !title.trim() || item.name.toLowerCase().includes(title.toLowerCase())
+  );
+
+  const handleSelectPriceItem = (item) => {
+    setTitle(item.name);
+    setSelectedPriceItem(item);
+    setShowPriceSuggestions(false);
+    setIsBudget(true);
+    if (item.latestPrice) {
+      setBudgetAmount(String(item.latestPrice.amount || ''));
+    }
+  };
+
+  const handleTitleChange = (e) => {
+    setTitle(e.target.value);
+    setShowPriceSuggestions(true);
+    if (selectedPriceItem && e.target.value !== selectedPriceItem.name) {
+      setSelectedPriceItem(null);
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target) &&
+          titleRef.current && !titleRef.current.contains(e.target)) {
+        setShowPriceSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handleSubmit = async (e) => {
@@ -937,9 +977,37 @@ function CreateWorkOrderModal({ onClose, onCreated }) {
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
+          <div className="form-group" style={{ position: 'relative' }}>
             <label>Title</label>
-            <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Work order title" autoFocus />
+            <input ref={titleRef} type="text" value={title} onChange={handleTitleChange}
+              onFocus={() => setShowPriceSuggestions(true)}
+              placeholder="Work order title" autoFocus />
+            {showPriceSuggestions && filteredPriceItems.length > 0 && (
+              <div ref={suggestionsRef} style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                background: 'var(--bg-card)', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)', maxHeight: 180, overflowY: 'auto',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              }}>
+                {filteredPriceItems.map(item => (
+                  <div key={item._id} onClick={() => handleSelectPriceItem(item)}
+                    style={{
+                      padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                      borderBottom: '1px solid var(--border)',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <span>{item.name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({item.category})</span></span>
+                    {item.latestPrice && (
+                      <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>
+                        {formatPKR(item.latestPrice.amount)}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="form-group">

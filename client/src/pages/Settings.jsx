@@ -320,6 +320,8 @@ export default function Settings() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [confirmClearAudit, setConfirmClearAudit] = useState(false);
+  const [auditDateFilter, setAuditDateFilter] = useState('');
+  const [auditActionFilter, setAuditActionFilter] = useState('');
   const [categories, setCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#3AAFB9');
@@ -382,10 +384,12 @@ export default function Settings() {
     }
   }, [settings, initialized]);
 
-  const fetchAuditLogs = async (page = 1) => {
+  const fetchAuditLogs = async (page = 1, filters = {}) => {
     setAuditLoading(true);
     try {
-      const res = await getAuditLogs(page);
+      const date = filters.date !== undefined ? filters.date : auditDateFilter;
+      const action = filters.action !== undefined ? filters.action : auditActionFilter;
+      const res = await getAuditLogs(page, { date: date || undefined, action: action || undefined });
       setAuditLogs(res.data.logs);
       setAuditTotal(res.data.total);
       setAuditPages(res.data.pages);
@@ -1042,7 +1046,32 @@ export default function Settings() {
           <button className="btn-outline" onClick={() => { setShowAuditLog(true); fetchAuditLogs(1); }}>
             View Audit Log
           </button>
-        ) : auditLoading ? (
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <input type="date" value={auditDateFilter}
+                onChange={e => { setAuditDateFilter(e.target.value); fetchAuditLogs(1, { date: e.target.value }); }}
+                style={{ flex: 1, fontSize: 12, padding: '6px 8px' }} />
+              <select value={auditActionFilter}
+                onChange={e => { setAuditActionFilter(e.target.value); fetchAuditLogs(1, { action: e.target.value }); }}
+                style={{ flex: 1, fontSize: 12, padding: '6px 8px' }}>
+                <option value="">All Types</option>
+                <option value="CREATE">Create</option>
+                <option value="UPDATE">Update</option>
+                <option value="DELETE">Delete</option>
+                <option value="NOTIFY">Notification</option>
+                <option value="ERROR">Error</option>
+              </select>
+              {(auditDateFilter || auditActionFilter) && (
+                <button className="btn-ghost" style={{ fontSize: 11, whiteSpace: 'nowrap' }}
+                  onClick={() => { setAuditDateFilter(''); setAuditActionFilter(''); fetchAuditLogs(1, { date: '', action: '' }); }}>
+                  Clear
+                </button>
+              )}
+            </div>
+          </>
+        )}
+        {showAuditLog && (auditLoading ? (
           <Spinner />
         ) : auditLogs.length === 0 ? (
           <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>No audit logs yet</p>
@@ -1129,7 +1158,7 @@ export default function Settings() {
               {auditTotal} total entries
             </p>
           </>
-        )}
+        ))}
       </div>
 
       <ConfirmModal open={confirmClearAudit} onClose={() => setConfirmClearAudit(false)}
