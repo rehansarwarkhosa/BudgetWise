@@ -22,6 +22,7 @@ import workorderRoutes from './routes/workorders.js';
 import priceItemRoutes from './routes/priceItems.js';
 import auditLogRoutes from './routes/auditLogs.js';
 import stockRoutes from './routes/stock.js';
+import reminderRoutes from './routes/reminders.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -44,6 +45,7 @@ app.use('/api/workorders', workorderRoutes);
 app.use('/api/price-items', priceItemRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
 app.use('/api/stock', stockRoutes);
+app.use('/api/reminders', reminderRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, data: { status: 'ok' } });

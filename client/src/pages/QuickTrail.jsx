@@ -11,6 +11,7 @@ import { IoReorderThree } from 'react-icons/io5';
 import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote, reorderTrails } from '../api';
 import { formatDateTime } from '../utils/format';
 import KanbanBoard from './KanbanBoard';
+import Reminders from './Reminders';
 
 const RICH_COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -88,7 +89,7 @@ export default function QuickTrail() {
   const [detailEntry, setDetailEntry] = useState(null);
   const [activeTab, setActiveTab] = useState('trail');
   const tabSwipeEnabled = settings?.tabSwipeTrail !== false;
-  const swipe = useSwipeTabs(['trail', 'board'], activeTab, setActiveTab, undefined, tabSwipeEnabled);
+  const swipe = useSwipeTabs(['trail', 'board', 'reminders'], activeTab, setActiveTab, undefined, tabSwipeEnabled);
   const inputRef = useRef(null);
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
@@ -367,7 +368,7 @@ export default function QuickTrail() {
 
       {/* Tab Switcher */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '1px solid var(--border)' }}>
-        {[{ key: 'trail', label: 'Trail' }, { key: 'board', label: 'Board' }].map(t => (
+        {[{ key: 'trail', label: 'Trail' }, { key: 'board', label: 'Board' }, { key: 'reminders', label: 'Reminders' }].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
             style={{
               flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600,
@@ -581,6 +582,10 @@ export default function QuickTrail() {
       </div>
       <div style={{ display: activeTab === 'board' ? 'block' : 'none' }}>
         <KanbanBoard />
+      </div>
+
+      <div style={{ display: activeTab === 'reminders' ? 'block' : 'none' }}>
+        <Reminders />
       </div>
 
       {detailEntry && (
