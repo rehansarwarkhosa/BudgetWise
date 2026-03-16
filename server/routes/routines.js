@@ -7,6 +7,7 @@ import Trail from '../models/Trail.js';
 import Settings from '../models/Settings.js';
 import AuditLog from '../models/AuditLog.js';
 import RoutineNote from '../models/RoutineNote.js';
+import Reminder from '../models/Reminder.js';
 import { success, error } from '../utils/response.js';
 
 const router = Router();
@@ -380,7 +381,7 @@ router.get('/check-reminders', async (req, res, next) => {
     }
 
     // --- Also check Work Order reminders ---
-    const workOrders = await WorkOrder.find({ status: { $nin: ['done', 'archived'] } });
+    const workOrders = await WorkOrder.find({ status: { $nin: ['done', 'archived', 'backlog'] } });
     const woTriggered = [];
 
     for (const wo of workOrders) {
@@ -596,6 +597,123 @@ router.get('/check-reminders', async (req, res, next) => {
       }
     }
 
+    // --- Also check standalone Reminders ---
+    const activeReminders = await Reminder.find({ status: 'active' });
+    const reminderTriggered = [];
+
+    for (const rem of activeReminders) {
+      const schedule = rem.schedule;
+      if (!schedule || !schedule.enabled) continue;
+      if (schedule.type === 'once' && schedule.fired) continue;
+
+      const [rh, rm2] = schedule.time.split(':').map(Number);
+      const timeDiff = (currentHour * 60 + currentMin) - (rh * 60 + rm2);
+      if (timeDiff < 0 || timeDiff >= 10) continue;
+
+      const reminderKey = `${todayStr}|${schedule.time}`;
+      if (schedule.lastNotifiedDate === reminderKey) continue;
+
+      let matches = false;
+      switch (schedule.type) {
+        case 'once': matches = true; break;
+        case 'daily': matches = true; break;
+        case 'weekdays': matches = currentDay >= 1 && currentDay <= 5; break;
+        case 'custom_days': matches = (schedule.days || []).includes(currentDay); break;
+        case 'custom_dates':
+          matches = (schedule.dates || []).some(d => new Date(d).toISOString().split('T')[0] === todayStr);
+          break;
+        case 'interval': {
+          if (schedule.intervalDays && schedule.intervalStartDate) {
+            const startD = new Date(new Date(schedule.intervalStartDate).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+            startD.setHours(0, 0, 0, 0);
+            const todayD = new Date(todayStr + 'T00:00:00');
+            const diffDays = Math.round((todayD - startD) / 86400000);
+            matches = diffDays >= 0 && diffDays % schedule.intervalDays === 0;
+          }
+          break;
+        }
+      }
+
+      if (matches) {
+        reminderTriggered.push({
+          reminderId: rem._id,
+          reminderTitle: rem.title,
+          reminderTime: schedule.time,
+        });
+        schedule.lastNotifiedDate = reminderKey;
+        if (schedule.type === 'once') { schedule.fired = true; schedule.enabled = false; }
+        await rem.save();
+      }
+    }
+
+    let remEmailSent = false;
+    let remEmailSkipReason = null;
+    let remPushResult = null;
+
+    if (reminderTriggered.length > 0) {
+      await AuditLog.create({
+        action: 'NOTIFY', entity: 'Reminder',
+        details: `${reminderTriggered.length} reminder(s): ${reminderTriggered.map(t => `"${t.reminderTitle}" at ${t.reminderTime}`).join(', ')}`,
+      });
+
+      if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) {
+        remEmailSkipReason = 'SendGrid not configured';
+      } else {
+        const remSettings = await Settings.findOne();
+        if (remSettings?.emailNotificationsEnabled === false) {
+          remEmailSkipReason = 'notifications disabled';
+        } else {
+          const toEmail = remSettings?.notificationEmail || process.env.NOTIFICATION_EMAIL;
+          if (!toEmail) {
+            remEmailSkipReason = 'no notification email';
+          } else {
+            sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+            const reminderList = reminderTriggered.map(t =>
+              `<li><strong>${t.reminderTitle}</strong> — ${t.reminderTime}</li>`
+            ).join('');
+            const timeStr = formatPKT(new Date());
+            try {
+              await sgMail.send({
+                to: toEmail,
+                from: process.env.SENDGRID_FROM_EMAIL,
+                subject: `BudgetWise — ${reminderTriggered.length} Reminder${reminderTriggered.length > 1 ? 's' : ''}`,
+                html: `
+                  <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #6C63FF; margin-bottom: 4px;">Reminders</h2>
+                    <p style="color: #666; font-size: 13px; margin-bottom: 16px;">${timeStr} (PKT)</p>
+                    <ul style="padding-left: 20px; line-height: 1.8;">${reminderList}</ul>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+                    <p style="color: #999; font-size: 12px;">Sent by BudgetWise</p>
+                  </div>
+                `,
+              });
+              remEmailSent = true;
+              await AuditLog.create({ action: 'NOTIFY', entity: 'Reminder', details: `Email sent to ${toEmail}` });
+            } catch (emailErr) {
+              remEmailSkipReason = emailErr.message;
+              await AuditLog.create({ action: 'ERROR', entity: 'Reminder', details: `Email failed: ${emailErr.message}` });
+            }
+          }
+        }
+      }
+
+      const remPushTitle = `BudgetWise — ${reminderTriggered.length} Reminder${reminderTriggered.length > 1 ? 's' : ''}`;
+      const remPushMessage = reminderTriggered.map(t => `${t.reminderTitle} (${t.reminderTime})`).join(', ');
+      remPushResult = await sendPushNotification(remPushTitle, remPushMessage, 'https://budgetwise-f41c.onrender.com/');
+
+      if (remPushResult.sent) {
+        await AuditLog.create({
+          action: 'PUSH_NOTIFY', entity: 'Reminder',
+          details: `Push sent to ${remPushResult.recipients} subscriber(s): ${remPushMessage}`,
+        });
+      } else {
+        await AuditLog.create({
+          action: 'PUSH_SKIP', entity: 'Reminder',
+          details: `Push skipped: ${remPushResult.reason}`,
+        });
+      }
+    }
+
     success(res, {
       triggered, emailSent, count: triggered.length,
       ...(emailSkipReason ? { emailSkipReason } : {}),
@@ -611,6 +729,12 @@ router.get('/check-reminders', async (req, res, next) => {
         emailSent: trailEmailSent,
         ...(trailEmailSkipReason ? { emailSkipReason: trailEmailSkipReason } : {}),
         pushNotification: trailPushResult,
+      },
+      reminders: {
+        triggered: reminderTriggered, count: reminderTriggered.length,
+        emailSent: remEmailSent,
+        ...(remEmailSkipReason ? { emailSkipReason: remEmailSkipReason } : {}),
+        pushNotification: remPushResult,
       },
     });
   } catch (err) { next(err); }

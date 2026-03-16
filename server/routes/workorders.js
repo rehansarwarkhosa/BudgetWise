@@ -80,7 +80,7 @@ router.get('/', async (req, res, next) => {
     if (search) filter.title = { $regex: search, $options: 'i' };
     if (priority) filter.priority = priority;
     if (status) filter.status = status;
-    else if (includeArchived !== 'true') filter.status = { $ne: 'archived' };
+    else if (includeArchived !== 'true') filter.status = { $nin: ['archived', 'backlog'] };
     if (budgetType === 'budget') filter.budgetId = { $ne: null };
     if (budgetType === 'simple') filter.budgetId = null;
 
@@ -126,7 +126,7 @@ router.get('/check-reminders', async (req, res, next) => {
     const currentMin = pkt.minute;
     const todayStr = `${pkt.year}-${String(pkt.month).padStart(2, '0')}-${String(pkt.day).padStart(2, '0')}`;
 
-    const workOrders = await WorkOrder.find({ status: { $nin: ['done', 'archived'] } });
+    const workOrders = await WorkOrder.find({ status: { $nin: ['done', 'archived', 'backlog'] } });
     const triggered = [];
 
     for (const wo of workOrders) {
@@ -341,7 +341,7 @@ router.put('/:id', async (req, res, next) => {
 router.put('/:id/move', async (req, res, next) => {
   try {
     const { status } = req.body;
-    if (!['todo', 'doing', 'done', 'archived'].includes(status)) return error(res, 'Invalid status');
+    if (!['backlog', 'todo', 'doing', 'done', 'archived'].includes(status)) return error(res, 'Invalid status');
     const wo = await WorkOrder.findById(req.params.id);
     if (!wo) return error(res, 'Work order not found', 404);
     const oldStatus = wo.status;
@@ -355,6 +355,53 @@ router.put('/:id/move', async (req, res, next) => {
 
     const populated = await WorkOrder.findById(wo._id).populate('budgetId', 'name remainingAmount allocatedAmount');
     success(res, populated);
+  } catch (err) { next(err); }
+});
+
+// Duplicate work order
+router.post('/duplicate/:id', async (req, res, next) => {
+  try {
+    const { count } = req.body;
+    const copies = Math.min(Math.max(1, parseInt(count) || 1), 50);
+    const source = await WorkOrder.findById(req.params.id);
+    if (!source) return error(res, 'Work order not found', 404);
+
+    const created = [];
+    for (let i = 0; i < copies; i++) {
+      const wo = await WorkOrder.create({
+        title: source.title,
+        priority: source.priority,
+        status: source.status,
+        budgetId: source.budgetId || null,
+        budgetAmount: source.budgetAmount || 0,
+        budgetExpenseStatus: source.budgetId ? 'pending' : 'none',
+        dueDate: source.dueDate || null,
+        reminders: source.reminders || [],
+      });
+      created.push(wo);
+    }
+
+    await AuditLog.create({
+      action: 'CREATE', entity: 'WorkOrder',
+      details: `Duplicated "${source.title}" × ${copies}`,
+    });
+
+    const populated = await WorkOrder.find({ _id: { $in: created.map(c => c._id) } })
+      .populate('budgetId', 'name remainingAmount allocatedAmount');
+    success(res, populated, 201);
+  } catch (err) { next(err); }
+});
+
+// Bulk move work orders
+router.post('/bulk-move', async (req, res, next) => {
+  try {
+    const { ids, status } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return error(res, 'ids array required');
+    if (!['backlog', 'todo', 'doing', 'done', 'archived'].includes(status)) return error(res, 'Invalid status');
+    await WorkOrder.updateMany({ _id: { $in: ids } }, { $set: { status } });
+    await AuditLog.create({ action: 'UPDATE', entity: 'WorkOrder', details: `Bulk moved ${ids.length} work orders to ${status}` });
+    const updated = await WorkOrder.find({ _id: { $in: ids } }).populate('budgetId', 'name remainingAmount allocatedAmount');
+    success(res, updated);
   } catch (err) { next(err); }
 });
 

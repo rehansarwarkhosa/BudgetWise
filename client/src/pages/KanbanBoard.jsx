@@ -16,13 +16,13 @@ import {
   getWorkOrders, createWorkOrder, updateWorkOrder, moveWorkOrder, deleteWorkOrder,
   getWorkOrderNotes, addWorkOrderNote, updateWorkOrderNote, deleteWorkOrderNote,
   logWorkOrderExpense, getBudgets, bulkArchiveWorkOrders, getArchivedWorkOrders,
-  getPriceItems,
+  getPriceItems, duplicateWorkOrder, bulkMoveWorkOrders,
 } from '../api';
 
 const PRIORITY_COLORS = { low: '#22C55E', medium: '#F59E0B', high: '#EF4444' };
-const STATUS_LABELS = { todo: 'Todo', doing: 'Doing', done: 'Done', archived: 'Archived' };
+const STATUS_LABELS = { backlog: 'Backlog', todo: 'Todo', doing: 'Doing', done: 'Done', archived: 'Archived' };
 const COLUMNS = ['todo', 'doing', 'done'];
-const COLUMN_COLORS = { todo: '#3AAFB9', doing: '#F59E0B', done: '#22C55E', archived: '#6B7280' };
+const COLUMN_COLORS = { backlog: '#8B5CF6', todo: '#3AAFB9', doing: '#F59E0B', done: '#22C55E', archived: '#6B7280' };
 
 const RICH_COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
 
@@ -70,6 +70,12 @@ export default function KanbanBoard() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [archivedOrders, setArchivedOrders] = useState([]);
   const [showArchived, setShowArchived] = useState(false);
+  const [backlogOrders, setBacklogOrders] = useState([]);
+  const [showBacklog, setShowBacklog] = useState(false);
+  const [backlogSelected, setBacklogSelected] = useState([]);
+  const [showBacklogCreate, setShowBacklogCreate] = useState(false);
+  const [duplicateWo, setDuplicateWo] = useState(null);
+  const [duplicateCount, setDuplicateCount] = useState(1);
   const [activeTab, setActiveTab] = useState('doing');
   const [viewMode, setViewMode] = useState('tabs');
   const searchRef = useRef(null);
@@ -102,6 +108,13 @@ export default function KanbanBoard() {
     } catch (err) { /* silent */ }
   }, []);
 
+  const fetchBacklog = useCallback(async () => {
+    try {
+      const res = await getWorkOrders({ status: 'backlog' });
+      setBacklogOrders(res.data);
+    } catch (err) { /* silent */ }
+  }, []);
+
   const fetchWorkOrders = useCallback(async (search, priority, budgetType) => {
     try {
       const params = {};
@@ -114,7 +127,7 @@ export default function KanbanBoard() {
   }, []);
 
   useEffect(() => {
-    Promise.all([fetchWorkOrders('', '', ''), fetchArchived()]).finally(() => setLoading(false));
+    Promise.all([fetchWorkOrders('', '', ''), fetchArchived(), fetchBacklog()]).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -125,7 +138,7 @@ export default function KanbanBoard() {
     return () => clearTimeout(searchTimeout.current);
   }, [searchQuery, filterPriority, filterBudgetType]);
 
-  const refresh = () => { fetchWorkOrders(searchQuery, filterPriority, filterBudgetType); fetchArchived(); };
+  const refresh = () => { fetchWorkOrders(searchQuery, filterPriority, filterBudgetType); fetchArchived(); fetchBacklog(); };
 
   const handleArchive = async (id) => {
     try {
@@ -158,7 +171,17 @@ export default function KanbanBoard() {
   const handleMove = async (id, newStatus) => {
     try {
       const res = await moveWorkOrder(id, newStatus);
-      setWorkOrders(prev => prev.map(w => w._id === id ? res.data : w));
+      if (newStatus === 'backlog') {
+        setWorkOrders(prev => prev.filter(w => w._id !== id));
+        setBacklogOrders(prev => [res.data, ...prev]);
+      } else {
+        setWorkOrders(prev => {
+          const exists = prev.some(w => w._id === id);
+          if (exists) return prev.map(w => w._id === id ? res.data : w);
+          return [res.data, ...prev];
+        });
+        setBacklogOrders(prev => prev.filter(w => w._id !== id));
+      }
     } catch (err) { toast.error(err.message); }
   };
 
@@ -168,6 +191,7 @@ export default function KanbanBoard() {
       await deleteWorkOrder(confirmDelete._id);
       setWorkOrders(prev => prev.filter(w => w._id !== confirmDelete._id));
       setArchivedOrders(prev => prev.filter(w => w._id !== confirmDelete._id));
+      setBacklogOrders(prev => prev.filter(w => w._id !== confirmDelete._id));
       toast.success('Deleted');
     } catch (err) { toast.error(err.message); }
   };
@@ -243,7 +267,7 @@ export default function KanbanBoard() {
   }, [swipingId, swipeX, workOrders]);
 
   const getColumnOrders = (status) => workOrders.filter(w => w.status === status);
-  const totalActive = workOrders.length;
+  const totalActive = workOrders.filter(w => w.status !== 'backlog').length;
 
   // Render a single card
   const renderCard = (wo, colName) => {
@@ -361,14 +385,14 @@ export default function KanbanBoard() {
                 padding: '2px 6px', borderRadius: 10,
                 display: 'flex', alignItems: 'center', gap: 2,
               }}>
-                <IoCalendar size={8} /> {formatDate(wo.dueDate)}
+                <IoCalendar size={8} /> Due: {formatDate(wo.dueDate)}
               </span>
             )}
           </div>
 
           {/* Created date */}
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8 }}>
-            {formatDateTime(wo.createdAt)}
+            Created: {formatDateTime(wo.createdAt)}
           </div>
 
           {/* Quick actions row */}
@@ -694,6 +718,147 @@ export default function KanbanBoard() {
         </div>
       )}
 
+      {/* Backlog Section */}
+      <div style={{ marginTop: 12 }}>
+        <button onClick={() => setShowBacklog(!showBacklog)}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: 12, cursor: 'pointer', color: 'var(--text-secondary)',
+          }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <IoList size={14} color="#8B5CF6" />
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Backlog</span>
+            <span style={{
+              fontSize: 10, fontWeight: 600, background: '#8B5CF620',
+              color: '#8B5CF6', padding: '2px 8px', borderRadius: 10,
+            }}>
+              {backlogOrders.length}
+            </span>
+          </div>
+          {showBacklog ? <IoChevronUp size={14} /> : <IoChevronDown size={14} />}
+        </button>
+
+        {showBacklog && (
+          <div style={{ marginTop: 8 }}>
+            {/* Backlog action bar */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+              <button className="btn-primary" onClick={() => setShowBacklogCreate(true)}
+                style={{ padding: '6px 12px', fontSize: 11, width: 'auto', display: 'flex', alignItems: 'center', gap: 4, borderRadius: 8, background: '#8B5CF6' }}>
+                <IoAdd size={14} /> Add to Backlog
+              </button>
+              {backlogSelected.length > 0 && (
+                <>
+                  <button className="btn-ghost" onClick={async () => {
+                    try {
+                      await bulkMoveWorkOrders(backlogSelected, 'todo');
+                      setBacklogSelected([]);
+                      toast.success(`Moved ${backlogSelected.length} to Todo`);
+                      refresh();
+                    } catch (err) { toast.error(err.message); }
+                  }}
+                    style={{
+                      padding: '6px 12px', fontSize: 11, borderRadius: 8,
+                      background: '#3AAFB918', color: '#3AAFB9', fontWeight: 600,
+                      border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                    }}>
+                    Move {backlogSelected.length} to Todo
+                  </button>
+                  <button className="btn-ghost" onClick={() => setBacklogSelected([])}
+                    style={{ padding: '6px 8px', fontSize: 11, borderRadius: 8 }}>
+                    <IoClose size={14} />
+                  </button>
+                </>
+              )}
+              {backlogOrders.length > 0 && backlogSelected.length === 0 && (
+                <button className="btn-ghost" onClick={() => setBacklogSelected(backlogOrders.map(w => w._id))}
+                  style={{ padding: '6px 10px', fontSize: 11, borderRadius: 8, color: 'var(--text-muted)' }}>
+                  Select All
+                </button>
+              )}
+            </div>
+
+            {backlogOrders.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: 12 }}>
+                No items in backlog — plan ahead by adding items here
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 8, maxHeight: 500, overflowY: 'auto' }}>
+                {backlogOrders.map(wo => (
+                  <div key={wo._id}
+                    style={{
+                      background: 'var(--bg-card)', borderRadius: 12,
+                      padding: '10px 12px', cursor: 'pointer',
+                      borderLeft: `4px solid #8B5CF6`,
+                      border: backlogSelected.includes(wo._id) ? '2px solid #8B5CF6' : '1px solid var(--border)',
+                      borderLeftWidth: 4,
+                    }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {/* Selection checkbox */}
+                      <input type="checkbox" checked={backlogSelected.includes(wo._id)}
+                        onChange={e => {
+                          if (e.target.checked) setBacklogSelected(prev => [...prev, wo._id]);
+                          else setBacklogSelected(prev => prev.filter(id => id !== wo._id));
+                        }}
+                        style={{ width: 16, height: 16, flexShrink: 0, cursor: 'pointer' }} />
+                      <div style={{ flex: 1, minWidth: 0 }} onClick={() => setDetailId(wo._id)}>
+                        <p style={{
+                          fontSize: 13, fontWeight: 600, marginBottom: 2, margin: 0,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {wo.title}
+                        </p>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
+                            background: PRIORITY_COLORS[wo.priority] + '20',
+                            color: PRIORITY_COLORS[wo.priority],
+                            padding: '2px 6px', borderRadius: 10,
+                          }}>
+                            {wo.priority}
+                          </span>
+                          {wo.dueDate && (
+                            <span style={{ fontSize: 9, color: getDueDateColor(wo.dueDate, dueDateColors) || 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
+                              <IoCalendar size={8} /> Due: {formatDate(wo.dueDate)}
+                            </span>
+                          )}
+                          <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+                            Created: {formatDateTime(wo.createdAt)}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                        {/* Move to Todo */}
+                        <button className="btn-ghost" style={{ padding: 4 }} title="Move to Todo"
+                          onClick={async () => {
+                            try {
+                              await moveWorkOrder(wo._id, 'todo');
+                              toast.success('Moved to Todo');
+                              refresh();
+                            } catch (err) { toast.error(err.message); }
+                          }}>
+                          <IoChevronForward size={14} color="#3AAFB9" />
+                        </button>
+                        {/* Duplicate */}
+                        <button className="btn-ghost" style={{ padding: 4 }} title="Duplicate"
+                          onClick={() => { setDuplicateWo(wo); setDuplicateCount(1); }}>
+                          <IoCopy size={13} color="var(--text-muted)" />
+                        </button>
+                        {/* Delete */}
+                        <button className="btn-ghost" style={{ padding: 4 }}
+                          onClick={() => setConfirmDelete(wo)}>
+                          <IoTrash size={13} color="var(--danger)" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Archived Section */}
       {archivedOrders.length > 0 && (
         <div style={{ marginTop: 12 }}>
@@ -744,7 +909,7 @@ export default function KanbanBoard() {
                           {wo.priority}
                         </span>
                         <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
-                          {formatDateTime(wo.createdAt)}
+                          Created: {formatDateTime(wo.createdAt)}
                         </span>
                       </div>
                     </div>
@@ -837,7 +1002,7 @@ export default function KanbanBoard() {
             borderRadius: 10, overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
             minWidth: 120, zIndex: 101,
           }} onClick={e => e.stopPropagation()}>
-            {[...COLUMNS, 'archived'].filter(s => s !== quickStatusPos.colName).map(s => (
+            {['backlog', ...COLUMNS, 'archived'].filter(s => s !== quickStatusPos.colName).map(s => (
               <button key={s} onClick={() => {
                 if (s === 'archived') handleArchive(quickStatusId);
                 else handleMove(quickStatusId, s);
@@ -891,13 +1056,66 @@ export default function KanbanBoard() {
           </div>
         </div>
       )}
+
+      {/* Duplicate Modal */}
+      {duplicateWo && (
+        <div style={modalBackdrop} onClick={() => setDuplicateWo(null)}>
+          <div style={{ ...modalContent, textAlign: 'center', padding: 24 }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Duplicate Work Order</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+              &quot;{duplicateWo.title.slice(0, 60)}&quot;
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 20 }}>
+              <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Copies:</label>
+              <input type="number" min="1" max="50" value={duplicateCount}
+                onChange={e => setDuplicateCount(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                style={{ width: 70, textAlign: 'center', fontSize: 14 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setDuplicateWo(null)}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: 12, fontSize: 14, fontWeight: 600,
+                  border: '1px solid var(--border)', background: 'transparent',
+                  color: 'var(--text-secondary)', cursor: 'pointer',
+                }}>Cancel</button>
+              <button onClick={async () => {
+                try {
+                  await duplicateWorkOrder(duplicateWo._id, duplicateCount);
+                  toast.success(`Duplicated ${duplicateCount}x`);
+                  setDuplicateWo(null);
+                  refresh();
+                } catch (err) { toast.error(err.message); }
+              }}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: 12, fontSize: 14, fontWeight: 600,
+                  border: 'none', background: '#8B5CF6', color: '#fff', cursor: 'pointer',
+                }}>Duplicate</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Backlog Create Modal */}
+      {showBacklogCreate && (
+        <CreateWorkOrderModal
+          onClose={() => setShowBacklogCreate(false)}
+          onCreated={(wo) => {
+            // Move the created work order to backlog
+            moveWorkOrder(wo._id, 'backlog').then(() => {
+              setShowBacklogCreate(false);
+              refresh();
+            }).catch(err => toast.error(err.message));
+          }}
+          isBacklog
+        />
+      )}
     </div>
   );
 }
 
 // ──────────────────────── Create Modal ────────────────────────
 
-function CreateWorkOrderModal({ onClose, onCreated }) {
+function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('medium');
   const [dueDate, setDueDate] = useState('');
@@ -972,7 +1190,7 @@ function CreateWorkOrderModal({ onClose, onCreated }) {
     <div style={modalBackdrop} onClick={onClose}>
       <div style={modalContent} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700 }}>New Work Order</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700 }}>{isBacklog ? 'Add to Backlog' : 'New Work Order'}</h3>
           <button className="btn-ghost" onClick={onClose} style={{ padding: 4 }}><IoClose size={20} /></button>
         </div>
 
@@ -1062,7 +1280,7 @@ function CreateWorkOrderModal({ onClose, onCreated }) {
 
           <button type="submit" className="btn-primary" disabled={saving || !title.trim()}
             style={{ width: '100%', marginTop: 8 }}>
-            {saving ? 'Creating...' : 'Create Work Order'}
+            {saving ? 'Creating...' : isBacklog ? 'Add to Backlog' : 'Create Work Order'}
           </button>
         </form>
       </div>
@@ -1341,7 +1559,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
                 <div className="form-group">
                   <label>Status</label>
                   <select value={editStatus} onChange={e => setEditStatus(e.target.value)}>
-                    {[...COLUMNS, 'archived'].map(c => <option key={c} value={c}>{STATUS_LABELS[c]}</option>)}
+                    {['backlog', ...COLUMNS, 'archived'].map(c => <option key={c} value={c}>{STATUS_LABELS[c]}</option>)}
                   </select>
                 </div>
                 <div className="form-group">

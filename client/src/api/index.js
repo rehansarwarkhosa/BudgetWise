@@ -119,6 +119,8 @@ export const logWorkOrderExpense = (id) => api.post(`/workorders/${id}/log-expen
 export const bulkArchiveWorkOrders = () => api.post('/workorders/bulk-archive');
 export const getArchivedWorkOrders = () => api.get('/workorders', { params: { status: 'archived' } });
 export const checkWorkOrderReminders = () => api.get('/workorders/check-reminders');
+export const duplicateWorkOrder = (id, count) => api.post(`/workorders/duplicate/${id}`, { count });
+export const bulkMoveWorkOrders = (ids, status) => api.post('/workorders/bulk-move', { ids, status });
 
 // Price Items
 export const getPriceItems = (params) => api.get('/price-items', { params });

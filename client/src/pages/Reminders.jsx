@@ -32,7 +32,7 @@ const STATUS_TABS = [
 ];
 
 export default function Reminders() {
-  const [reminders, setReminders] = useState([]);
+  const [allReminders, setAllReminders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusTab, setStatusTab] = useState('active');
   const [searchMode, setSearchMode] = useState(false);
@@ -42,7 +42,6 @@ export default function Reminders() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const searchRef = useRef(null);
-  const searchTimeout = useRef(null);
 
   // Form state
   const [formTitle, setFormTitle] = useState('');
@@ -56,24 +55,28 @@ export default function Reminders() {
   const [formIntervalStart, setFormIntervalStart] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const fetchReminders = useCallback(async (search = searchQuery) => {
+  const fetchReminders = useCallback(async () => {
     try {
-      const res = await getReminders(statusTab === 'all' ? undefined : statusTab, search || undefined);
-      setReminders(res.data);
+      const res = await getReminders('all');
+      setAllReminders(res.data);
     } catch (err) { toast.error(err.message); }
-  }, [statusTab, searchQuery]);
+  }, []);
 
   useEffect(() => {
-    setLoading(true);
-    fetchReminders('').finally(() => setLoading(false));
-  }, [statusTab]);
+    fetchReminders().finally(() => setLoading(false));
+  }, []);
 
-  useEffect(() => {
-    if (!searchMode) return;
-    clearTimeout(searchTimeout.current);
-    searchTimeout.current = setTimeout(() => fetchReminders(searchQuery), 300);
-    return () => clearTimeout(searchTimeout.current);
-  }, [searchQuery]);
+  // Client-side filtering — no re-fetch on tab switch
+  const reminders = useMemo(() => {
+    let filtered = allReminders.filter(r => r.status === statusTab);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(r =>
+        r.title.toLowerCase().includes(q) || (r.note || '').toLowerCase().includes(q)
+      );
+    }
+    return filtered;
+  }, [allReminders, statusTab, searchQuery]);
 
   const resetForm = () => {
     setFormTitle(''); setFormNote(''); setFormPriority('medium');
@@ -146,16 +149,14 @@ export default function Reminders() {
   const handleToggle = async (id) => {
     try {
       const res = await toggleReminder(id);
-      setReminders(prev => prev.map(r => r._id === id ? res.data : r));
-      // If toggled to completed/active and we're filtering, refetch
-      fetchReminders();
+      setAllReminders(prev => prev.map(r => r._id === id ? res.data : r));
     } catch (err) { toast.error(err.message); }
   };
 
   const handleDelete = async (id) => {
     try {
       await deleteReminder(id);
-      setReminders(prev => prev.filter(r => r._id !== id));
+      setAllReminders(prev => prev.filter(r => r._id !== id));
       toast.success('Deleted');
     } catch (err) { toast.error(err.message); }
     setConfirmDelete(null);
@@ -165,7 +166,6 @@ export default function Reminders() {
     if (searchMode) {
       setSearchMode(false);
       setSearchQuery('');
-      fetchReminders('');
     } else {
       setSearchMode(true);
       setTimeout(() => searchRef.current?.focus(), 50);
@@ -200,9 +200,11 @@ export default function Reminders() {
     return Object.keys(result).length ? result : { all: reminders };
   }, [reminders, statusTab]);
 
-  const counts = useMemo(() => ({
-    active: reminders.length,
-  }), [reminders]);
+  const tabCounts = useMemo(() => ({
+    active: allReminders.filter(r => r.status === 'active').length,
+    completed: allReminders.filter(r => r.status === 'completed').length,
+    expired: allReminders.filter(r => r.status === 'expired').length,
+  }), [allReminders]);
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}><Spinner /></div>;
 
@@ -240,7 +242,7 @@ export default function Reminders() {
               border: 'none', borderRadius: 8, cursor: 'pointer',
               transition: 'all 0.2s',
             }}>
-            {t.label}
+            {t.label}{tabCounts[t.key] > 0 ? ` (${tabCounts[t.key]})` : ''}
           </button>
         ))}
       </div>
