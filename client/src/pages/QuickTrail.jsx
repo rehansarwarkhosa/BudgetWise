@@ -251,7 +251,10 @@ export default function QuickTrail() {
   const startQuickEdit = (entry) => {
     setQuickEditId(entry._id);
     setQuickEditText(entry.text);
-    setTimeout(() => quickEditRef.current?.focus(), 50);
+    setTimeout(() => {
+      const el = quickEditRef.current;
+      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+    }, 50);
   };
 
   const handleQuickEditSave = async () => {
@@ -555,6 +558,10 @@ export default function QuickTrail() {
                                   <button className="btn-primary" onClick={handleQuickEditSave} disabled={quickEditSaving}
                                     style={{ padding: '4px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, borderRadius: 6, width: 'auto' }}>
                                     <IoCheckmark size={14} /> {quickEditSaving ? 'Saving...' : 'Save'}
+                                  </button>
+                                  <button className="btn-ghost" onClick={() => { setQuickEditText(''); quickEditRef.current?.focus(); }}
+                                    style={{ padding: '4px 12px', fontSize: 12, borderRadius: 6 }}>
+                                    Clear
                                   </button>
                                   <button className="btn-ghost" onClick={() => setQuickEditId(null)}
                                     style={{ padding: '4px 12px', fontSize: 12, borderRadius: 6 }}>

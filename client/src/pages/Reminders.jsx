@@ -4,7 +4,7 @@ import {
   IoAdd, IoTrash, IoSearch, IoClose, IoCheckmarkCircle,
   IoEllipseOutline, IoChevronDown, IoChevronForward,
   IoAlarm, IoFlag, IoTime, IoCalendar, IoCreate,
-  IoLockClosed, IoLockOpen,
+  IoLockClosed, IoLockOpen, IoChevronBack, IoChevronForward as IoChevronFwd,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -31,7 +31,55 @@ const STATUS_TABS = [
   { key: 'active', label: 'Active' },
   { key: 'completed', label: 'Done' },
   { key: 'expired', label: 'Expired' },
+  { key: 'calendar', label: 'Calendar' },
 ];
+
+function getRemindersForDate(reminders, date) {
+  const dayOfWeek = date.getDay(); // 0=Sun..6=Sat
+  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return reminders.filter(r => {
+    if (r.status !== 'active' && r.status !== 'snoozed') return false;
+    const s = r.schedule;
+    if (!s?.enabled) return false;
+    switch (s.type) {
+      case 'daily': return true;
+      case 'weekdays': return dayOfWeek >= 1 && dayOfWeek <= 5;
+      case 'custom_days': return (s.days || []).includes(dayOfWeek);
+      case 'custom_dates': return (s.dates || []).some(d => {
+        const ds = new Date(d).toISOString().split('T')[0];
+        return ds === dateStr;
+      });
+      case 'interval': {
+        if (!s.intervalStartDate || !s.intervalDays) return false;
+        const start = new Date(s.intervalStartDate);
+        start.setHours(0, 0, 0, 0);
+        const target = new Date(date);
+        target.setHours(0, 0, 0, 0);
+        const diff = Math.round((target - start) / (1000 * 60 * 60 * 24));
+        return diff >= 0 && diff % s.intervalDays === 0;
+      }
+      case 'once': {
+        // Show on created date if not yet fired
+        if (s.fired) return false;
+        const created = new Date(r.createdAt).toISOString().split('T')[0];
+        return created === dateStr;
+      }
+      default: return false;
+    }
+  });
+}
+
+function getCalendarDays(year, month) {
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const days = [];
+  // Padding for first week
+  for (let i = 0; i < firstDay; i++) days.push(null);
+  for (let d = 1; d <= daysInMonth; d++) days.push(d);
+  return days;
+}
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export default function Reminders() {
   const [allReminders, setAllReminders] = useState([]);
@@ -56,7 +104,6 @@ export default function Reminders() {
 
   // Form state
   const [formTitle, setFormTitle] = useState('');
-  const [formNote, setFormNote] = useState('');
   const [formPriority, setFormPriority] = useState('medium');
   const [formType, setFormType] = useState('once');
   const [formTime, setFormTime] = useState('09:00');
@@ -65,6 +112,13 @@ export default function Reminders() {
   const [formIntervalDays, setFormIntervalDays] = useState(7);
   const [formIntervalStart, setFormIntervalStart] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Calendar state
+  const [calendarDate, setCalendarDate] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
+  const [calendarSelectedDay, setCalendarSelectedDay] = useState(null);
 
   const fetchReminders = useCallback(async () => {
     try {
@@ -79,6 +133,7 @@ export default function Reminders() {
 
   // Client-side filtering — no re-fetch on tab switch
   const reminders = useMemo(() => {
+    if (statusTab === 'calendar') return allReminders;
     let filtered = allReminders.filter(r => r.status === statusTab);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -90,7 +145,7 @@ export default function Reminders() {
   }, [allReminders, statusTab, searchQuery]);
 
   const resetForm = () => {
-    setFormTitle(''); setFormNote(''); setFormPriority('medium');
+    setFormTitle(''); setFormPriority('medium');
     setFormType('once'); setFormTime('09:00'); setFormDays([]);
     setFormDates([]); setFormIntervalDays(7); setFormIntervalStart('');
     setEditingId(null);
@@ -100,7 +155,6 @@ export default function Reminders() {
     if (reminder) {
       setEditingId(reminder._id);
       setFormTitle(reminder.title);
-      setFormNote(reminder.note || '');
       setFormPriority(reminder.priority || 'medium');
       setFormType(reminder.schedule.type);
       setFormTime(reminder.schedule.time || '09:00');
@@ -139,7 +193,6 @@ export default function Reminders() {
 
       const payload = {
         title: formTitle.trim(),
-        note: formNote.trim(),
         priority: formPriority,
         schedule,
       };
@@ -276,7 +329,36 @@ export default function Reminders() {
     active: allReminders.filter(r => r.status === 'active').length,
     completed: allReminders.filter(r => r.status === 'completed').length,
     expired: allReminders.filter(r => r.status === 'expired').length,
+    calendar: 0,
   }), [allReminders]);
+
+  // Calendar data
+  const calendarDays = useMemo(() => getCalendarDays(calendarDate.year, calendarDate.month), [calendarDate]);
+  const calendarReminderMap = useMemo(() => {
+    if (statusTab !== 'calendar') return {};
+    const map = {};
+    const activeReminders = allReminders.filter(r => r.status === 'active' || r.status === 'snoozed');
+    for (let d = 1; d <= new Date(calendarDate.year, calendarDate.month + 1, 0).getDate(); d++) {
+      const date = new Date(calendarDate.year, calendarDate.month, d);
+      const matched = getRemindersForDate(activeReminders, date);
+      if (matched.length) map[d] = matched;
+    }
+    return map;
+  }, [allReminders, calendarDate, statusTab]);
+
+  const selectedDayReminders = useMemo(() => {
+    if (!calendarSelectedDay || !calendarReminderMap[calendarSelectedDay]) return [];
+    return calendarReminderMap[calendarSelectedDay];
+  }, [calendarSelectedDay, calendarReminderMap]);
+
+  const calendarPrev = () => {
+    setCalendarDate(prev => prev.month === 0 ? { year: prev.year - 1, month: 11 } : { year: prev.year, month: prev.month - 1 });
+    setCalendarSelectedDay(null);
+  };
+  const calendarNext = () => {
+    setCalendarDate(prev => prev.month === 11 ? { year: prev.year + 1, month: 0 } : { year: prev.year, month: prev.month + 1 });
+    setCalendarSelectedDay(null);
+  };
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}><Spinner /></div>;
 
@@ -314,15 +396,116 @@ export default function Reminders() {
               border: 'none', borderRadius: 8, cursor: 'pointer',
               transition: 'all 0.2s',
             }}>
-            {t.label}{tabCounts[t.key] > 0 ? ` (${tabCounts[t.key]})` : ''}
+            {t.label}{t.key !== 'calendar' && tabCounts[t.key] > 0 ? ` (${tabCounts[t.key]})` : ''}
           </button>
         ))}
       </div>
 
+      {/* Calendar View */}
+      {statusTab === 'calendar' && (
+        <div>
+          {/* Month navigation */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <button className="btn-ghost" onClick={calendarPrev} style={{ padding: 6 }}>
+              <IoChevronBack size={18} />
+            </button>
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+              {MONTH_NAMES[calendarDate.month]} {calendarDate.year}
+            </span>
+            <button className="btn-ghost" onClick={calendarNext} style={{ padding: 6 }}>
+              <IoChevronFwd size={18} />
+            </button>
+          </div>
+
+          {/* Day headers */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+              <div key={i} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', padding: '4px 0' }}>
+                {d}
+              </div>
+            ))}
+          </div>
+
+          {/* Calendar grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 14 }}>
+            {calendarDays.map((day, i) => {
+              if (!day) return <div key={`e${i}`} />;
+              const hasReminders = !!calendarReminderMap[day];
+              const isSelected = calendarSelectedDay === day;
+              const now = new Date();
+              const isToday = day === now.getDate() && calendarDate.month === now.getMonth() && calendarDate.year === now.getFullYear();
+              return (
+                <button key={day} onClick={() => setCalendarSelectedDay(isSelected ? null : day)}
+                  style={{
+                    position: 'relative', padding: '8px 0', textAlign: 'center', fontSize: 13,
+                    fontWeight: isToday ? 700 : 500,
+                    background: isSelected ? 'var(--primary)' : isToday ? 'var(--primary)20' : 'transparent',
+                    color: isSelected ? 'white' : isToday ? 'var(--primary)' : 'var(--text)',
+                    border: 'none', borderRadius: 8, cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}>
+                  {day}
+                  {hasReminders && (
+                    <div style={{
+                      position: 'absolute', bottom: 3, left: '50%', transform: 'translateX(-50%)',
+                      display: 'flex', gap: 2,
+                    }}>
+                      {calendarReminderMap[day].slice(0, 3).map((r, ri) => (
+                        <div key={ri} style={{
+                          width: 4, height: 4, borderRadius: '50%',
+                          background: isSelected ? 'white' : getPriorityColor(r.priority),
+                        }} />
+                      ))}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Selected day reminders */}
+          {calendarSelectedDay && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                {MONTH_NAMES[calendarDate.month]} {calendarSelectedDay} — {selectedDayReminders.length} reminder{selectedDayReminders.length !== 1 ? 's' : ''}
+              </div>
+              {selectedDayReminders.length === 0 ? (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>No reminders on this day</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {selectedDayReminders.map(r => (
+                    <div key={r._id} style={{
+                      padding: '8px 12px', background: 'var(--bg-card)', borderRadius: 8,
+                      border: '1px solid var(--border)', borderLeft: `3px solid ${getPriorityColor(r.priority)}`,
+                      cursor: 'pointer',
+                    }} onClick={() => { setStatusTab('active'); setExpandedId(r._id); }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', marginBottom: 2 }}>{r.title}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <IoAlarm size={11} /> {getScheduleLabel(r.schedule)}
+                        <span style={{
+                          marginLeft: 'auto', fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                          background: getPriorityColor(r.priority) + '20', color: getPriorityColor(r.priority), fontWeight: 600,
+                        }}>{r.priority}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!calendarSelectedDay && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>
+              Tap a day to see reminders
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Reminders list */}
-      {reminders.length === 0 ? (
+      {statusTab !== 'calendar' && reminders.length === 0 ? (
         <EmptyState message={statusTab === 'active' ? 'No active reminders' : statusTab === 'completed' ? 'No completed reminders' : 'No expired reminders'} />
-      ) : (
+      ) : statusTab !== 'calendar' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {Object.entries(groupedReminders).map(([group, items]) => (
             <div key={group}>
@@ -568,17 +751,6 @@ export default function Reminders() {
               <input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)}
                 placeholder="e.g., Baby vaccination, Birthday reminder..."
                 style={{ width: '100%' }} autoFocus />
-            </div>
-
-            {/* Note */}
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 4, fontWeight: 600 }}>
-                Note
-              </label>
-              <textarea value={formNote} onChange={e => setFormNote(e.target.value)}
-                placeholder="Additional details, instructions, or context..."
-                rows={3}
-                style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }} />
             </div>
 
             {/* Priority */}
