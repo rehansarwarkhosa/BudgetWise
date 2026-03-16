@@ -5,11 +5,12 @@ import {
   IoEllipseOutline, IoChevronDown, IoChevronForward,
   IoAlarm, IoFlag, IoTime, IoCalendar, IoCreate,
   IoLockClosed, IoLockOpen, IoChevronBack, IoChevronForward as IoChevronFwd,
+  IoList, IoGrid, IoArchive,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
-import { getReminders, createReminder, updateReminder as updateReminderApi, deleteReminder, toggleReminder, getReminderNotes, addReminderNote, updateReminderNote, deleteReminderNote } from '../api';
+import { getReminders, createReminder, updateReminder as updateReminderApi, deleteReminder, toggleReminder, getReminderNotes, addReminderNote, updateReminderNote, deleteReminderNote, getArchivedReminders, bulkArchiveReminders } from '../api';
 import { formatDateTime } from '../utils/format';
 import RichTextEditor from '../components/RichTextEditor';
 
@@ -31,49 +32,64 @@ const STATUS_TABS = [
   { key: 'active', label: 'Active' },
   { key: 'completed', label: 'Done' },
   { key: 'expired', label: 'Expired' },
-  { key: 'calendar', label: 'Calendar' },
+  { key: 'all', label: 'All' },
 ];
 
-function getRemindersForDate(reminders, date) {
-  const dayOfWeek = date.getDay(); // 0=Sun..6=Sat
+// Returns active reminders that fire on a given date based on their schedule
+function getActiveRemindersForDate(reminders, date) {
+  const dayOfWeek = date.getDay();
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   return reminders.filter(r => {
-    if (r.status !== 'active' && r.status !== 'snoozed') return false;
     const s = r.schedule;
     if (!s?.enabled) return false;
     switch (s.type) {
       case 'daily': return true;
       case 'weekdays': return dayOfWeek >= 1 && dayOfWeek <= 5;
       case 'custom_days': return (s.days || []).includes(dayOfWeek);
-      case 'custom_dates': return (s.dates || []).some(d => {
-        const ds = new Date(d).toISOString().split('T')[0];
-        return ds === dateStr;
-      });
+      case 'custom_dates': return (s.dates || []).some(d => new Date(d).toISOString().split('T')[0] === dateStr);
       case 'interval': {
         if (!s.intervalStartDate || !s.intervalDays) return false;
-        const start = new Date(s.intervalStartDate);
-        start.setHours(0, 0, 0, 0);
-        const target = new Date(date);
-        target.setHours(0, 0, 0, 0);
-        const diff = Math.round((target - start) / (1000 * 60 * 60 * 24));
+        const start = new Date(s.intervalStartDate); start.setHours(0, 0, 0, 0);
+        const target = new Date(date); target.setHours(0, 0, 0, 0);
+        const diff = Math.round((target - start) / 86400000);
         return diff >= 0 && diff % s.intervalDays === 0;
       }
       case 'once': {
-        // Show on created date if not yet fired
         if (s.fired) return false;
-        const created = new Date(r.createdAt).toISOString().split('T')[0];
-        return created === dateStr;
+        return new Date(r.createdAt).toISOString().split('T')[0] === dateStr;
       }
       default: return false;
     }
   });
 }
 
+// Returns reminders for a date based on status tab
+function getRemindersForDate(allReminders, date, statusTab) {
+  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+  if (statusTab === 'active') {
+    return getActiveRemindersForDate(allReminders.filter(r => r.status === 'active' || r.status === 'snoozed'), date);
+  }
+  if (statusTab === 'completed') {
+    return allReminders.filter(r => r.status === 'completed' && r.completedAt && new Date(r.completedAt).toISOString().split('T')[0] === dateStr);
+  }
+  if (statusTab === 'expired') {
+    return allReminders.filter(r => r.status === 'expired' && new Date(r.createdAt).toISOString().split('T')[0] === dateStr);
+  }
+  // 'all' — combine active schedule + completed date + expired date
+  const active = getActiveRemindersForDate(allReminders.filter(r => r.status === 'active' || r.status === 'snoozed'), date);
+  const completed = allReminders.filter(r => r.status === 'completed' && r.completedAt && new Date(r.completedAt).toISOString().split('T')[0] === dateStr);
+  const expired = allReminders.filter(r => r.status === 'expired' && new Date(r.createdAt).toISOString().split('T')[0] === dateStr);
+  // Deduplicate by id
+  const map = new Map();
+  [...active, ...completed, ...expired].forEach(r => map.set(r._id, r));
+  return Array.from(map.values());
+}
+
 function getCalendarDays(year, month) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const days = [];
-  // Padding for first week
   for (let i = 0; i < firstDay; i++) days.push(null);
   for (let d = 1; d <= daysInMonth; d++) days.push(d);
   return days;
@@ -84,6 +100,7 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 export default function Reminders() {
   const [allReminders, setAllReminders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState('list'); // 'list' | 'calendar'
   const [statusTab, setStatusTab] = useState('active');
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -101,6 +118,8 @@ export default function Reminders() {
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [richEditorSaving, setRichEditorSaving] = useState(false);
   const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);
+  // Auto-open note editor after creating a new reminder
+  const [pendingNoteForId, setPendingNoteForId] = useState(null);
 
   // Form state
   const [formTitle, setFormTitle] = useState('');
@@ -120,6 +139,10 @@ export default function Reminders() {
   });
   const [calendarSelectedDay, setCalendarSelectedDay] = useState(null);
 
+  // Archived
+  const [archivedReminders, setArchivedReminders] = useState([]);
+  const [showArchived, setShowArchived] = useState(false);
+
   const fetchReminders = useCallback(async () => {
     try {
       const res = await getReminders('all');
@@ -127,14 +150,53 @@ export default function Reminders() {
     } catch (err) { toast.error(err.message); }
   }, []);
 
+  const fetchArchived = useCallback(async () => {
+    try {
+      const res = await getArchivedReminders();
+      setArchivedReminders(res.data);
+    } catch (err) { /* silent */ }
+  }, []);
+
   useEffect(() => {
     fetchReminders().finally(() => setLoading(false));
   }, []);
 
-  // Client-side filtering — no re-fetch on tab switch
+  // Load archived when section is opened
+  useEffect(() => {
+    if (showArchived) fetchArchived();
+  }, [showArchived]);
+
+  const handleBulkArchive = async () => {
+    try {
+      const res = await bulkArchiveReminders();
+      toast.success(`Archived ${res.data.archived} reminders`);
+      fetchReminders();
+      fetchArchived();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleArchiveSingle = async (id) => {
+    try {
+      await updateReminderApi(id, { status: 'archived' });
+      setAllReminders(prev => prev.filter(r => r._id !== id));
+      if (expandedId === id) setExpandedId(null);
+      toast.success('Archived');
+      if (showArchived) fetchArchived();
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
+  };
+
+  const handleUnarchive = async (id) => {
+    try {
+      await updateReminderApi(id, { status: 'active' });
+      setArchivedReminders(prev => prev.filter(r => r._id !== id));
+      fetchReminders();
+      toast.success('Restored');
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
+  };
+
+  // Client-side filtering
   const reminders = useMemo(() => {
-    if (statusTab === 'calendar') return allReminders;
-    let filtered = allReminders.filter(r => r.status === statusTab);
+    let filtered = statusTab === 'all' ? allReminders : allReminders.filter(r => r.status === statusTab);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(r =>
@@ -165,6 +227,15 @@ export default function Reminders() {
     } else {
       resetForm();
     }
+    setShowForm(true);
+  };
+
+  // Open form with a date pre-filled from calendar
+  const openFormForDate = (day) => {
+    resetForm();
+    const dateStr = `${calendarDate.year}-${String(calendarDate.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    setFormType('custom_dates');
+    setFormDates([dateStr]);
     setShowForm(true);
   };
 
@@ -200,15 +271,33 @@ export default function Reminders() {
       if (editingId) {
         await updateReminderApi(editingId, payload);
         toast.success('Reminder updated');
+        closeForm();
+        fetchReminders();
       } else {
-        await createReminder(payload);
-        toast.success('Reminder created');
+        const res = await createReminder(payload);
+        toast.success('Reminder created — add notes now');
+        closeForm();
+        await fetchReminders();
+        // Auto-expand and prompt to add note
+        const newId = res.data._id;
+        setStatusTab('active');
+        setViewMode('list');
+        setExpandedId(newId);
+        setPendingNoteForId(newId);
       }
-      closeForm();
-      fetchReminders();
     } catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
   };
+
+  // When notes load for a pending new reminder, auto-open the note editor
+  useEffect(() => {
+    if (pendingNoteForId && expandedId === pendingNoteForId && !notesLoading) {
+      setPendingNoteForId(null);
+      setEditingNoteId(null);
+      setRichEditorContent('');
+      setRichEditorOpen(true);
+    }
+  }, [pendingNoteForId, expandedId, notesLoading]);
 
   const handleToggle = async (id) => {
     const rem = allReminders.find(r => r._id === id);
@@ -224,6 +313,7 @@ export default function Reminders() {
     try {
       await deleteReminder(confirmDelete);
       setAllReminders(prev => prev.filter(r => r._id !== confirmDelete));
+      setArchivedReminders(prev => prev.filter(r => r._id !== confirmDelete));
       toast.success('Deleted');
     } catch (err) { toast.error(err.response?.data?.error || err.message); }
     setConfirmDelete(null);
@@ -329,22 +419,22 @@ export default function Reminders() {
     active: allReminders.filter(r => r.status === 'active').length,
     completed: allReminders.filter(r => r.status === 'completed').length,
     expired: allReminders.filter(r => r.status === 'expired').length,
-    calendar: 0,
+    all: allReminders.length,
   }), [allReminders]);
 
   // Calendar data
   const calendarDays = useMemo(() => getCalendarDays(calendarDate.year, calendarDate.month), [calendarDate]);
   const calendarReminderMap = useMemo(() => {
-    if (statusTab !== 'calendar') return {};
+    if (viewMode !== 'calendar') return {};
     const map = {};
-    const activeReminders = allReminders.filter(r => r.status === 'active' || r.status === 'snoozed');
-    for (let d = 1; d <= new Date(calendarDate.year, calendarDate.month + 1, 0).getDate(); d++) {
+    const daysInMonth = new Date(calendarDate.year, calendarDate.month + 1, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
       const date = new Date(calendarDate.year, calendarDate.month, d);
-      const matched = getRemindersForDate(activeReminders, date);
+      const matched = getRemindersForDate(allReminders, date, statusTab);
       if (matched.length) map[d] = matched;
     }
     return map;
-  }, [allReminders, calendarDate, statusTab]);
+  }, [allReminders, calendarDate, viewMode, statusTab]);
 
   const selectedDayReminders = useMemo(() => {
     if (!calendarSelectedDay || !calendarReminderMap[calendarSelectedDay]) return [];
@@ -360,6 +450,12 @@ export default function Reminders() {
     setCalendarSelectedDay(null);
   };
 
+  const getStatusBadge = (status) => {
+    if (status === 'completed') return { bg: 'var(--success)20', color: 'var(--success)', label: 'Done' };
+    if (status === 'expired') return { bg: 'var(--text-muted)20', color: 'var(--text-muted)', label: 'Expired' };
+    return null;
+  };
+
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}><Spinner /></div>;
 
   return (
@@ -370,6 +466,29 @@ export default function Reminders() {
           style={{ padding: 6, borderRadius: 8, background: searchMode ? 'var(--bg-input)' : 'transparent' }}>
           {searchMode ? <IoClose size={18} /> : <IoSearch size={18} />}
         </button>
+
+        {/* View toggle */}
+        <div style={{ display: 'flex', background: 'var(--bg-input)', borderRadius: 8, padding: 2 }}>
+          <button onClick={() => setViewMode('list')}
+            style={{
+              padding: '4px 10px', border: 'none', borderRadius: 6, cursor: 'pointer',
+              background: viewMode === 'list' ? 'var(--primary)' : 'transparent',
+              color: viewMode === 'list' ? 'white' : 'var(--text-muted)',
+              display: 'flex', alignItems: 'center', transition: 'all 0.2s',
+            }}>
+            <IoList size={16} />
+          </button>
+          <button onClick={() => setViewMode('calendar')}
+            style={{
+              padding: '4px 10px', border: 'none', borderRadius: 6, cursor: 'pointer',
+              background: viewMode === 'calendar' ? 'var(--primary)' : 'transparent',
+              color: viewMode === 'calendar' ? 'white' : 'var(--text-muted)',
+              display: 'flex', alignItems: 'center', transition: 'all 0.2s',
+            }}>
+            <IoCalendar size={16} />
+          </button>
+        </div>
+
         <div style={{ flex: 1 }} />
         <button className="btn-primary"
           onClick={() => openForm()}
@@ -388,7 +507,7 @@ export default function Reminders() {
       {/* Status sub-tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
         {STATUS_TABS.map(t => (
-          <button key={t.key} onClick={() => setStatusTab(t.key)}
+          <button key={t.key} onClick={() => { setStatusTab(t.key); setCalendarSelectedDay(null); }}
             style={{
               flex: 1, padding: '6px 0', fontSize: 12, fontWeight: 600,
               background: statusTab === t.key ? 'var(--primary)' : 'var(--bg-input)',
@@ -396,13 +515,13 @@ export default function Reminders() {
               border: 'none', borderRadius: 8, cursor: 'pointer',
               transition: 'all 0.2s',
             }}>
-            {t.label}{t.key !== 'calendar' && tabCounts[t.key] > 0 ? ` (${tabCounts[t.key]})` : ''}
+            {t.label}{tabCounts[t.key] > 0 ? ` (${tabCounts[t.key]})` : ''}
           </button>
         ))}
       </div>
 
       {/* Calendar View */}
-      {statusTab === 'calendar' && (
+      {viewMode === 'calendar' && (
         <div>
           {/* Month navigation */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -463,32 +582,55 @@ export default function Reminders() {
             })}
           </div>
 
-          {/* Selected day reminders */}
+          {/* Selected day detail */}
           {calendarSelectedDay && (
             <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                {MONTH_NAMES[calendarDate.month]} {calendarSelectedDay} — {selectedDayReminders.length} reminder{selectedDayReminders.length !== 1 ? 's' : ''}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  {MONTH_NAMES[calendarDate.month]} {calendarSelectedDay} — {selectedDayReminders.length} reminder{selectedDayReminders.length !== 1 ? 's' : ''}
+                </span>
+                <button className="btn-ghost" onClick={() => openFormForDate(calendarSelectedDay)}
+                  style={{ padding: '3px 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: 'var(--primary)' }}>
+                  <IoAdd size={12} /> Add
+                </button>
               </div>
               {selectedDayReminders.length === 0 ? (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>No reminders on this day</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>
+                  No reminders on this day
+                  <br />
+                  <button className="btn-ghost" onClick={() => openFormForDate(calendarSelectedDay)}
+                    style={{ marginTop: 8, fontSize: 12, color: 'var(--primary)' }}>
+                    <IoAdd size={12} style={{ verticalAlign: -2 }} /> Create one
+                  </button>
+                </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {selectedDayReminders.map(r => (
-                    <div key={r._id} style={{
-                      padding: '8px 12px', background: 'var(--bg-card)', borderRadius: 8,
-                      border: '1px solid var(--border)', borderLeft: `3px solid ${getPriorityColor(r.priority)}`,
-                      cursor: 'pointer',
-                    }} onClick={() => { setStatusTab('active'); setExpandedId(r._id); }}>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', marginBottom: 2 }}>{r.title}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <IoAlarm size={11} /> {getScheduleLabel(r.schedule)}
-                        <span style={{
-                          marginLeft: 'auto', fontSize: 10, padding: '1px 6px', borderRadius: 8,
-                          background: getPriorityColor(r.priority) + '20', color: getPriorityColor(r.priority), fontWeight: 600,
-                        }}>{r.priority}</span>
+                  {selectedDayReminders.map(r => {
+                    const badge = getStatusBadge(r.status);
+                    return (
+                      <div key={r._id} style={{
+                        padding: '8px 12px', background: 'var(--bg-card)', borderRadius: 8,
+                        border: '1px solid var(--border)', borderLeft: `3px solid ${getPriorityColor(r.priority)}`,
+                        cursor: 'pointer', opacity: r.status === 'expired' ? 0.6 : 1,
+                      }} onClick={() => { setViewMode('list'); setStatusTab(r.status === 'snoozed' ? 'active' : r.status === 'active' ? 'active' : r.status); setExpandedId(r._id); }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', flex: 1 }}>{r.title}</span>
+                          {badge && (
+                            <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 6, background: badge.bg, color: badge.color, fontWeight: 600 }}>
+                              {badge.label}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                          <IoAlarm size={11} /> {getScheduleLabel(r.schedule)}
+                          <span style={{
+                            marginLeft: 'auto', fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                            background: getPriorityColor(r.priority) + '20', color: getPriorityColor(r.priority), fontWeight: 600,
+                          }}>{r.priority}</span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -496,230 +638,318 @@ export default function Reminders() {
 
           {!calendarSelectedDay && (
             <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>
-              Tap a day to see reminders
+              Tap a day to see reminders or create one
             </div>
           )}
         </div>
       )}
 
-      {/* Reminders list */}
-      {statusTab !== 'calendar' && reminders.length === 0 ? (
-        <EmptyState message={statusTab === 'active' ? 'No active reminders' : statusTab === 'completed' ? 'No completed reminders' : 'No expired reminders'} />
-      ) : statusTab !== 'calendar' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {Object.entries(groupedReminders).map(([group, items]) => (
-            <div key={group}>
-              {/* Priority group header (only for active tab with multiple groups) */}
-              {statusTab === 'active' && group !== 'all' && (
-                <div style={{
-                  fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5,
-                  color: getPriorityColor(group), marginBottom: 6, marginTop: group !== 'high' ? 10 : 0,
-                  display: 'flex', alignItems: 'center', gap: 6,
-                }}>
-                  <IoFlag size={12} /> {group} priority
-                  <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-muted)' }}>({items.length})</span>
-                </div>
-              )}
-
-              {items.map(r => (
-                <div key={r._id} style={{
-                  background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)',
-                  overflow: 'hidden',
-                  borderLeft: `3px solid ${getPriorityColor(r.priority)}`,
-                  opacity: r.status === 'expired' ? 0.6 : 1,
-                }}>
-                  {/* Main row */}
-                  <div style={{
-                    padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
-                    cursor: 'pointer',
-                  }}
-                    onClick={() => setExpandedId(expandedId === r._id ? null : r._id)}>
-
-                    {/* Toggle circle */}
-                    {r.status !== 'expired' && (
-                      <button style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0 }}
-                        onClick={e => { e.stopPropagation(); handleToggle(r._id); }}>
-                        {r.status === 'completed' ? (
-                          <IoCheckmarkCircle size={22} color="var(--success)" />
-                        ) : (
-                          <IoEllipseOutline size={22} color="var(--text-muted)" />
-                        )}
-                      </button>
-                    )}
-
-                    {/* Lock indicator */}
-                    {r.locked && (
-                      <IoLockClosed size={14} color="var(--warning)" style={{ flexShrink: 0 }} />
-                    )}
-
-                    {/* Content */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        fontSize: 14, fontWeight: 500, color: 'var(--text)',
-                        textDecoration: r.status === 'completed' ? 'line-through' : 'none',
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                      }}>
-                        {r.title}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <IoAlarm size={11} style={{ verticalAlign: -1 }} />
-                        {getScheduleLabel(r.schedule)}
-                      </div>
-                    </div>
-
-                    {/* Expand arrow */}
-                    <div style={{ flexShrink: 0, color: 'var(--text-muted)' }}>
-                      {expandedId === r._id ? <IoChevronDown size={16} /> : <IoChevronForward size={16} />}
-                    </div>
-                  </div>
-
-                  {/* Expanded detail */}
-                  {expandedId === r._id && (
+      {/* List View */}
+      {viewMode === 'list' && (
+        <>
+          {reminders.length === 0 ? (
+            <EmptyState message={
+              statusTab === 'active' ? 'No active reminders' :
+              statusTab === 'completed' ? 'No completed reminders' :
+              statusTab === 'expired' ? 'No expired reminders' :
+              'No reminders yet'
+            } />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {Object.entries(groupedReminders).map(([group, items]) => (
+                <div key={group}>
+                  {statusTab === 'active' && group !== 'all' && (
                     <div style={{
-                      padding: '0 12px 10px', borderTop: '1px solid var(--border)',
-                      paddingTop: 10,
+                      fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5,
+                      color: getPriorityColor(group), marginBottom: 6, marginTop: group !== 'high' ? 10 : 0,
+                      display: 'flex', alignItems: 'center', gap: 6,
                     }}>
-                      {/* Note */}
-                      {r.note && (
-                        <div style={{
-                          fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8,
-                          padding: '8px 10px', background: 'var(--bg-input)', borderRadius: 8,
-                          lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                        }}>
-                          {r.note}
-                        </div>
-                      )}
-
-                      {/* Meta info */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10, fontSize: 11 }}>
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          padding: '3px 8px', borderRadius: 20,
-                          background: getPriorityColor(r.priority) + '20', color: getPriorityColor(r.priority),
-                          fontWeight: 600,
-                        }}>
-                          <IoFlag size={10} /> {r.priority}
-                        </span>
-
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          padding: '3px 8px', borderRadius: 20,
-                          background: 'var(--bg-input)', color: 'var(--text-muted)',
-                        }}>
-                          <IoCalendar size={10} /> {formatDateTime(r.createdAt)}
-                        </span>
-
-                        {r.completedAt && (
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            padding: '3px 8px', borderRadius: 20,
-                            background: 'var(--success)20', color: 'var(--success)',
-                          }}>
-                            <IoCheckmarkCircle size={10} /> {formatDateTime(r.completedAt)}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Schedule details */}
-                      {r.schedule.type === 'custom_days' && (
-                        <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
-                          {DAY_LABELS.map((label, idx) => (
-                            <span key={idx} style={{
-                              width: 26, height: 26, borderRadius: '50%', fontSize: 11, fontWeight: 600,
-                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                              background: (r.schedule.days || []).includes(idx) ? 'var(--primary)' : 'var(--bg-input)',
-                              color: (r.schedule.days || []).includes(idx) ? 'white' : 'var(--text-muted)',
-                            }}>
-                              {label}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {r.schedule.type === 'custom_dates' && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-                          {(r.schedule.dates || []).map((d, i) => {
-                            const ds = new Date(d).toISOString().split('T')[0];
-                            const isPast = new Date(d) < new Date();
-                            return (
-                              <span key={i} style={{
-                                fontSize: 11, padding: '2px 8px', borderRadius: 10,
-                                background: isPast ? 'var(--bg-input)' : 'var(--primary)',
-                                color: isPast ? 'var(--text-muted)' : 'white',
-                                textDecoration: isPast ? 'line-through' : 'none',
-                              }}>
-                                {ds}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Notes section */}
-                      <div style={{ marginBottom: 10 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                            Notes {reminderNotes.length > 0 && `(${reminderNotes.length})`}
-                          </span>
-                          {!r.locked && (
-                            <button className="btn-ghost" onClick={handleNewNote}
-                              style={{ padding: '2px 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
-                              <IoAdd size={12} /> Add Note
-                            </button>
-                          )}
-                        </div>
-                        {notesLoading ? (
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: 8, textAlign: 'center' }}>Loading...</div>
-                        ) : reminderNotes.length === 0 ? (
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: 8, textAlign: 'center' }}>No notes</div>
-                        ) : (
-                          <div style={{ display: 'grid', gap: 6 }}>
-                            {reminderNotes.map(note => (
-                              <div key={note._id} className="card" style={{ padding: 8, cursor: r.locked ? 'default' : 'pointer' }}
-                                onClick={() => !r.locked && handleEditNote(note)}>
-                                <div dangerouslySetInnerHTML={{ __html: note.content }}
-                                  style={{ fontSize: 12, lineHeight: 1.5, wordBreak: 'break-word' }} />
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{formatDateTime(note.createdAt)}</span>
-                                  {!r.locked && (
-                                    <button className="btn-ghost" style={{ padding: 2 }} onClick={e => { e.stopPropagation(); setConfirmDeleteNote(note._id); }}>
-                                      <IoTrash size={12} color="var(--danger)" />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                        <button className="btn-ghost" onClick={() => handleToggleLock(r._id)}
-                          style={{ fontSize: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          {r.locked ? <IoLockClosed size={14} color="var(--warning)" /> : <IoLockOpen size={14} color="var(--text-muted)" />}
-                          {r.locked ? 'Unlock' : 'Lock'}
-                        </button>
-                        {r.status !== 'expired' && !r.locked && (
-                          <button className="btn-ghost" onClick={() => openForm(r)}
-                            style={{ fontSize: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <IoCreate size={14} color="var(--primary)" /> Edit
-                          </button>
-                        )}
-                        {!r.locked && (
-                          <button className="btn-ghost" onClick={() => setConfirmDelete(r._id)}
-                            style={{ fontSize: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <IoTrash size={14} color="var(--danger)" /> Delete
-                          </button>
-                        )}
-                      </div>
+                      <IoFlag size={12} /> {group} priority
+                      <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-muted)' }}>({items.length})</span>
                     </div>
                   )}
+
+                  {items.map(r => (
+                    <div key={r._id} style={{
+                      background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)',
+                      overflow: 'hidden',
+                      borderLeft: `3px solid ${getPriorityColor(r.priority)}`,
+                      opacity: r.status === 'expired' ? 0.6 : 1,
+                    }}>
+                      {/* Main row */}
+                      <div style={{
+                        padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
+                        cursor: 'pointer',
+                      }}
+                        onClick={() => setExpandedId(expandedId === r._id ? null : r._id)}>
+
+                        {/* Toggle circle */}
+                        {r.status !== 'expired' && (
+                          <button style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0 }}
+                            onClick={e => { e.stopPropagation(); handleToggle(r._id); }}>
+                            {r.status === 'completed' ? (
+                              <IoCheckmarkCircle size={22} color="var(--success)" />
+                            ) : (
+                              <IoEllipseOutline size={22} color="var(--text-muted)" />
+                            )}
+                          </button>
+                        )}
+
+                        {/* Lock indicator */}
+                        {r.locked && (
+                          <IoLockClosed size={14} color="var(--warning)" style={{ flexShrink: 0 }} />
+                        )}
+
+                        {/* Content */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: 14, fontWeight: 500, color: 'var(--text)',
+                            textDecoration: r.status === 'completed' ? 'line-through' : 'none',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {r.title}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <IoAlarm size={11} style={{ verticalAlign: -1 }} />
+                            {getScheduleLabel(r.schedule)}
+                            {/* Status badge for 'all' tab */}
+                            {statusTab === 'all' && (
+                              <span style={{
+                                fontSize: 9, padding: '1px 5px', borderRadius: 6, fontWeight: 600,
+                                ...(r.status === 'completed' ? { background: 'var(--success)20', color: 'var(--success)' } :
+                                    r.status === 'expired' ? { background: 'var(--text-muted)20', color: 'var(--text-muted)' } :
+                                    { background: 'var(--primary)20', color: 'var(--primary)' }),
+                              }}>
+                                {r.status === 'completed' ? 'Done' : r.status === 'expired' ? 'Expired' : 'Active'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Expand arrow */}
+                        <div style={{ flexShrink: 0, color: 'var(--text-muted)' }}>
+                          {expandedId === r._id ? <IoChevronDown size={16} /> : <IoChevronForward size={16} />}
+                        </div>
+                      </div>
+
+                      {/* Expanded detail */}
+                      {expandedId === r._id && (
+                        <div style={{
+                          padding: '0 12px 10px', borderTop: '1px solid var(--border)',
+                          paddingTop: 10,
+                        }}>
+                          {/* Note (legacy) */}
+                          {r.note && (
+                            <div style={{
+                              fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8,
+                              padding: '8px 10px', background: 'var(--bg-input)', borderRadius: 8,
+                              lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                            }}>
+                              {r.note}
+                            </div>
+                          )}
+
+                          {/* Meta info */}
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10, fontSize: 11 }}>
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              padding: '3px 8px', borderRadius: 20,
+                              background: getPriorityColor(r.priority) + '20', color: getPriorityColor(r.priority),
+                              fontWeight: 600,
+                            }}>
+                              <IoFlag size={10} /> {r.priority}
+                            </span>
+
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              padding: '3px 8px', borderRadius: 20,
+                              background: 'var(--bg-input)', color: 'var(--text-muted)',
+                            }}>
+                              <IoCalendar size={10} /> {formatDateTime(r.createdAt)}
+                            </span>
+
+                            {r.completedAt && (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '3px 8px', borderRadius: 20,
+                                background: 'var(--success)20', color: 'var(--success)',
+                              }}>
+                                <IoCheckmarkCircle size={10} /> {formatDateTime(r.completedAt)}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Schedule details */}
+                          {r.schedule.type === 'custom_days' && (
+                            <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+                              {DAY_LABELS.map((label, idx) => (
+                                <span key={idx} style={{
+                                  width: 26, height: 26, borderRadius: '50%', fontSize: 11, fontWeight: 600,
+                                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                  background: (r.schedule.days || []).includes(idx) ? 'var(--primary)' : 'var(--bg-input)',
+                                  color: (r.schedule.days || []).includes(idx) ? 'white' : 'var(--text-muted)',
+                                }}>
+                                  {label}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {r.schedule.type === 'custom_dates' && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+                              {(r.schedule.dates || []).map((d, i) => {
+                                const ds = new Date(d).toISOString().split('T')[0];
+                                const isPast = new Date(d) < new Date();
+                                return (
+                                  <span key={i} style={{
+                                    fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                                    background: isPast ? 'var(--bg-input)' : 'var(--primary)',
+                                    color: isPast ? 'var(--text-muted)' : 'white',
+                                    textDecoration: isPast ? 'line-through' : 'none',
+                                  }}>
+                                    {ds}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Notes section */}
+                          <div style={{ marginBottom: 10 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                                Notes {reminderNotes.length > 0 && `(${reminderNotes.length})`}
+                              </span>
+                              {!r.locked && (
+                                <button className="btn-ghost" onClick={handleNewNote}
+                                  style={{ padding: '2px 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
+                                  <IoAdd size={12} /> Add Note
+                                </button>
+                              )}
+                            </div>
+                            {notesLoading ? (
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: 8, textAlign: 'center' }}>Loading...</div>
+                            ) : reminderNotes.length === 0 ? (
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: 8, textAlign: 'center' }}>No notes</div>
+                            ) : (
+                              <div style={{ display: 'grid', gap: 6 }}>
+                                {reminderNotes.map(note => (
+                                  <div key={note._id} className="card" style={{ padding: 8, cursor: r.locked ? 'default' : 'pointer' }}
+                                    onClick={() => !r.locked && handleEditNote(note)}>
+                                    <div dangerouslySetInnerHTML={{ __html: note.content }}
+                                      style={{ fontSize: 12, lineHeight: 1.5, wordBreak: 'break-word' }} />
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{formatDateTime(note.createdAt)}</span>
+                                      {!r.locked && (
+                                        <button className="btn-ghost" style={{ padding: 2 }} onClick={e => { e.stopPropagation(); setConfirmDeleteNote(note._id); }}>
+                                          <IoTrash size={12} color="var(--danger)" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Actions */}
+                          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                            <button className="btn-ghost" onClick={() => handleToggleLock(r._id)}
+                              style={{ fontSize: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {r.locked ? <IoLockClosed size={14} color="var(--warning)" /> : <IoLockOpen size={14} color="var(--text-muted)" />}
+                              {r.locked ? 'Unlock' : 'Lock'}
+                            </button>
+                            {!r.locked && (r.status === 'completed' || r.status === 'expired') && (
+                              <button className="btn-ghost" onClick={() => handleArchiveSingle(r._id)}
+                                style={{ fontSize: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <IoArchive size={14} color="var(--text-muted)" /> Archive
+                              </button>
+                            )}
+                            {r.status !== 'expired' && !r.locked && (
+                              <button className="btn-ghost" onClick={() => openForm(r)}
+                                style={{ fontSize: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <IoCreate size={14} color="var(--primary)" /> Edit
+                              </button>
+                            )}
+                            {!r.locked && (
+                              <button className="btn-ghost" onClick={() => setConfirmDelete(r._id)}
+                                style={{ fontSize: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <IoTrash size={14} color="var(--danger)" /> Delete
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
-          ))}
-        </div>
+          )}
+        </>
+      )}
+
+      {/* Bulk archive + Archived section (list view only) */}
+      {viewMode === 'list' && (
+        <>
+          {/* Bulk archive button — shown when there are completed or expired reminders */}
+          {allReminders.some(r => (r.status === 'completed' || r.status === 'expired') && !r.locked) && (
+            <button className="btn-ghost" onClick={handleBulkArchive}
+              style={{ width: '100%', marginTop: 12, fontSize: 12, padding: '8px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: 8 }}>
+              <IoArchive size={14} /> Archive all done & expired
+            </button>
+          )}
+
+          {/* Archived section */}
+          <div style={{ marginTop: 16 }}>
+            <button onClick={() => setShowArchived(!showArchived)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                padding: '8px 0', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)',
+                background: 'none', border: 'none', cursor: 'pointer',
+              }}>
+              {showArchived ? <IoChevronDown size={14} /> : <IoChevronForward size={14} />}
+              <IoArchive size={14} />
+              Archived
+              {archivedReminders.length > 0 && <span style={{ fontSize: 11, fontWeight: 400 }}>({archivedReminders.length})</span>}
+            </button>
+
+            {showArchived && (
+              <div style={{ marginTop: 8 }}>
+                {archivedReminders.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>No archived reminders</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {archivedReminders.map(r => (
+                      <div key={r._id} style={{
+                        padding: '8px 12px', background: 'var(--bg-card)', borderRadius: 8,
+                        border: '1px solid var(--border)', borderLeft: `3px solid ${getPriorityColor(r.priority)}`,
+                        opacity: 0.7,
+                      }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', marginBottom: 2 }}>{r.title}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <IoAlarm size={11} /> {getScheduleLabel(r.schedule)}
+                          <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                            <button className="btn-ghost" onClick={() => handleUnarchive(r._id)}
+                              style={{ padding: '2px 8px', fontSize: 11, color: 'var(--primary)' }}>
+                              Restore
+                            </button>
+                            {!r.locked && (
+                              <button className="btn-ghost" onClick={() => setConfirmDelete(r._id)}
+                                style={{ padding: '2px 4px' }}>
+                                <IoTrash size={12} color="var(--danger)" />
+                              </button>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* Create/Edit Modal */}
@@ -881,6 +1111,13 @@ export default function Reminders() {
                     onChange={e => setFormIntervalStart(e.target.value)}
                     style={{ width: '100%' }} />
                 </div>
+              </div>
+            )}
+
+            {/* Info about notes */}
+            {!editingId && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, padding: '6px 10px', background: 'var(--bg-input)', borderRadius: 8 }}>
+                After creating, the note editor will open so you can add detailed notes.
               </div>
             )}
 

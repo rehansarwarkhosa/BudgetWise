@@ -11,12 +11,17 @@ router.get('/', async (req, res, next) => {
   try {
     const { status, search } = req.query;
     const query = {};
-    if (status && status !== 'all') {
+    if (status === 'archived') {
+      query.status = 'archived';
+    } else if (status && status !== 'all') {
       if (status === 'upcoming') {
         query.status = 'active';
       } else {
         query.status = status;
       }
+    } else {
+      // 'all' excludes archived
+      query.status = { $ne: 'archived' };
     }
     if (search?.trim()) {
       query.$or = [
@@ -159,6 +164,21 @@ router.put('/:id/toggle', async (req, res, next) => {
       details: `Toggled reminder to ${reminder.status}`,
     });
     success(res, reminder);
+  } catch (err) { next(err); }
+});
+
+// POST /bulk-archive — archive all completed + expired reminders
+router.post('/bulk-archive', async (req, res, next) => {
+  try {
+    const result = await Reminder.updateMany(
+      { status: { $in: ['completed', 'expired'] }, locked: { $ne: true } },
+      { status: 'archived' }
+    );
+    await AuditLog.create({
+      action: 'UPDATE', entity: 'Reminder',
+      details: `Bulk archived ${result.modifiedCount} reminders`,
+    });
+    success(res, { archived: result.modifiedCount });
   } catch (err) { next(err); }
 });
 

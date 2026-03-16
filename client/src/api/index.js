@@ -152,6 +152,8 @@ export const createReminder = (data) => api.post('/reminders', data);
 export const updateReminder = (id, data) => api.put(`/reminders/${id}`, data);
 export const deleteReminder = (id) => api.delete(`/reminders/${id}`);
 export const toggleReminder = (id) => api.put(`/reminders/${id}/toggle`);
+export const getArchivedReminders = () => api.get('/reminders', { params: { status: 'archived' } });
+export const bulkArchiveReminders = () => api.post('/reminders/bulk-archive');
 export const getReminderNotes = (reminderId) => api.get(`/reminders/${reminderId}/notes`);
 export const addReminderNote = (reminderId, data) => api.post(`/reminders/${reminderId}/notes`, data);
 export const updateReminderNote = (noteId, data) => api.put(`/reminders/notes/${noteId}`, data);
