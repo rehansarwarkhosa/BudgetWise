@@ -226,6 +226,23 @@ export default function KanbanBoard() {
     } catch (err) { toast.error('Copy failed'); }
   };
 
+  const handleCopyColumn = (colName) => {
+    const items = getColumnOrders(colName);
+    if (!items.length) return toast.error('Nothing to copy');
+    const label = STATUS_LABELS[colName];
+    let text = `*${label}* (${items.length})\n\n`;
+    items.forEach((wo, i) => {
+      const priorityIcon = wo.priority === 'high' ? '🔴' : wo.priority === 'medium' ? '🟡' : '🟢';
+      text += `${i + 1}. ${priorityIcon} *${wo.title}*`;
+      if (wo.dueDate) text += `\n   📅 Due: ${formatDate(wo.dueDate)}`;
+      if (wo.budgetId) text += `\n   💰 ${formatPKR(wo.budgetAmount)}`;
+      text += '\n\n';
+    });
+    text = text.trimEnd();
+    navigator.clipboard.writeText(text);
+    toast.success(`Copied ${items.length} ${label.toLowerCase()} items`);
+  };
+
   // Swipe-to-move handlers
   const handleTouchStart = useCallback((e, id) => {
     e.stopPropagation();
@@ -656,7 +673,18 @@ export default function KanbanBoard() {
             })}
           </div>
 
-          {/* Bulk archive for done tab */}
+          {/* Tab actions */}
+          {activeTab === 'doing' && getColumnOrders('doing').length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+              <button className="btn-ghost" onClick={() => handleCopyColumn('doing')}
+                style={{
+                  padding: '4px 10px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4,
+                  color: COLUMN_COLORS.doing, background: COLUMN_COLORS.doing + '15', borderRadius: 8,
+                }}>
+                <IoCopy size={12} /> Copy All
+              </button>
+            </div>
+          )}
           {activeTab === 'done' && getColumnOrders('done').length > 0 && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
               <button className="btn-ghost" onClick={handleBulkArchive}
