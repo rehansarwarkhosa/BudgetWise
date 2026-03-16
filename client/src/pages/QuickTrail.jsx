@@ -759,6 +759,9 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
               {t.key === 'reminders' && reminders.length > 0 && (
                 <span style={{ marginLeft: 4, fontSize: 11, color: 'var(--primary)' }}>({reminders.length})</span>
               )}
+              {t.key === 'notes' && notes.length > 0 && (
+                <span style={{ marginLeft: 4, fontSize: 11, color: 'var(--primary)' }}>({notes.length})</span>
+              )}
             </button>
           ))}
         </div>

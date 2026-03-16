@@ -36,6 +36,8 @@ const settingsSchema = new mongoose.Schema({
   trailReorderTaps: { type: Number, default: 2, min: 2, max: 5 },
   trailDetailEnabled: { type: Boolean, default: true },
   trailDetailTaps: { type: Number, default: 3, min: 2, max: 5 },
+  budgetLocked: { type: Boolean, default: false },
+  settingsLocked: { type: Boolean, default: false },
 }, { timestamps: true });
 
 export default mongoose.model('Settings', settingsSchema);

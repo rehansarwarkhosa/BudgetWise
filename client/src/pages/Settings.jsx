@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { useSettings } from '../context/SettingsContext';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
-import { IoSunny, IoMoon, IoTrash, IoAdd } from 'react-icons/io5';
+import { IoSunny, IoMoon, IoTrash, IoAdd, IoLockClosed, IoLockOpen } from 'react-icons/io5';
 import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails, getAuditLogs, clearAuditLogs, getBudgetCategories, addBudgetCategory, updateBudgetCategory, deleteBudgetCategory, sendTestEmail, sendTestPush } from '../api';
 import { formatDate, formatDateTime } from '../utils/format';
 
@@ -441,6 +441,17 @@ export default function Settings() {
     } finally { setPushSubscribing(false); }
   };
 
+  const settingsLocked = settings?.settingsLocked || false;
+
+  const handleToggleSettingsLock = async () => {
+    try {
+      await updateSettings({ settingsLocked: !settingsLocked });
+      await refetchSettings();
+      setInitialized(false);
+      toast.success(settingsLocked ? 'Settings unlocked' : 'Settings locked');
+    } catch (err) { toast.error(err.message); }
+  };
+
   const fetchAuditLogs = async (page = 1, filters = {}) => {
     setAuditLoading(true);
     try {
@@ -646,8 +657,15 @@ export default function Settings() {
 
   return (
     <div className="page">
-      <h1 className="page-title">Settings</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 className="page-title" style={{ marginBottom: 0 }}>Settings</h1>
+        <button className="btn-ghost" onClick={handleToggleSettingsLock}
+          style={{ padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: settingsLocked ? 'var(--warning)' : 'var(--text-muted)' }}>
+          {settingsLocked ? <IoLockClosed size={16} /> : <IoLockOpen size={16} />}
+        </button>
+      </div>
 
+      <div style={settingsLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}>
       {/* Theme Toggle */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="form-group">
@@ -1330,6 +1348,7 @@ export default function Settings() {
         }}
         title="Delete all trail entries?"
         message="This will permanently delete all your quick trail entries. This action cannot be undone." />
+      </div>
     </div>
   );
 }

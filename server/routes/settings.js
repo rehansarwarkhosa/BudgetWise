@@ -49,7 +49,7 @@ router.get('/', async (req, res, next) => {
 // Update settings
 router.put('/', async (req, res, next) => {
   try {
-    const { mode, negativeLimit, currentPeriod, notificationEmail, emailNotificationsEnabled, theme, trailBoldText, trailHighlights, routineHighlights, kanbanDueDateColors, menuSwipeEnabled, tabSwipeTrail, tabSwipeBudget, tabSwipeRoutines, tabSwipeNotes, trailReorderEnabled, trailReorderTaps, trailDetailEnabled, trailDetailTaps } = req.body;
+    const { mode, negativeLimit, currentPeriod, notificationEmail, emailNotificationsEnabled, theme, trailBoldText, trailHighlights, routineHighlights, kanbanDueDateColors, menuSwipeEnabled, tabSwipeTrail, tabSwipeBudget, tabSwipeRoutines, tabSwipeNotes, trailReorderEnabled, trailReorderTaps, trailDetailEnabled, trailDetailTaps, budgetLocked, settingsLocked } = req.body;
     let settings = await Settings.findOne();
     if (!settings) {
       const period = getCurrentPeriod();
@@ -85,6 +85,11 @@ router.put('/', async (req, res, next) => {
       else if (val !== undefined) settings[key] = val;
     }
     for (const [key, label] of [['trailReorderTaps', 'Reorder Taps'], ['trailDetailTaps', 'Detail Taps']]) {
+      const val = req.body[key];
+      if (val !== undefined && val !== settings[key]) { changes.push(`${key}: ${settings[key]} -> ${val}`); settings[key] = val; }
+      else if (val !== undefined) settings[key] = val;
+    }
+    for (const key of ['budgetLocked', 'settingsLocked']) {
       const val = req.body[key];
       if (val !== undefined && val !== settings[key]) { changes.push(`${key}: ${settings[key]} -> ${val}`); settings[key] = val; }
       else if (val !== undefined) settings[key] = val;
@@ -312,6 +317,8 @@ router.post('/import', async (req, res, next) => {
           trailReorderTaps: data.settings.trailReorderTaps ?? 2,
           trailDetailEnabled: data.settings.trailDetailEnabled ?? true,
           trailDetailTaps: data.settings.trailDetailTaps ?? 3,
+          budgetLocked: data.settings.budgetLocked ?? false,
+          settingsLocked: data.settings.settingsLocked ?? false,
         }, { upsert: true });
       }
 

@@ -459,9 +459,11 @@ export default function KanbanBoard() {
               <button className="btn-ghost" style={{ padding: 4 }} onClick={() => handleCopy(wo)}>
                 <IoCopy size={12} color="var(--text-muted)" />
               </button>
-              <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setConfirmDelete(wo)}>
-                <IoTrash size={12} color="var(--danger)" />
-              </button>
+              {!wo.locked && (
+                <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setConfirmDelete(wo)}>
+                  <IoTrash size={12} color="var(--danger)" />
+                </button>
+              )}
             </div>
           </div>
         </div>

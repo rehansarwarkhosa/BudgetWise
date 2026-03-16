@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoCreate, IoChevronUp, IoChevronDown, IoDocumentText, IoPlayCircle, IoBookmark, IoPricetag, IoCube } from 'react-icons/io5';
+import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoCreate, IoChevronUp, IoChevronDown, IoDocumentText, IoPlayCircle, IoBookmark, IoPricetag, IoCube, IoLockClosed, IoLockOpen } from 'react-icons/io5';
 import PriceList from './PriceList';
 import StockList from './StockList';
 import Spinner from '../components/Spinner';
@@ -18,7 +18,7 @@ import {
   getExpenses, addExpense, updateExpense, deleteExpense,
   getFundEntries, deleteFundEntry, reorderBudget, getBudgetCategories,
   getBudgetTemplates, createBudgetTemplate, createTemplateFromBudgets,
-  useBudgetTemplate, deleteBudgetTemplate,
+  useBudgetTemplate, deleteBudgetTemplate, updateSettings,
 } from '../api';
 
 export default function Budget() {
@@ -30,8 +30,9 @@ export default function Budget() {
   const categoryColorMap = {};
   categoriesData?.forEach(c => { categoryColorMap[c.name] = c.color || '#3AAFB9'; });
 
-  const { settings: appSettings } = useSettings();
+  const { settings: appSettings, refetchSettings } = useSettings();
   const tabSwipeEnabled = appSettings?.tabSwipeBudget !== false;
+  const budgetLocked = appSettings?.budgetLocked || false;
   const [activeView, setActiveView] = useState('budgets'); // 'budgets' or 'templates'
   const mainSwipe = useSwipeTabs(['budgets', 'templates', 'prices', 'stock'], activeView, setActiveView, undefined, tabSwipeEnabled);
   const [incomeModal, setIncomeModal] = useState(false);
@@ -46,6 +47,14 @@ export default function Budget() {
     refetchSummary();
     refetchBudgets();
     refetchIncomes();
+  };
+
+  const handleToggleBudgetLock = async () => {
+    try {
+      await updateSettings({ budgetLocked: !budgetLocked });
+      await refetchSettings();
+      toast.success(budgetLocked ? 'Budgets unlocked' : 'Budgets locked');
+    } catch (err) { toast.error(err.message); }
   };
 
   const handleConfirmDelete = async () => {
@@ -82,7 +91,13 @@ export default function Budget() {
 
   return (
     <div className="page" onTouchStart={mainSwipe.onTouchStart} onTouchEnd={mainSwipe.onTouchEnd}>
-      <h1 className="page-title">Budget</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 className="page-title" style={{ marginBottom: 0 }}>Budget</h1>
+        <button className="btn-ghost" onClick={handleToggleBudgetLock}
+          style={{ padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: budgetLocked ? 'var(--warning)' : 'var(--text-muted)' }}>
+          {budgetLocked ? <IoLockClosed size={16} /> : <IoLockOpen size={16} />}
+        </button>
+      </div>
 
       {/* View Toggle: Budgets / Templates */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid var(--border)' }}>
@@ -135,10 +150,12 @@ export default function Budget() {
           <div className="card" style={{ marginBottom: 16, cursor: 'pointer' }} onClick={() => setIncomeListModal(true)}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Income Pool</span>
-              <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); setIncomeModal(true); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary)', fontSize: 13 }}>
-                <IoAdd size={16} /> Add Income
-              </button>
+              {!budgetLocked && (
+                <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); setIncomeModal(true); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary)', fontSize: 13 }}>
+                  <IoAdd size={16} /> Add Income
+                </button>
+              )}
             </div>
             <div style={{ fontSize: 26, fontWeight: 700 }} className="pkr">
               {formatPKR(summary?.balance || 0)}
@@ -184,6 +201,7 @@ export default function Budget() {
                           onMoveDown={() => handleReorder(b._id, 'down')}
                           isFirst={globalIdx === 0}
                           isLast={globalIdx === budgets.length - 1}
+                          locked={budgetLocked}
                         />
                       );
                     })}
@@ -194,7 +212,9 @@ export default function Budget() {
           )}
 
           {/* FAB for new budget */}
-          <button className="fab" onClick={() => setBudgetModal(true)}><IoAdd /></button>
+          {!budgetLocked && (
+            <button className="fab" onClick={() => setBudgetModal(true)}><IoAdd /></button>
+          )}
       </div>
       <div style={{ display: activeView === 'templates' ? 'block' : 'none' }}>
         <TemplatesView categoryColorMap={categoryColorMap} categoryNames={categoryNames} onBudgetsChanged={refreshAll} />
@@ -209,10 +229,12 @@ export default function Budget() {
       <AddFundsModal open={!!fundsModal} budgetId={fundsModal}
         onClose={() => setFundsModal(null)} onDone={refreshAll} />
       <BudgetDetailModal open={!!detailModal} budget={detailModal}
-        onClose={() => setDetailModal(null)} onDone={refreshAll} categories={categoryNames} categoryColorMap={categoryColorMap} />
+        onClose={() => setDetailModal(null)} onDone={refreshAll} categories={categoryNames} categoryColorMap={categoryColorMap}
+        locked={budgetLocked} />
       <IncomeListModal open={incomeListModal} incomes={incomes}
         onClose={() => setIncomeListModal(false)}
-        onDelete={(id, source) => setConfirmDelete({ type: 'income', id, name: source })} />
+        onDelete={(id, source) => setConfirmDelete({ type: 'income', id, name: source })}
+        locked={budgetLocked} />
       <ConfirmModal open={!!confirmDelete} onClose={() => setConfirmDelete(null)}
         onConfirm={handleConfirmDelete}
         title={`Delete ${confirmDelete?.type}?`}
@@ -515,7 +537,7 @@ function TemplateDetailModal({ open, template, onClose, categoryColorMap }) {
 
 /* ========================= BUDGET COMPONENTS (unchanged) ========================= */
 
-function BudgetCard({ budget, catColor, onExpense, onAddFunds, onDetail, onDelete, onMoveUp, onMoveDown, isFirst, isLast }) {
+function BudgetCard({ budget, catColor, onExpense, onAddFunds, onDetail, onDelete, onMoveUp, onMoveDown, isFirst, isLast, locked }) {
   const pct = budget.allocatedAmount > 0
     ? ((budget.allocatedAmount - budget.remainingAmount) / budget.allocatedAmount) * 100 : 0;
   const isExhausted = budget.remainingAmount <= 0;
@@ -533,20 +555,22 @@ function BudgetCard({ budget, catColor, onExpense, onAddFunds, onDetail, onDelet
             {budget.expenseCount} expense{budget.expenseCount !== 1 ? 's' : ''} &middot; Spent {formatPKR(budget.totalSpent)}
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); onMoveUp(); }}
-            style={{ padding: 4, opacity: isFirst ? 0.3 : 1 }} disabled={isFirst}>
-            <IoChevronUp size={16} />
-          </button>
-          <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); onMoveDown(); }}
-            style={{ padding: 4, opacity: isLast ? 0.3 : 1 }} disabled={isLast}>
-            <IoChevronDown size={16} />
-          </button>
-          <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            style={{ color: 'var(--danger)', padding: 4 }}>
-            <IoTrash size={16} />
-          </button>
-        </div>
+        {!locked && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); onMoveUp(); }}
+              style={{ padding: 4, opacity: isFirst ? 0.3 : 1 }} disabled={isFirst}>
+              <IoChevronUp size={16} />
+            </button>
+            <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); onMoveDown(); }}
+              style={{ padding: 4, opacity: isLast ? 0.3 : 1 }} disabled={isLast}>
+              <IoChevronDown size={16} />
+            </button>
+            <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              style={{ color: 'var(--danger)', padding: 4 }}>
+              <IoTrash size={16} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Progress bar */}
@@ -565,18 +589,20 @@ function BudgetCard({ budget, catColor, onExpense, onAddFunds, onDetail, onDelet
         <span style={{ color: 'var(--text-muted)' }}>of {formatPKR(budget.allocatedAmount)}</span>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        {!isExhausted && (
+      {!locked && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          {!isExhausted && (
+            <button className="btn-outline" style={{ flex: 1, fontSize: 13 }}
+              onClick={(e) => { e.stopPropagation(); onExpense(); }}>
+              <IoCash size={14} style={{ marginRight: 4, verticalAlign: -2 }} /> Log Expense
+            </button>
+          )}
           <button className="btn-outline" style={{ flex: 1, fontSize: 13 }}
-            onClick={(e) => { e.stopPropagation(); onExpense(); }}>
-            <IoCash size={14} style={{ marginRight: 4, verticalAlign: -2 }} /> Log Expense
+            onClick={(e) => { e.stopPropagation(); onAddFunds(); }}>
+            <IoAddCircle size={14} style={{ marginRight: 4, verticalAlign: -2 }} /> Add Funds
           </button>
-        )}
-        <button className="btn-outline" style={{ flex: 1, fontSize: 13 }}
-          onClick={(e) => { e.stopPropagation(); onAddFunds(); }}>
-          <IoAddCircle size={14} style={{ marginRight: 4, verticalAlign: -2 }} /> Add Funds
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -742,7 +768,7 @@ function AddFundsModal({ open, budgetId, onClose, onDone }) {
   );
 }
 
-function BudgetDetailModal({ open, budget, onClose, onDone, categories, categoryColorMap }) {
+function BudgetDetailModal({ open, budget, onClose, onDone, categories, categoryColorMap, locked }) {
   const { settings: detailSettings } = useSettings();
   const [expenses, setExpenses] = useState([]);
   const [funds, setFunds] = useState([]);
@@ -837,10 +863,12 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories, category
               <span style={{ marginLeft: 12 }}>Remaining: <strong style={{ color: budget?.remainingAmount <= 0 ? 'var(--danger)' : 'var(--success)' }}>
                 {formatPKR(budget?.remainingAmount)}</strong></span>
             </div>
-            <button className="btn-ghost" style={{ padding: 4 }}
-              onClick={() => { setEditingBudget(true); setBudgetName(budget?.name || ''); setBudgetCategory(budget?.category || 'General'); }}>
-              <IoCreate size={16} color="var(--text-muted)" />
-            </button>
+            {!locked && (
+              <button className="btn-ghost" style={{ padding: 4 }}
+                onClick={() => { setEditingBudget(true); setBudgetName(budget?.name || ''); setBudgetCategory(budget?.category || 'General'); }}>
+                <IoCreate size={16} color="var(--text-muted)" />
+              </button>
+            )}
           </div>
 
           {budget?.category && (() => {
@@ -938,14 +966,18 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories, category
                           <span className="pkr" style={{ fontWeight: 600, color: 'var(--danger)' }}>
                             -{formatPKR(exp.amount)}
                           </span>
-                          <button className="btn-ghost" style={{ padding: 4 }}
-                            onClick={() => { setEditingExpense(exp); setEditDesc(exp.description); setEditAmt(exp.amount); }}>
-                            <IoCreate size={14} color="var(--text-muted)" />
-                          </button>
-                          <button className="btn-ghost" style={{ color: 'var(--danger)', padding: 4 }}
-                            onClick={() => setConfirmDeleteExp(exp)}>
-                            <IoTrash size={14} />
-                          </button>
+                          {!locked && (
+                            <>
+                              <button className="btn-ghost" style={{ padding: 4 }}
+                                onClick={() => { setEditingExpense(exp); setEditDesc(exp.description); setEditAmt(exp.amount); }}>
+                                <IoCreate size={14} color="var(--text-muted)" />
+                              </button>
+                              <button className="btn-ghost" style={{ color: 'var(--danger)', padding: 4 }}
+                                onClick={() => setConfirmDeleteExp(exp)}>
+                                <IoTrash size={14} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     )}
@@ -976,10 +1008,12 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories, category
                       <span className="pkr" style={{ fontWeight: 600, color: 'var(--success)' }}>
                         +{formatPKR(fund.amount)}
                       </span>
-                      <button className="btn-ghost" style={{ color: 'var(--danger)', padding: 4 }}
-                        onClick={() => setConfirmDeleteFund(fund)}>
-                        <IoTrash size={14} />
-                      </button>
+                      {!locked && (
+                        <button className="btn-ghost" style={{ color: 'var(--danger)', padding: 4 }}
+                          onClick={() => setConfirmDeleteFund(fund)}>
+                          <IoTrash size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1002,7 +1036,7 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories, category
   );
 }
 
-function IncomeListModal({ open, incomes, onClose, onDelete }) {
+function IncomeListModal({ open, incomes, onClose, onDelete, locked }) {
   return (
     <Modal open={open} onClose={onClose} title="Income History">
       {!incomes || incomes.length === 0 ? (
@@ -1027,10 +1061,12 @@ function IncomeListModal({ open, incomes, onClose, onDelete }) {
                 <span className="pkr" style={{ fontWeight: 600, color: 'var(--success)' }}>
                   +{formatPKR(inc.amount)}
                 </span>
-                <button className="btn-ghost" style={{ color: 'var(--danger)', padding: 4 }}
-                  onClick={() => onDelete(inc._id, inc.source)}>
-                  <IoTrash size={14} />
-                </button>
+                {!locked && (
+                  <button className="btn-ghost" style={{ color: 'var(--danger)', padding: 4 }}
+                    onClick={() => onDelete(inc._id, inc.source)}>
+                    <IoTrash size={14} />
+                  </button>
+                )}
               </div>
             </div>
           ))}
