@@ -25,6 +25,7 @@ import RoutineNote from '../models/RoutineNote.js';
 import StockItem from '../models/StockItem.js';
 import StockNote from '../models/StockNote.js';
 import Reminder from '../models/Reminder.js';
+import ReminderNote from '../models/ReminderNote.js';
 import { success, error } from '../utils/response.js';
 import { getCurrentPeriod } from '../utils/monthEnd.js';
 
@@ -187,7 +188,7 @@ router.post('/test-push', async (req, res, next) => {
 // Export all data
 router.get('/export', async (req, res, next) => {
   try {
-    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders] = await Promise.all([
+    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders, reminderNotes] = await Promise.all([
       Settings.findOne(),
       Income.find(),
       Budget.find(),
@@ -213,11 +214,12 @@ router.get('/export', async (req, res, next) => {
       StockItem.find(),
       StockNote.find(),
       Reminder.find(),
+      ReminderNote.find(),
     ]);
     success(res, {
       exportDate: new Date().toISOString(),
       version: 1,
-      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders,
+      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders, reminderNotes,
     });
   } catch (err) { next(err); }
 });
@@ -254,6 +256,7 @@ router.post('/import', async (req, res, next) => {
       stockItems: await StockItem.find().lean(),
       stockNotes: await StockNote.find().lean(),
       reminders: await Reminder.find().lean(),
+      reminderNotes: await ReminderNote.find().lean(),
       settings: await Settings.findOne().lean(),
     };
 
@@ -267,7 +270,7 @@ router.post('/import', async (req, res, next) => {
         BudgetTemplate.deleteMany({}), WorkOrder.deleteMany({}), WorkOrderNote.deleteMany({}),
         PriceItem.deleteMany({}), PriceEntry.deleteMany({}),
         RoutineNote.deleteMany({}), StockItem.deleteMany({}), StockNote.deleteMany({}),
-        Reminder.deleteMany({}),
+        Reminder.deleteMany({}), ReminderNote.deleteMany({}),
       ]);
 
       // Restore from import file — sequential to catch failures early
@@ -295,6 +298,7 @@ router.post('/import', async (req, res, next) => {
       if (data.stockItems?.length) await StockItem.insertMany(data.stockItems);
       if (data.stockNotes?.length) await StockNote.insertMany(data.stockNotes);
       if (data.reminders?.length) await Reminder.insertMany(data.reminders);
+      if (data.reminderNotes?.length) await ReminderNote.insertMany(data.reminderNotes);
 
       if (data.settings) {
         await Settings.findOneAndUpdate({}, {
@@ -359,6 +363,7 @@ router.post('/import', async (req, res, next) => {
       if (snapshot.stockItems.length) await StockItem.insertMany(snapshot.stockItems);
       if (snapshot.stockNotes.length) await StockNote.insertMany(snapshot.stockNotes);
       if (snapshot.reminders.length) await Reminder.insertMany(snapshot.reminders);
+      if (snapshot.reminderNotes.length) await ReminderNote.insertMany(snapshot.reminderNotes);
       if (snapshot.settings) {
         await Settings.findOneAndUpdate({}, snapshot.settings, { upsert: true });
       }

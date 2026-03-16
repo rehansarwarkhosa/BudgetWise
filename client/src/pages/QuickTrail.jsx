@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoChevronDown, IoChevronForward, IoTime } from 'react-icons/io5';
+import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoChevronDown, IoChevronForward, IoTime, IoCreate, IoCheckmark } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
@@ -94,6 +94,10 @@ export default function QuickTrail() {
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
   const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [quickEditId, setQuickEditId] = useState(null);
+  const [quickEditText, setQuickEditText] = useState('');
+  const [quickEditSaving, setQuickEditSaving] = useState(false);
+  const quickEditRef = useRef(null);
 
   // Reorder state: triple-tap to unlock an entry, then drag to reorder
   const [reorderEntryId, setReorderEntryId] = useState(null);
@@ -242,6 +246,24 @@ export default function QuickTrail() {
       inputRef.current?.focus();
     } catch (err) { toast.error(err.message); }
     finally { setSending(false); }
+  };
+
+  const startQuickEdit = (entry) => {
+    setQuickEditId(entry._id);
+    setQuickEditText(entry.text);
+    setTimeout(() => quickEditRef.current?.focus(), 50);
+  };
+
+  const handleQuickEditSave = async () => {
+    if (!quickEditId || !quickEditText.trim() || quickEditSaving) return;
+    setQuickEditSaving(true);
+    try {
+      const res = await updateTrail(quickEditId, { text: quickEditText.trim() });
+      setEntries(prev => prev.map(e => e._id === quickEditId ? { ...e, text: res.data.text } : e));
+      setQuickEditId(null);
+      toast.success('Updated');
+    } catch (err) { toast.error(err.message); }
+    finally { setQuickEditSaving(false); }
   };
 
   const handleDelete = async () => {
@@ -523,9 +545,31 @@ export default function QuickTrail() {
                             </div>
                           )}
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 8, whiteSpace: 'pre-wrap', ...(trailBold ? { fontWeight: 700 } : {}) }}>
-                              {entry.text}
-                            </p>
+                            {quickEditId === entry._id ? (
+                              <div onClick={e => e.stopPropagation()}>
+                                <textarea ref={quickEditRef} value={quickEditText}
+                                  onChange={e => setQuickEditText(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleQuickEditSave(); } if (e.key === 'Escape') setQuickEditId(null); }}
+                                  style={{ width: '100%', fontSize: 14, lineHeight: 1.5, padding: 8, borderRadius: 6, border: '1.5px solid var(--primary)', background: 'var(--bg-input)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit', minHeight: 50 }} />
+                                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                                  <button className="btn-primary" onClick={handleQuickEditSave} disabled={quickEditSaving}
+                                    style={{ padding: '4px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, borderRadius: 6, width: 'auto' }}>
+                                    <IoCheckmark size={14} /> {quickEditSaving ? 'Saving...' : 'Save'}
+                                  </button>
+                                  <button className="btn-ghost" onClick={() => setQuickEditId(null)}
+                                    style={{ padding: '4px 12px', fontSize: 12, borderRadius: 6 }}>
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <p style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 8, whiteSpace: 'pre-wrap', ...(trailBold ? { fontWeight: 700 } : {}) }}>
+                                  {entry.text}
+                                </p>
+                              </>
+                            )}
+                            {quickEditId !== entry._id && (
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                 <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
@@ -539,6 +583,9 @@ export default function QuickTrail() {
                                 )}
                               </div>
                               <div style={{ display: 'flex', gap: 4 }}>
+                                <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); startQuickEdit(entry); }}>
+                                  <IoCreate size={14} color="var(--text-muted)" />
+                                </button>
                                 <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setDetailEntry(entry); }}>
                                   <IoDocumentText size={14} color="var(--text-muted)" />
                                 </button>
@@ -550,6 +597,7 @@ export default function QuickTrail() {
                                 </button>
                               </div>
                             </div>
+                            )}
                           </div>
                         </div>
                       </div>

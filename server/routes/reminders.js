@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import Reminder from '../models/Reminder.js';
+import ReminderNote from '../models/ReminderNote.js';
 import AuditLog from '../models/AuditLog.js';
 import { success, error } from '../utils/response.js';
 
@@ -158,6 +159,51 @@ router.put('/:id/toggle', async (req, res, next) => {
       details: `Toggled reminder to ${reminder.status}`,
     });
     success(res, reminder);
+  } catch (err) { next(err); }
+});
+
+// --- Reminder Notes ---
+
+// GET /:id/notes
+router.get('/:id/notes', async (req, res, next) => {
+  try {
+    const notes = await ReminderNote.find({ reminderId: req.params.id }).sort({ createdAt: -1 });
+    success(res, notes);
+  } catch (err) { next(err); }
+});
+
+// POST /:id/notes
+router.post('/:id/notes', async (req, res, next) => {
+  try {
+    const reminder = await Reminder.findById(req.params.id);
+    if (!reminder) return error(res, 'Reminder not found', 404);
+    const note = await ReminderNote.create({
+      reminderId: req.params.id,
+      content: req.body.content || '',
+    });
+    success(res, note, 201);
+  } catch (err) { next(err); }
+});
+
+// PUT /notes/:noteId
+router.put('/notes/:noteId', async (req, res, next) => {
+  try {
+    const note = await ReminderNote.findByIdAndUpdate(
+      req.params.noteId,
+      { content: req.body.content },
+      { new: true }
+    );
+    if (!note) return error(res, 'Note not found', 404);
+    success(res, note);
+  } catch (err) { next(err); }
+});
+
+// DELETE /notes/:noteId
+router.delete('/notes/:noteId', async (req, res, next) => {
+  try {
+    const note = await ReminderNote.findByIdAndDelete(req.params.noteId);
+    if (!note) return error(res, 'Note not found', 404);
+    success(res, { message: 'Deleted' });
   } catch (err) { next(err); }
 });
 

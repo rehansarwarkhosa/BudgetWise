@@ -152,6 +152,10 @@ export const createReminder = (data) => api.post('/reminders', data);
 export const updateReminder = (id, data) => api.put(`/reminders/${id}`, data);
 export const deleteReminder = (id) => api.delete(`/reminders/${id}`);
 export const toggleReminder = (id) => api.put(`/reminders/${id}/toggle`);
+export const getReminderNotes = (reminderId) => api.get(`/reminders/${reminderId}/notes`);
+export const addReminderNote = (reminderId, data) => api.post(`/reminders/${reminderId}/notes`, data);
+export const updateReminderNote = (noteId, data) => api.put(`/reminders/notes/${noteId}`, data);
+export const deleteReminderNote = (noteId) => api.delete(`/reminders/notes/${noteId}`);
 
 // Audit Logs
 export const getAuditLogs = (page = 1, { date, action } = {}) => api.get('/audit-logs', { params: { page, limit: 50, ...(date ? { date } : {}), ...(action ? { action } : {}) } });

@@ -9,8 +9,9 @@ import {
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
-import { getReminders, createReminder, updateReminder as updateReminderApi, deleteReminder, toggleReminder } from '../api';
+import { getReminders, createReminder, updateReminder as updateReminderApi, deleteReminder, toggleReminder, getReminderNotes, addReminderNote, updateReminderNote, deleteReminderNote } from '../api';
 import { formatDateTime } from '../utils/format';
+import RichTextEditor from '../components/RichTextEditor';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const SCHEDULE_TYPES = [
@@ -43,6 +44,15 @@ export default function Reminders() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const searchRef = useRef(null);
+
+  // Notes state for expanded reminder
+  const [reminderNotes, setReminderNotes] = useState([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [richEditorOpen, setRichEditorOpen] = useState(false);
+  const [richEditorContent, setRichEditorContent] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [richEditorSaving, setRichEditorSaving] = useState(false);
+  const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);
 
   // Form state
   const [formTitle, setFormTitle] = useState('');
@@ -174,6 +184,54 @@ export default function Reminders() {
       setAllReminders(prev => prev.map(r => r._id === id ? res.data : r));
       toast.success(rem.locked ? 'Unlocked' : 'Locked');
     } catch (err) { toast.error(err.message); }
+  };
+
+  // Load notes when reminder is expanded
+  useEffect(() => {
+    if (expandedId) {
+      setNotesLoading(true);
+      getReminderNotes(expandedId).then(res => setReminderNotes(res.data)).catch(() => {}).finally(() => setNotesLoading(false));
+    } else {
+      setReminderNotes([]);
+    }
+  }, [expandedId]);
+
+  const handleEditNote = (note) => {
+    setEditingNoteId(note._id);
+    setRichEditorContent(note.content);
+    setRichEditorOpen(true);
+  };
+
+  const handleNewNote = () => {
+    setEditingNoteId(null);
+    setRichEditorContent('');
+    setRichEditorOpen(true);
+  };
+
+  const handleSaveNote = async (htmlContent) => {
+    setRichEditorSaving(true);
+    try {
+      if (editingNoteId) {
+        const res = await updateReminderNote(editingNoteId, { content: htmlContent });
+        setReminderNotes(prev => prev.map(n => n._id === editingNoteId ? res.data : n));
+      } else {
+        const res = await addReminderNote(expandedId, { content: htmlContent });
+        setReminderNotes(prev => [res.data, ...prev]);
+      }
+      setRichEditorOpen(false);
+      setEditingNoteId(null);
+    } catch (err) { toast.error(err.message); }
+    finally { setRichEditorSaving(false); }
+  };
+
+  const handleDeleteNote = async () => {
+    if (!confirmDeleteNote) return;
+    try {
+      await deleteReminderNote(confirmDeleteNote);
+      setReminderNotes(prev => prev.filter(n => n._id !== confirmDeleteNote));
+      toast.success('Note deleted');
+    } catch (err) { toast.error(err.message); }
+    setConfirmDeleteNote(null);
   };
 
   const toggleSearch = () => {
@@ -414,6 +472,44 @@ export default function Reminders() {
                         </div>
                       )}
 
+                      {/* Notes section */}
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                            Notes {reminderNotes.length > 0 && `(${reminderNotes.length})`}
+                          </span>
+                          {!r.locked && (
+                            <button className="btn-ghost" onClick={handleNewNote}
+                              style={{ padding: '2px 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
+                              <IoAdd size={12} /> Add Note
+                            </button>
+                          )}
+                        </div>
+                        {notesLoading ? (
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: 8, textAlign: 'center' }}>Loading...</div>
+                        ) : reminderNotes.length === 0 ? (
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: 8, textAlign: 'center' }}>No notes</div>
+                        ) : (
+                          <div style={{ display: 'grid', gap: 6 }}>
+                            {reminderNotes.map(note => (
+                              <div key={note._id} className="card" style={{ padding: 8, cursor: r.locked ? 'default' : 'pointer' }}
+                                onClick={() => !r.locked && handleEditNote(note)}>
+                                <div dangerouslySetInnerHTML={{ __html: note.content }}
+                                  style={{ fontSize: 12, lineHeight: 1.5, wordBreak: 'break-word' }} />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{formatDateTime(note.createdAt)}</span>
+                                  {!r.locked && (
+                                    <button className="btn-ghost" style={{ padding: 2 }} onClick={e => { e.stopPropagation(); setConfirmDeleteNote(note._id); }}>
+                                      <IoTrash size={12} color="var(--danger)" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
                       {/* Actions */}
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                         <button className="btn-ghost" onClick={() => handleToggleLock(r._id)}
@@ -638,6 +734,25 @@ export default function Reminders() {
         onConfirm={handleDelete}
         title="Delete Reminder?"
         message="Delete this reminder? This cannot be undone."
+      />
+
+      {/* Confirm Delete Note */}
+      <ConfirmModal
+        open={!!confirmDeleteNote}
+        onClose={() => setConfirmDeleteNote(null)}
+        onConfirm={handleDeleteNote}
+        title="Delete Note?"
+        message="Delete this note? This cannot be undone."
+      />
+
+      {/* Rich Text Editor for Notes */}
+      <RichTextEditor
+        open={richEditorOpen}
+        initialContent={richEditorContent}
+        onSave={handleSaveNote}
+        onClose={() => { setRichEditorOpen(false); setEditingNoteId(null); }}
+        title={editingNoteId ? 'Edit Note' : 'New Note'}
+        saving={richEditorSaving}
       />
     </div>
   );

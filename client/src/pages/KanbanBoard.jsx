@@ -229,11 +229,14 @@ export default function KanbanBoard() {
   // Swipe-to-move handlers
   const handleTouchStart = useCallback((e, id) => {
     e.stopPropagation();
+    // Don't allow swiping locked cards
+    const wo = workOrders.find(w => w._id === id);
+    if (wo?.locked) return;
     touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     touchLocked.current = false;
     setSwipingId(id);
     setSwipeX(0);
-  }, []);
+  }, [workOrders]);
 
   const handleTouchMove = useCallback((e) => {
     if (!swipingId) return;
@@ -1444,7 +1447,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
 
   const hasBudget = !!(wo.budgetId);
   const isDone = wo.status === 'done' || wo.status === 'archived';
-  const showExpenseBtn = hasBudget && isDone && wo.budgetExpenseStatus !== 'completed';
+  const showExpenseBtn = hasBudget && isDone && wo.budgetExpenseStatus !== 'completed' && !settings?.budgetLocked;
 
   return (
     <div style={modalBackdrop} onClick={onClose}>
