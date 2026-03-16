@@ -642,6 +642,7 @@ router.get('/check-reminders', async (req, res, next) => {
         });
         schedule.lastNotifiedDate = reminderKey;
         if (schedule.type === 'once') { schedule.fired = true; schedule.enabled = false; }
+        rem.markModified('schedule');
         await rem.save();
       }
     }

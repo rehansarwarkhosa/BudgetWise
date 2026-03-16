@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import {
   IoAdd, IoTrash, IoCopy, IoSearch, IoClose, IoChevronForward, IoChevronBack,
-  IoWallet, IoFlag, IoAlarm, IoCreate, IoSave, IoFilter, IoCalendar,
+  IoWallet, IoFlag, IoAlarm, IoCreate, IoFilter, IoCalendar,
   IoArchive, IoArrowUndo, IoChevronDown, IoChevronUp, IoList, IoGrid,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
+import RichTextEditor from '../components/RichTextEditor';
 import { formatDateTime, formatDate, formatPKR } from '../utils/format';
 import { useSettings } from '../context/SettingsContext';
 import useSwipeTabs from '../hooks/useSwipeTabs';
@@ -22,9 +23,8 @@ import {
 const PRIORITY_COLORS = { low: '#22C55E', medium: '#F59E0B', high: '#EF4444' };
 const STATUS_LABELS = { backlog: 'Backlog', todo: 'Todo', doing: 'Doing', done: 'Done', archived: 'Archived' };
 const COLUMNS = ['todo', 'doing', 'done'];
-const COLUMN_COLORS = { backlog: '#8B5CF6', todo: '#3AAFB9', doing: '#F59E0B', done: '#22C55E', archived: '#6B7280' };
+const COLUMN_COLORS = { backlog: '#6B7280', todo: '#3AAFB9', doing: '#F59E0B', done: '#22C55E', archived: '#6B7280' };
 
-const RICH_COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
 
 function getDueDateColor(dueDate, colorSettings) {
   if (!dueDate) return null;
@@ -727,11 +727,11 @@ export default function KanbanBoard() {
             borderRadius: 12, cursor: 'pointer', color: 'var(--text-secondary)',
           }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <IoList size={14} color="#8B5CF6" />
+            <IoList size={14} color="#6B7280" />
             <span style={{ fontSize: 13, fontWeight: 600 }}>Backlog</span>
             <span style={{
-              fontSize: 10, fontWeight: 600, background: '#8B5CF620',
-              color: '#8B5CF6', padding: '2px 8px', borderRadius: 10,
+              fontSize: 10, fontWeight: 600, background: '#6B728020',
+              color: '#6B7280', padding: '2px 8px', borderRadius: 10,
             }}>
               {backlogOrders.length}
             </span>
@@ -789,8 +789,8 @@ export default function KanbanBoard() {
                     style={{
                       background: 'var(--bg-card)', borderRadius: 12,
                       padding: '10px 12px', cursor: 'pointer',
-                      borderLeft: `4px solid #8B5CF6`,
-                      border: backlogSelected.includes(wo._id) ? '2px solid #8B5CF6' : '1px solid var(--border)',
+                      borderLeft: `4px solid #6B7280`,
+                      border: backlogSelected.includes(wo._id) ? '2px solid #6B7280' : '1px solid var(--border)',
                       borderLeftWidth: 4,
                     }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1309,11 +1309,10 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Notes state
-  const [noteContent, setNoteContent] = useState('');
   const [editingNoteId, setEditingNoteId] = useState(null);
-  const noteEditorRef = useRef(null);
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [customColor, setCustomColor] = useState('#3AAFB9');
+  const [richEditorOpen, setRichEditorOpen] = useState(false);
+  const [richEditorContent, setRichEditorContent] = useState('');
+  const [richEditorSaving, setRichEditorSaving] = useState(false);
 
   // Reminders state
   const [reminders, setReminders] = useState([]);
@@ -1378,28 +1377,30 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   };
 
   // Notes handlers
-  const handleAddNote = async () => {
-    const content = noteEditorRef.current?.innerHTML;
-    if (!content?.trim() || !stripHtml(content).trim()) return;
+  const handleSaveNote = async (htmlContent) => {
+    if (!htmlContent?.trim() || !stripHtml(htmlContent).trim()) return;
+    setRichEditorSaving(true);
     try {
       if (editingNoteId) {
-        await updateWorkOrderNote(editingNoteId, { content });
-        setEditingNoteId(null);
+        await updateWorkOrderNote(editingNoteId, { content: htmlContent });
         toast.success('Note updated');
       } else {
-        await addWorkOrderNote(workOrderId, { content });
+        await addWorkOrderNote(workOrderId, { content: htmlContent });
         toast.success('Note added');
       }
-      if (noteEditorRef.current) noteEditorRef.current.innerHTML = '';
+      setEditingNoteId(null);
+      setRichEditorOpen(false);
+      setRichEditorContent('');
       const notesRes = await getWorkOrderNotes(workOrderId);
       setNotes(notesRes.data);
     } catch (err) { toast.error(err.message); }
+    finally { setRichEditorSaving(false); }
   };
 
   const handleEditNote = (note) => {
     setEditingNoteId(note._id);
-    if (noteEditorRef.current) noteEditorRef.current.innerHTML = note.content;
-    setTab('notes');
+    setRichEditorContent(note.content);
+    setRichEditorOpen(true);
   };
 
   const handleDeleteNote = async (noteId) => {
@@ -1426,11 +1427,6 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   const removeReminder = (idx) => {
     setReminders(prev => prev.filter((_, i) => i !== idx));
     setRemindersDirty(true);
-  };
-
-  const execCmd = (cmd, val) => {
-    document.execCommand(cmd, false, val);
-    noteEditorRef.current?.focus();
   };
 
   if (loading) return (
@@ -1639,63 +1635,10 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
 
         {tab === 'notes' && (
           <div>
-            {/* Rich Text Toolbar */}
-            <div style={{
-              display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6,
-              padding: '4px 0', borderBottom: '1px solid var(--border)',
-            }}>
-              <button type="button" className="btn-ghost" onClick={() => execCmd('bold')}
-                style={{ padding: '4px 8px', fontSize: 12, fontWeight: 700 }}>B</button>
-              <button type="button" className="btn-ghost" onClick={() => execCmd('italic')}
-                style={{ padding: '4px 8px', fontSize: 12, fontStyle: 'italic' }}>I</button>
-              <button type="button" className="btn-ghost" onClick={() => execCmd('underline')}
-                style={{ padding: '4px 8px', fontSize: 12, textDecoration: 'underline' }}>U</button>
-              <div style={{ position: 'relative' }}>
-                <button type="button" className="btn-ghost" onClick={() => setShowColorPicker(!showColorPicker)}
-                  style={{ padding: '4px 8px', fontSize: 12 }}>
-                  A<span style={{ display: 'inline-block', width: 10, height: 3, background: customColor, marginLeft: 2, verticalAlign: 'bottom' }} />
-                </button>
-                {showColorPicker && (
-                  <div style={{
-                    position: 'absolute', top: '100%', left: 0, zIndex: 20,
-                    background: 'var(--bg-card)', border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-sm)', padding: 8,
-                    display: 'flex', gap: 4, flexWrap: 'wrap', width: 160,
-                  }}>
-                    {RICH_COLORS.map(c => (
-                      <button key={c} type="button" onClick={() => { execCmd('foreColor', c); setCustomColor(c); setShowColorPicker(false); }}
-                        style={{ width: 24, height: 24, borderRadius: 4, background: c, border: '2px solid var(--border)', cursor: 'pointer' }} />
-                    ))}
-                    <input type="color" value={customColor}
-                      onChange={e => { execCmd('foreColor', e.target.value); setCustomColor(e.target.value); setShowColorPicker(false); }}
-                      style={{ width: 24, height: 24, padding: 0, border: 'none', cursor: 'pointer' }} />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Editor */}
-            <div ref={noteEditorRef} contentEditable suppressContentEditableWarning
-              style={{
-                minHeight: 80, padding: 10, background: 'var(--bg-input)',
-                borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-                fontSize: 13, lineHeight: 1.5, marginBottom: 8, color: 'var(--text)',
-                outline: 'none',
-              }}
-              data-placeholder="Add a note..."
-            />
-
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              {editingNoteId && (
-                <button className="btn-ghost" onClick={() => { setEditingNoteId(null); if (noteEditorRef.current) noteEditorRef.current.innerHTML = ''; }}
-                  style={{ flex: 1, fontSize: 12 }}>Cancel</button>
-              )}
-              <button className="btn-primary" onClick={handleAddNote}
-                style={{ flex: 1, fontSize: 12, width: 'auto' }}>
-                <IoSave size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                {editingNoteId ? 'Update Note' : 'Add Note'}
-              </button>
-            </div>
+            <button className="btn-primary" onClick={() => { setEditingNoteId(null); setRichEditorContent(''); setRichEditorOpen(true); }}
+              style={{ width: '100%', marginBottom: 12, fontSize: 12 }}>
+              <IoAdd size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Add Note
+            </button>
 
             {/* Notes List */}
             {notes.length === 0 ? (
@@ -1726,6 +1669,15 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
                 ))}
               </div>
             )}
+
+            <RichTextEditor
+              open={richEditorOpen}
+              initialContent={richEditorContent}
+              onSave={handleSaveNote}
+              onClose={() => { setRichEditorOpen(false); setEditingNoteId(null); }}
+              title={editingNoteId ? 'Edit Note' : 'New Note'}
+              saving={richEditorSaving}
+            />
           </div>
         )}
 

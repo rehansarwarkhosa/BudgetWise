@@ -5,6 +5,7 @@ import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
+import RichTextEditor from '../components/RichTextEditor';
 import useFetch from '../hooks/useFetch';
 import useSwipeTabs from '../hooks/useSwipeTabs';
 
@@ -17,7 +18,6 @@ import {
 import { useSettings } from '../context/SettingsContext';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const RICH_COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
 
 function getNextLogLabel(nextLogDate) {
   if (!nextLogDate) return null;
@@ -718,9 +718,9 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const [notes, setNotes] = useState([]);
   const [notesFetched, setNotesFetched] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState(null);
-  const noteEditorRef = useRef(null);
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [customColor, setCustomColor] = useState('#3AAFB9');
+  const [richEditorOpen, setRichEditorOpen] = useState(false);
+  const [richEditorContent, setRichEditorContent] = useState('');
+  const [richEditorSaving, setRichEditorSaving] = useState(false);
   // Check if routine has schedule-based reminders
   const hasScheduleReminders = routine?.reminders?.some(r => r.enabled && ['interval', 'custom_days', 'custom_dates'].includes(r.type));
   const detailTabs = hasScheduleReminders ? ['info', 'schedule', 'notes'] : ['info', 'notes'];
@@ -775,28 +775,30 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
     }
   }, [detailTab, open, routine?._id]);
 
-  const handleAddNote = async () => {
-    const content = noteEditorRef.current?.innerHTML;
-    if (!content?.trim() || !stripHtml(content).trim()) return;
+  const handleSaveNote = async (htmlContent) => {
+    if (!htmlContent?.trim() || !stripHtml(htmlContent).trim()) return;
+    setRichEditorSaving(true);
     try {
       if (editingNoteId) {
-        await updateRoutineNote(editingNoteId, { content });
-        setEditingNoteId(null);
+        await updateRoutineNote(editingNoteId, { content: htmlContent });
         toast.success('Note updated');
       } else {
-        await addRoutineNote(routine._id, { content });
+        await addRoutineNote(routine._id, { content: htmlContent });
         toast.success('Note added');
       }
-      if (noteEditorRef.current) noteEditorRef.current.innerHTML = '';
+      setEditingNoteId(null);
+      setRichEditorOpen(false);
+      setRichEditorContent('');
       const notesRes = await getRoutineNotes(routine._id);
       setNotes(notesRes.data);
     } catch (err) { toast.error(err.message); }
+    finally { setRichEditorSaving(false); }
   };
 
   const handleEditNote = (note) => {
     setEditingNoteId(note._id);
-    if (noteEditorRef.current) noteEditorRef.current.innerHTML = note.content;
-    setDetailTab('notes');
+    setRichEditorContent(note.content);
+    setRichEditorOpen(true);
   };
 
   const handleDeleteNote = async (noteId) => {
@@ -807,15 +809,10 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
     } catch (err) { toast.error(err.message); }
   };
 
-  const execCmd = (cmd, val) => {
-    document.execCommand(cmd, false, val);
-    noteEditorRef.current?.focus();
-  };
-
   const handleClose = () => {
     setEntries([]); setFetched(false); setEditing(false);
     setNotes([]); setNotesFetched(false); setDetailTab('info');
-    setEditingNoteId(null); setShowColorPicker(false);
+    setEditingNoteId(null); setRichEditorOpen(false);
     onClose();
   };
 
@@ -1230,62 +1227,10 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 
       {detailTab === 'notes' && (
         <div>
-          {/* Rich Text Toolbar */}
-          <div style={{
-            display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6,
-            padding: '4px 0', borderBottom: '1px solid var(--border)',
-          }}>
-            <button type="button" className="btn-ghost" onClick={() => execCmd('bold')}
-              style={{ padding: '4px 8px', fontSize: 12, fontWeight: 700 }}>B</button>
-            <button type="button" className="btn-ghost" onClick={() => execCmd('italic')}
-              style={{ padding: '4px 8px', fontSize: 12, fontStyle: 'italic' }}>I</button>
-            <button type="button" className="btn-ghost" onClick={() => execCmd('underline')}
-              style={{ padding: '4px 8px', fontSize: 12, textDecoration: 'underline' }}>U</button>
-            <div style={{ position: 'relative' }}>
-              <button type="button" className="btn-ghost" onClick={() => setShowColorPicker(!showColorPicker)}
-                style={{ padding: '4px 8px', fontSize: 12 }}>
-                A<span style={{ display: 'inline-block', width: 10, height: 3, background: customColor, marginLeft: 2, verticalAlign: 'bottom' }} />
-              </button>
-              {showColorPicker && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, zIndex: 20,
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)', padding: 8,
-                  display: 'flex', gap: 4, flexWrap: 'wrap', width: 160,
-                }}>
-                  {RICH_COLORS.map(c => (
-                    <button key={c} type="button" onClick={() => { execCmd('foreColor', c); setCustomColor(c); setShowColorPicker(false); }}
-                      style={{ width: 24, height: 24, borderRadius: 4, background: c, border: '2px solid var(--border)', cursor: 'pointer' }} />
-                  ))}
-                  <input type="color" value={customColor}
-                    onChange={e => { execCmd('foreColor', e.target.value); setCustomColor(e.target.value); setShowColorPicker(false); }}
-                    style={{ width: 24, height: 24, padding: 0, border: 'none', cursor: 'pointer' }} />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Editor */}
-          <div ref={noteEditorRef} contentEditable suppressContentEditableWarning
-            style={{
-              minHeight: 80, padding: 10, background: 'var(--bg-input)',
-              borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-              fontSize: 13, lineHeight: 1.5, marginBottom: 8, color: 'var(--text)',
-              outline: 'none',
-            }}
-            data-placeholder="Add a note..."
-          />
-
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            {editingNoteId && (
-              <button className="btn-ghost" onClick={() => { setEditingNoteId(null); if (noteEditorRef.current) noteEditorRef.current.innerHTML = ''; }}
-                style={{ flex: 1, fontSize: 12 }}>Cancel</button>
-            )}
-            <button className="btn-primary" onClick={handleAddNote}
-              style={{ flex: 1, fontSize: 12, width: 'auto' }}>
-              {editingNoteId ? 'Update Note' : 'Add Note'}
-            </button>
-          </div>
+          <button className="btn-primary" onClick={() => { setEditingNoteId(null); setRichEditorContent(''); setRichEditorOpen(true); }}
+            style={{ width: '100%', marginBottom: 12, fontSize: 12 }}>
+            <IoAdd size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Add Note
+          </button>
 
           {/* Notes List */}
           {notes.length === 0 ? (
@@ -1316,6 +1261,15 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
               ))}
             </div>
           )}
+
+          <RichTextEditor
+            open={richEditorOpen}
+            initialContent={richEditorContent}
+            onSave={handleSaveNote}
+            onClose={() => { setRichEditorOpen(false); setEditingNoteId(null); }}
+            title={editingNoteId ? 'Edit Note' : 'New Note'}
+            saving={richEditorSaving}
+          />
         </div>
       )}
 

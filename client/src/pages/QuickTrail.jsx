@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoColorPalette, IoSave, IoChevronDown, IoChevronForward, IoTime } from 'react-icons/io5';
+import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoChevronDown, IoChevronForward, IoTime } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
+import RichTextEditor from '../components/RichTextEditor';
 import { useSettings } from '../context/SettingsContext';
 import useSwipeTabs from '../hooks/useSwipeTabs';
 
@@ -13,7 +14,6 @@ import { formatDateTime } from '../utils/format';
 import KanbanBoard from './KanbanBoard';
 import Reminders from './Reminders';
 
-const RICH_COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 function stripHtml(html) {
@@ -620,8 +620,9 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
   const [notes, setNotes] = useState([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [editingNoteId, setEditingNoteId] = useState(null);
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const noteEditorRef = useRef(null);
+  const [richEditorOpen, setRichEditorOpen] = useState(false);
+  const [richEditorContent, setRichEditorContent] = useState('');
+  const [richEditorSaving, setRichEditorSaving] = useState(false);
 
   // Reminders
   const [reminders, setReminders] = useState(entry.reminders || []);
@@ -651,32 +652,29 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
   };
 
   // Notes handlers
-  const execCmd = (cmd, val) => {
-    document.execCommand(cmd, false, val);
-    noteEditorRef.current?.focus();
-  };
-
-  const handleAddNote = async () => {
-    const content = noteEditorRef.current?.innerHTML;
-    if (!content?.trim() || !stripHtml(content).trim()) return;
+  const handleSaveNote = async (htmlContent) => {
+    if (!htmlContent?.trim() || !stripHtml(htmlContent).trim()) return;
+    setRichEditorSaving(true);
     try {
       if (editingNoteId) {
-        await updateTrailNote(editingNoteId, { content });
-        setEditingNoteId(null);
+        await updateTrailNote(editingNoteId, { content: htmlContent });
         toast.success('Note updated');
       } else {
-        await addTrailNote(entry._id, { content });
+        await addTrailNote(entry._id, { content: htmlContent });
         toast.success('Note added');
       }
-      if (noteEditorRef.current) noteEditorRef.current.innerHTML = '';
+      setEditingNoteId(null);
+      setRichEditorOpen(false);
+      setRichEditorContent('');
       loadNotes();
     } catch (err) { toast.error(err.message); }
+    finally { setRichEditorSaving(false); }
   };
 
   const handleEditNote = (note) => {
     setEditingNoteId(note._id);
-    if (noteEditorRef.current) noteEditorRef.current.innerHTML = note.content;
-    setTab('notes');
+    setRichEditorContent(note.content);
+    setRichEditorOpen(true);
   };
 
   const handleDeleteNote = async (noteId) => {
@@ -799,51 +797,10 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
 
         {/* Notes Tab */}
         <div style={{ display: tab === 'notes' ? 'block' : 'none' }}>
-          {/* Rich Text Toolbar */}
-          <div style={{
-            display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap',
-            padding: '6px 8px', background: 'var(--bg-input)', borderRadius: 8,
-          }}>
-            <button type="button" className="btn-ghost" style={{ padding: '4px 8px', fontWeight: 700, fontSize: 14 }}
-              onClick={() => execCmd('bold')}>B</button>
-            <button type="button" className="btn-ghost" style={{ padding: '4px 8px', fontStyle: 'italic', fontSize: 14 }}
-              onClick={() => execCmd('italic')}>I</button>
-            <button type="button" className="btn-ghost" style={{ padding: '4px 8px', textDecoration: 'underline', fontSize: 14 }}
-              onClick={() => execCmd('underline')}>U</button>
-            <div style={{ position: 'relative' }}>
-              <button type="button" className="btn-ghost" style={{ padding: '4px 8px' }}
-                onClick={() => setShowColorPicker(!showColorPicker)}>
-                <IoColorPalette size={16} />
-              </button>
-              {showColorPicker && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, zIndex: 10,
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderRadius: 8, padding: 8, display: 'flex', gap: 4, flexWrap: 'wrap', width: 140,
-                }}>
-                  {RICH_COLORS.map(c => (
-                    <button key={c} type="button" onClick={() => { execCmd('foreColor', c); setShowColorPicker(false); }}
-                      style={{ width: 24, height: 24, borderRadius: '50%', border: '2px solid var(--border)', background: c, cursor: 'pointer' }} />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Content Editable */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <div ref={noteEditorRef} contentEditable suppressContentEditableWarning
-              style={{
-                flex: 1, minHeight: 50, padding: 10, background: 'var(--bg-input)', borderRadius: 8,
-                color: 'var(--text-primary)', fontSize: 13, lineHeight: 1.5,
-                outline: 'none', overflowY: 'auto', maxHeight: 120,
-              }}
-              data-placeholder="Add a note..." />
-            <button className="btn-primary" onClick={handleAddNote}
-              style={{ width: 'auto', padding: '10px 14px', alignSelf: 'flex-end' }}>
-              {editingNoteId ? <IoSave size={16} /> : <IoAdd size={16} />}
-            </button>
-          </div>
+          <button className="btn-primary" onClick={() => { setEditingNoteId(null); setRichEditorContent(''); setRichEditorOpen(true); }}
+            style={{ width: '100%', marginBottom: 12, fontSize: 13 }}>
+            <IoAdd size={14} style={{ marginRight: 4, verticalAlign: -2 }} /> Add Note
+          </button>
 
           {/* Notes list */}
           {notesLoading ? <Spinner /> : notes.length === 0 ? (
@@ -871,6 +828,15 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
               ))}
             </div>
           )}
+
+          <RichTextEditor
+            open={richEditorOpen}
+            initialContent={richEditorContent}
+            onSave={handleSaveNote}
+            onClose={() => { setRichEditorOpen(false); setEditingNoteId(null); }}
+            title={editingNoteId ? 'Edit Note' : 'New Note'}
+            saving={richEditorSaving}
+          />
         </div>
 
         {/* Reminders Tab */}
