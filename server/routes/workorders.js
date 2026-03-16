@@ -301,9 +301,18 @@ router.get('/:id', async (req, res, next) => {
 // Update work order
 router.put('/:id', async (req, res, next) => {
   try {
-    const { title, priority, status, budgetId, budgetAmount, reminders, dueDate } = req.body;
+    const { title, priority, status, budgetId, budgetAmount, reminders, dueDate, locked } = req.body;
     const wo = await WorkOrder.findById(req.params.id);
     if (!wo) return error(res, 'Work order not found', 404);
+
+    // Allow lock toggle even on locked items
+    if (locked !== undefined) {
+      wo.locked = locked;
+      await wo.save();
+      const populated = await WorkOrder.findById(wo._id).populate('budgetId', 'name remainingAmount allocatedAmount');
+      return success(res, populated);
+    }
+    if (wo.locked) return error(res, 'This work order is locked', 403);
 
     const changes = [];
     if (title !== undefined && title !== wo.title) { changes.push(`title: "${wo.title}" -> "${title}"`); wo.title = title; }
@@ -344,6 +353,7 @@ router.put('/:id/move', async (req, res, next) => {
     if (!['backlog', 'todo', 'doing', 'done', 'archived'].includes(status)) return error(res, 'Invalid status');
     const wo = await WorkOrder.findById(req.params.id);
     if (!wo) return error(res, 'Work order not found', 404);
+    if (wo.locked) return error(res, 'This work order is locked', 403);
     const oldStatus = wo.status;
     wo.status = status;
     await wo.save();
@@ -417,13 +427,15 @@ router.post('/bulk-archive', async (req, res, next) => {
 // Delete work order
 router.delete('/:id', async (req, res, next) => {
   try {
-    const wo = await WorkOrder.findByIdAndDelete(req.params.id);
-    if (!wo) return error(res, 'Work order not found', 404);
-    await WorkOrderNote.deleteMany({ workOrderId: wo._id });
+    const woCheck = await WorkOrder.findById(req.params.id);
+    if (!woCheck) return error(res, 'Work order not found', 404);
+    if (woCheck.locked) return error(res, 'This work order is locked', 403);
+    await WorkOrder.findByIdAndDelete(req.params.id);
+    await WorkOrderNote.deleteMany({ workOrderId: woCheck._id });
 
     await AuditLog.create({
-      action: 'DELETE', entity: 'WorkOrder', entityId: wo._id,
-      details: `Deleted work order "${wo.title}" and its notes`,
+      action: 'DELETE', entity: 'WorkOrder', entityId: woCheck._id,
+      details: `Deleted work order "${woCheck.title}" and its notes`,
     });
 
     success(res, { message: 'Work order deleted' });

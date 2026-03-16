@@ -22,6 +22,7 @@ const reminderSchema = new mongoose.Schema({
   priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
   schedule: { type: scheduleSchema, required: true },
   status: { type: String, enum: ['active', 'snoozed', 'completed', 'expired'], default: 'active' },
+  locked: { type: Boolean, default: false },
   snoozeUntil: { type: Date, default: null },
   completedAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now },

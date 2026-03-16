@@ -721,6 +721,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const [richEditorOpen, setRichEditorOpen] = useState(false);
   const [richEditorContent, setRichEditorContent] = useState('');
   const [richEditorSaving, setRichEditorSaving] = useState(false);
+  const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);
   // Check if routine has schedule-based reminders
   const hasScheduleReminders = routine?.reminders?.some(r => r.enabled && ['interval', 'custom_days', 'custom_dates'].includes(r.type));
   const detailTabs = hasScheduleReminders ? ['info', 'schedule', 'notes'] : ['info', 'notes'];
@@ -1238,7 +1239,8 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
           ) : (
             <div style={{ display: 'grid', gap: 8 }}>
               {notes.map(note => (
-                <div key={note._id} className="card" style={{ padding: 10 }}>
+                <div key={note._id} className="card" style={{ padding: 10, cursor: 'pointer' }}
+                  onClick={() => handleEditNote(note)}>
                   <div dangerouslySetInnerHTML={{ __html: note.content }}
                     style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 6, wordBreak: 'break-word' }} />
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1248,14 +1250,10 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
                         <span> · edited {formatDateTime(note.updatedAt)}</span>
                       )}
                     </div>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn-ghost" style={{ padding: 3 }} onClick={() => handleEditNote(note)}>
-                        <IoCreate size={13} color="var(--text-muted)" />
-                      </button>
-                      <button className="btn-ghost" style={{ padding: 3 }} onClick={() => handleDeleteNote(note._id)}>
-                        <IoTrash size={13} color="var(--danger)" />
-                      </button>
-                    </div>
+                    <button className="btn-ghost" style={{ padding: 3 }}
+                      onClick={e => { e.stopPropagation(); setConfirmDeleteNote(note._id); }}>
+                      <IoTrash size={13} color="var(--danger)" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1292,6 +1290,11 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
         onConfirm={handleDeleteEntry}
         title="Delete entry?"
         message="Are you sure you want to delete this entry?" />
+
+      <ConfirmModal open={!!confirmDeleteNote} onClose={() => setConfirmDeleteNote(null)}
+        onConfirm={() => { handleDeleteNote(confirmDeleteNote); setConfirmDeleteNote(null); }}
+        title="Delete note?"
+        message="Delete this note? This cannot be undone." />
       </div>
     </Modal>
   );

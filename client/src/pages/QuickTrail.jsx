@@ -623,6 +623,7 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
   const [richEditorOpen, setRichEditorOpen] = useState(false);
   const [richEditorContent, setRichEditorContent] = useState('');
   const [richEditorSaving, setRichEditorSaving] = useState(false);
+  const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);
 
   // Reminders
   const [reminders, setReminders] = useState(entry.reminders || []);
@@ -809,20 +810,16 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
             <div style={{ display: 'grid', gap: 8 }}>
               {notes.map(note => (
                 <div key={note._id} style={{
-                  padding: '10px 12px', background: 'var(--bg-input)', borderRadius: 8,
-                }}>
+                  padding: '10px 12px', background: 'var(--bg-input)', borderRadius: 8, cursor: 'pointer',
+                }} onClick={() => handleEditNote(note)}>
                   <div dangerouslySetInnerHTML={{ __html: note.content }}
                     style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 6, wordBreak: 'break-word' }} />
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{formatDateTime(note.createdAt)}</span>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn-ghost" style={{ padding: 3 }} onClick={() => handleEditNote(note)}>
-                        <IoDocumentText size={12} color="var(--primary)" />
-                      </button>
-                      <button className="btn-ghost" style={{ padding: 3 }} onClick={() => handleDeleteNote(note._id)}>
-                        <IoTrash size={12} color="var(--danger)" />
-                      </button>
-                    </div>
+                    <button className="btn-ghost" style={{ padding: 3 }}
+                      onClick={e => { e.stopPropagation(); setConfirmDeleteNote(note._id); }}>
+                      <IoTrash size={12} color="var(--danger)" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -858,6 +855,11 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
             </button>
           )}
         </div>
+
+        <ConfirmModal open={!!confirmDeleteNote} onClose={() => setConfirmDeleteNote(null)}
+          onConfirm={() => { handleDeleteNote(confirmDeleteNote); setConfirmDeleteNote(null); }}
+          title="Delete note?"
+          message="Delete this note? This cannot be undone." />
       </div>
     </div>
   );

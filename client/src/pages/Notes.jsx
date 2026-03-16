@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import {
   IoAdd, IoTrash, IoChevronForward, IoChevronDown, IoSearch, IoArrowBack,
   IoClose, IoPricetag, IoCreate, IoColorPalette, IoTime,
+  IoLockClosed, IoLockOpen,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -285,7 +286,10 @@ export default function Notes() {
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>
                     {note.subTopicId?.topicId?.name || '?'} / {note.subTopicId?.name || '?'}
                   </div>
-                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>{note.title}</h3>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>
+                    {note.locked && <IoLockClosed size={12} color="var(--warning)" style={{ marginRight: 4, verticalAlign: -1 }} />}
+                    {note.title}
+                  </h3>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
                       {formatDateTime(note.updatedAt)}
@@ -435,6 +439,7 @@ export default function Notes() {
                                   background: topic.color ? topic.color + '06' : 'transparent',
                                   borderRadius: 3,
                                 }} onClick={() => setNoteEditorModal({ note, subTopicId: sub._id })}>
+                                  {note.locked && <IoLockClosed size={12} color="var(--warning)" style={{ flexShrink: 0 }} />}
                                   <div style={{ flex: 1 }}>
                                     <span style={{ fontSize: 13, fontWeight: 500 }}>{note.title}</span>
                                     {note.tags?.length > 0 && (
@@ -448,10 +453,12 @@ export default function Notes() {
                                       </div>
                                     )}
                                   </div>
-                                  <button className="btn-ghost" style={{ padding: 2 }}
-                                    onClick={(e) => { e.stopPropagation(); setConfirmDelete({ type: 'note', id: note._id, name: note.title }); }}>
-                                    <IoTrash size={12} color="var(--danger)" />
-                                  </button>
+                                  {!note.locked && (
+                                    <button className="btn-ghost" style={{ padding: 2 }}
+                                      onClick={(e) => { e.stopPropagation(); setConfirmDelete({ type: 'note', id: note._id, name: note.title }); }}>
+                                      <IoTrash size={12} color="var(--danger)" />
+                                    </button>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -641,6 +648,7 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
   const [title, setTitle] = useState(note?.title || '');
   const [selectedTags, setSelectedTags] = useState(note?.tags?.map((t) => t._id) || []);
   const [loading, setLoading] = useState(false);
+  const [isLocked, setIsLocked] = useState(note?.locked || false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showHighlightPicker, setShowHighlightPicker] = useState(false);
   const [showFontSize, setShowFontSize] = useState(false);
@@ -691,6 +699,7 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
   };
 
   const handleSave = async () => {
+    if (isLocked) { toast.error('This note is locked'); return; }
     if (!title.trim()) { toast.error('Title is required'); return; }
     setLoading(true);
     try {
@@ -707,8 +716,18 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
         toast.success('Note created');
       }
       onClose(); onDone();
-    } catch (err) { toast.error(err.message); }
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
     finally { setLoading(false); }
+  };
+
+  const handleToggleLock = async () => {
+    if (!note?._id) return; // Can't lock unsaved notes
+    try {
+      await updateNote(note._id, { locked: !isLocked });
+      setIsLocked(!isLocked);
+      toast.success(isLocked ? 'Note unlocked' : 'Note locked');
+      onDone();
+    } catch (err) { toast.error(err.message); }
   };
 
   const toolBtn = (active) => ({
@@ -752,14 +771,27 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
               outline: 'none', padding: '4px 0',
             }} />
         </div>
-        <button onClick={handleSave} disabled={loading}
-          style={{
-            padding: '6px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
-            background: 'var(--primary)', color: 'white', fontSize: 13, fontWeight: 700,
-            opacity: loading ? 0.6 : 1,
-          }}>
-          {loading ? 'Saving...' : 'Save'}
-        </button>
+        {note?._id && (
+          <button onClick={handleToggleLock}
+            style={{
+              padding: '6px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: isLocked ? 'var(--warning)' + '20' : 'transparent',
+              color: isLocked ? 'var(--warning)' : 'var(--text-muted)',
+              display: 'flex', alignItems: 'center', gap: 4, fontSize: 12,
+            }}>
+            {isLocked ? <IoLockClosed size={16} /> : <IoLockOpen size={16} />}
+          </button>
+        )}
+        {!isLocked && (
+          <button onClick={handleSave} disabled={loading}
+            style={{
+              padding: '6px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: 'var(--primary)', color: 'white', fontSize: 13, fontWeight: 700,
+              opacity: loading ? 0.6 : 1,
+            }}>
+            {loading ? 'Saving...' : 'Save'}
+          </button>
+        )}
       </div>
 
       {/* Formatting Toolbar */}

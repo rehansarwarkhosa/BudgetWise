@@ -84,7 +84,16 @@ router.put('/:id', async (req, res, next) => {
     const reminder = await Reminder.findById(req.params.id);
     if (!reminder) return error(res, 'Reminder not found', 404);
 
-    const { title, note, priority, schedule, status, snoozeUntil } = req.body;
+    const { title, note, priority, schedule, status, snoozeUntil, locked } = req.body;
+
+    // Allow lock toggle even on locked items
+    if (locked !== undefined) {
+      reminder.locked = locked;
+      await reminder.save();
+      return success(res, reminder);
+    }
+    if (reminder.locked) return error(res, 'This reminder is locked', 403);
+
     const changes = [];
 
     if (title !== undefined) { reminder.title = title.trim(); changes.push('title'); }
@@ -112,8 +121,10 @@ router.put('/:id', async (req, res, next) => {
 // DELETE /:id
 router.delete('/:id', async (req, res, next) => {
   try {
-    const reminder = await Reminder.findByIdAndDelete(req.params.id);
+    const reminder = await Reminder.findById(req.params.id);
     if (!reminder) return error(res, 'Reminder not found', 404);
+    if (reminder.locked) return error(res, 'This reminder is locked', 403);
+    await Reminder.findByIdAndDelete(req.params.id);
     await AuditLog.create({
       action: 'DELETE', entity: 'Reminder', entityId: reminder._id,
       details: `Deleted reminder "${reminder.title.slice(0, 50)}"`,
@@ -127,6 +138,7 @@ router.put('/:id/toggle', async (req, res, next) => {
   try {
     const reminder = await Reminder.findById(req.params.id);
     if (!reminder) return error(res, 'Reminder not found', 404);
+    if (reminder.locked) return error(res, 'This reminder is locked', 403);
 
     if (reminder.status === 'completed') {
       reminder.status = 'active';

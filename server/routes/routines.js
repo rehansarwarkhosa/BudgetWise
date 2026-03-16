@@ -598,58 +598,67 @@ router.get('/check-reminders', async (req, res, next) => {
     }
 
     // --- Also check standalone Reminders ---
-    const activeReminders = await Reminder.find({ status: 'active' });
     const reminderTriggered = [];
+    try {
+      const activeReminders = await Reminder.find({ status: 'active' });
+      console.log(`[check-reminders] Found ${activeReminders.length} active standalone reminders`);
 
-    for (const rem of activeReminders) {
-      const schedule = rem.schedule;
-      if (!schedule || !schedule.enabled) continue;
-      if (schedule.type === 'once' && schedule.fired) continue;
+      for (const rem of activeReminders) {
+        const schedule = rem.schedule;
+        if (!schedule || !schedule.enabled) { console.log(`[check-reminders] Skipping "${rem.title}": not enabled`); continue; }
+        if (schedule.type === 'once' && schedule.fired) { console.log(`[check-reminders] Skipping "${rem.title}": once already fired`); continue; }
 
-      const [rh, rm2] = schedule.time.split(':').map(Number);
-      const timeDiff = (currentHour * 60 + currentMin) - (rh * 60 + rm2);
-      if (timeDiff < 0 || timeDiff >= 10) continue;
+        const [rh, rm2] = schedule.time.split(':').map(Number);
+        const timeDiff = (currentHour * 60 + currentMin) - (rh * 60 + rm2);
+        if (timeDiff < 0 || timeDiff >= 10) { continue; }
 
-      const reminderKey = `${todayStr}|${schedule.time}`;
-      if (schedule.lastNotifiedDate === reminderKey) continue;
+        const reminderKey = `${todayStr}|${schedule.time}`;
+        if (schedule.lastNotifiedDate === reminderKey) { console.log(`[check-reminders] Skipping "${rem.title}": already notified today`); continue; }
 
-      let matches = false;
-      switch (schedule.type) {
-        case 'once': matches = true; break;
-        case 'daily': matches = true; break;
-        case 'weekdays': matches = currentDay >= 1 && currentDay <= 5; break;
-        case 'custom_days': matches = (schedule.days || []).includes(currentDay); break;
-        case 'custom_dates':
-          matches = (schedule.dates || []).some(d => new Date(d).toISOString().split('T')[0] === todayStr);
-          break;
-        case 'interval': {
-          if (schedule.intervalDays && schedule.intervalStartDate) {
-            const startD = new Date(new Date(schedule.intervalStartDate).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
-            startD.setHours(0, 0, 0, 0);
-            const todayD = new Date(todayStr + 'T00:00:00');
-            const diffDays = Math.round((todayD - startD) / 86400000);
-            matches = diffDays >= 0 && diffDays % schedule.intervalDays === 0;
+        let matches = false;
+        switch (schedule.type) {
+          case 'once': matches = true; break;
+          case 'daily': matches = true; break;
+          case 'weekdays': matches = currentDay >= 1 && currentDay <= 5; break;
+          case 'custom_days': matches = (schedule.days || []).includes(currentDay); break;
+          case 'custom_dates':
+            matches = (schedule.dates || []).some(d => new Date(d).toISOString().split('T')[0] === todayStr);
+            break;
+          case 'interval': {
+            if (schedule.intervalDays && schedule.intervalStartDate) {
+              const startD = new Date(new Date(schedule.intervalStartDate).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+              startD.setHours(0, 0, 0, 0);
+              const todayD = new Date(todayStr + 'T00:00:00');
+              const diffDays = Math.round((todayD - startD) / 86400000);
+              matches = diffDays >= 0 && diffDays % schedule.intervalDays === 0;
+            }
+            break;
           }
-          break;
+        }
+
+        console.log(`[check-reminders] "${rem.title}" type=${schedule.type} time=${schedule.time} matches=${matches}`);
+
+        if (matches) {
+          reminderTriggered.push({
+            reminderId: rem._id,
+            reminderTitle: rem.title,
+            reminderTime: schedule.time,
+          });
+          schedule.lastNotifiedDate = reminderKey;
+          if (schedule.type === 'once') { schedule.fired = true; schedule.enabled = false; }
+          rem.markModified('schedule');
+          await rem.save();
         }
       }
-
-      if (matches) {
-        reminderTriggered.push({
-          reminderId: rem._id,
-          reminderTitle: rem.title,
-          reminderTime: schedule.time,
-        });
-        schedule.lastNotifiedDate = reminderKey;
-        if (schedule.type === 'once') { schedule.fired = true; schedule.enabled = false; }
-        rem.markModified('schedule');
-        await rem.save();
-      }
+    } catch (remErr) {
+      console.error('[check-reminders] Standalone Reminder error:', remErr.message);
     }
 
     let remEmailSent = false;
     let remEmailSkipReason = null;
     let remPushResult = null;
+
+    console.log(`[check-reminders] ${reminderTriggered.length} standalone reminder(s) triggered`);
 
     if (reminderTriggered.length > 0) {
       await AuditLog.create({

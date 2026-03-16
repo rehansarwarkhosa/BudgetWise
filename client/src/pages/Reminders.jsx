@@ -4,6 +4,7 @@ import {
   IoAdd, IoTrash, IoSearch, IoClose, IoCheckmarkCircle,
   IoEllipseOutline, IoChevronDown, IoChevronForward,
   IoAlarm, IoFlag, IoTime, IoCalendar, IoCreate,
+  IoLockClosed, IoLockOpen,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -147,19 +148,32 @@ export default function Reminders() {
   };
 
   const handleToggle = async (id) => {
+    const rem = allReminders.find(r => r._id === id);
+    if (rem?.locked) return toast.error('This reminder is locked');
     try {
       const res = await toggleReminder(id);
       setAllReminders(prev => prev.map(r => r._id === id ? res.data : r));
-    } catch (err) { toast.error(err.message); }
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
     try {
-      await deleteReminder(id);
-      setAllReminders(prev => prev.filter(r => r._id !== id));
+      await deleteReminder(confirmDelete);
+      setAllReminders(prev => prev.filter(r => r._id !== confirmDelete));
       toast.success('Deleted');
-    } catch (err) { toast.error(err.message); }
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
     setConfirmDelete(null);
+  };
+
+  const handleToggleLock = async (id) => {
+    const rem = allReminders.find(r => r._id === id);
+    if (!rem) return;
+    try {
+      const res = await updateReminderApi(id, { locked: !rem.locked });
+      setAllReminders(prev => prev.map(r => r._id === id ? res.data : r));
+      toast.success(rem.locked ? 'Unlocked' : 'Locked');
+    } catch (err) { toast.error(err.message); }
   };
 
   const toggleSearch = () => {
@@ -292,6 +306,11 @@ export default function Reminders() {
                       </button>
                     )}
 
+                    {/* Lock indicator */}
+                    {r.locked && (
+                      <IoLockClosed size={14} color="var(--warning)" style={{ flexShrink: 0 }} />
+                    )}
+
                     {/* Content */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{
@@ -397,16 +416,23 @@ export default function Reminders() {
 
                       {/* Actions */}
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                        {r.status !== 'expired' && (
+                        <button className="btn-ghost" onClick={() => handleToggleLock(r._id)}
+                          style={{ fontSize: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {r.locked ? <IoLockClosed size={14} color="var(--warning)" /> : <IoLockOpen size={14} color="var(--text-muted)" />}
+                          {r.locked ? 'Unlock' : 'Lock'}
+                        </button>
+                        {r.status !== 'expired' && !r.locked && (
                           <button className="btn-ghost" onClick={() => openForm(r)}
                             style={{ fontSize: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}>
                             <IoCreate size={14} color="var(--primary)" /> Edit
                           </button>
                         )}
-                        <button className="btn-ghost" onClick={() => setConfirmDelete(r._id)}
-                          style={{ fontSize: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <IoTrash size={14} color="var(--danger)" /> Delete
-                        </button>
+                        {!r.locked && (
+                          <button className="btn-ghost" onClick={() => setConfirmDelete(r._id)}
+                            style={{ fontSize: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <IoTrash size={14} color="var(--danger)" /> Delete
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -606,13 +632,13 @@ export default function Reminders() {
       )}
 
       {/* Confirm Delete */}
-      {confirmDelete && (
-        <ConfirmModal
-          message="Delete this reminder?"
-          onConfirm={() => handleDelete(confirmDelete)}
-          onCancel={() => setConfirmDelete(null)}
-        />
-      )}
+      <ConfirmModal
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete Reminder?"
+        message="Delete this reminder? This cannot be undone."
+      />
     </div>
   );
 }

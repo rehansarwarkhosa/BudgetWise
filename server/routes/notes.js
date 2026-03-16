@@ -49,10 +49,13 @@ router.put('/topics/:id', async (req, res, next) => {
 
 router.delete('/topics/:id', async (req, res, next) => {
   try {
-    const topic = await Topic.findByIdAndDelete(req.params.id);
+    const topic = await Topic.findById(req.params.id);
     if (!topic) return error(res, 'Topic not found', 404);
     const subs = await SubTopic.find({ topicId: topic._id });
     const subIds = subs.map(s => s._id);
+    const lockedCount = await Note.countDocuments({ subTopicId: { $in: subIds }, locked: true });
+    if (lockedCount > 0) return error(res, `Cannot delete: ${lockedCount} locked note(s) inside`, 403);
+    await Topic.findByIdAndDelete(req.params.id);
     await Note.deleteMany({ subTopicId: { $in: subIds } });
     await SubTopic.deleteMany({ topicId: topic._id });
     await AuditLog.create({ action: 'DELETE', entity: 'Topic', entityId: topic._id, details: `Deleted topic "${topic.name}" and all subtopics/notes` });
@@ -100,8 +103,11 @@ router.put('/subtopics/:id', async (req, res, next) => {
 
 router.delete('/subtopics/:id', async (req, res, next) => {
   try {
-    const sub = await SubTopic.findByIdAndDelete(req.params.id);
+    const sub = await SubTopic.findById(req.params.id);
     if (!sub) return error(res, 'SubTopic not found', 404);
+    const lockedCount = await Note.countDocuments({ subTopicId: sub._id, locked: true });
+    if (lockedCount > 0) return error(res, `Cannot delete: ${lockedCount} locked note(s) inside`, 403);
+    await SubTopic.findByIdAndDelete(req.params.id);
     await Note.deleteMany({ subTopicId: sub._id });
     await AuditLog.create({ action: 'DELETE', entity: 'SubTopic', entityId: sub._id, details: `Deleted subtopic "${sub.name}" and all notes` });
     success(res, { message: 'SubTopic and notes deleted' });
@@ -147,9 +153,19 @@ router.get('/note/:id', async (req, res, next) => {
 
 router.put('/note/:id', async (req, res, next) => {
   try {
-    const { title, description, tags } = req.body;
+    const { title, description, tags, locked } = req.body;
     const note = await Note.findById(req.params.id);
     if (!note) return error(res, 'Note not found', 404);
+
+    // Allow lock toggle even on locked notes
+    if (locked !== undefined) {
+      note.locked = locked;
+      await note.save();
+      const populated = await note.populate('tags');
+      return success(res, populated);
+    }
+    if (note.locked) return error(res, 'This note is locked', 403);
+
     if (title !== undefined) note.title = title;
     if (description !== undefined) note.description = description;
     if (tags !== undefined) note.tags = tags;
@@ -162,8 +178,10 @@ router.put('/note/:id', async (req, res, next) => {
 
 router.delete('/note/:id', async (req, res, next) => {
   try {
-    const note = await Note.findByIdAndDelete(req.params.id);
+    const note = await Note.findById(req.params.id);
     if (!note) return error(res, 'Note not found', 404);
+    if (note.locked) return error(res, 'This note is locked', 403);
+    await Note.findByIdAndDelete(req.params.id);
     await AuditLog.create({ action: 'DELETE', entity: 'Note', entityId: note._id, details: `Deleted note "${note.title}"` });
     success(res, { message: 'Note deleted' });
   } catch (err) { next(err); }

@@ -4,6 +4,7 @@ import {
   IoAdd, IoTrash, IoCopy, IoSearch, IoClose, IoChevronForward, IoChevronBack,
   IoWallet, IoFlag, IoAlarm, IoCreate, IoFilter, IoCalendar,
   IoArchive, IoArrowUndo, IoChevronDown, IoChevronUp, IoList, IoGrid,
+  IoLockClosed, IoLockOpen,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -169,6 +170,8 @@ export default function KanbanBoard() {
   };
 
   const handleMove = async (id, newStatus) => {
+    const wo = [...workOrders, ...backlogOrders, ...archivedOrders].find(w => w._id === id);
+    if (wo?.locked) return toast.error('This work order is locked');
     try {
       const res = await moveWorkOrder(id, newStatus);
       if (newStatus === 'backlog') {
@@ -331,13 +334,14 @@ export default function KanbanBoard() {
             position: 'relative',
           }}
         >
-          {/* Title + Priority */}
+          {/* Title + Priority + Lock */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
             <p style={{
               fontSize: 14, fontWeight: 600, lineHeight: 1.3, flex: 1, marginRight: 8, margin: 0,
               overflow: 'hidden', textOverflow: 'ellipsis',
               display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
             }}>
+              {wo.locked && <IoLockClosed size={11} color="var(--warning)" style={{ marginRight: 4, verticalAlign: -1 }} />}
               {wo.title}
             </p>
             <span style={{
@@ -1313,6 +1317,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   const [richEditorOpen, setRichEditorOpen] = useState(false);
   const [richEditorContent, setRichEditorContent] = useState('');
   const [richEditorSaving, setRichEditorSaving] = useState(false);
+  const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);
 
   // Reminders state
   const [reminders, setReminders] = useState([]);
@@ -1516,10 +1521,26 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
           <div>
             {!editing ? (
               <div>
-                <button className="btn-outline" onClick={() => setEditing(true)}
-                  style={{ width: '100%', marginBottom: 10, fontSize: 12 }}>
-                  <IoCreate size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Edit Details
-                </button>
+                {/* Lock toggle + Edit */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                  <button className="btn-outline" onClick={async () => {
+                    try {
+                      const res = await updateWorkOrder(workOrderId, { locked: !wo.locked });
+                      setWo(res.data);
+                      toast.success(wo.locked ? 'Unlocked' : 'Locked');
+                    } catch (err) { toast.error(err.message); }
+                  }}
+                    style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, padding: '8px 12px' }}>
+                    {wo.locked ? <IoLockClosed size={14} color="var(--warning)" /> : <IoLockOpen size={14} />}
+                    {wo.locked ? 'Unlock' : 'Lock'}
+                  </button>
+                  {!wo.locked && (
+                    <button className="btn-outline" onClick={() => setEditing(true)}
+                      style={{ flex: 1, fontSize: 12 }}>
+                      <IoCreate size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Edit Details
+                    </button>
+                  )}
+                </div>
                 <div style={{ display: 'grid', gap: 8 }}>
                   <InfoRow label="Title" value={wo.title} />
                   <InfoRow label="Priority" value={wo.priority} color={PRIORITY_COLORS[wo.priority]} />
@@ -1626,9 +1647,11 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
               }} style={{ flex: 1, fontSize: 12 }}>
                 <IoCopy size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Copy
               </button>
-              <button className="btn-danger" onClick={() => setConfirmDelete(true)} style={{ flex: 1, fontSize: 12 }}>
-                <IoTrash size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Delete
-              </button>
+              {!wo.locked && (
+                <button className="btn-danger" onClick={() => setConfirmDelete(true)} style={{ flex: 1, fontSize: 12 }}>
+                  <IoTrash size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Delete
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1646,7 +1669,8 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
             ) : (
               <div style={{ display: 'grid', gap: 8 }}>
                 {notes.map(note => (
-                  <div key={note._id} className="card" style={{ padding: 10 }}>
+                  <div key={note._id} className="card" style={{ padding: 10, cursor: 'pointer' }}
+                    onClick={() => handleEditNote(note)}>
                     <div dangerouslySetInnerHTML={{ __html: note.content }}
                       style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 6, wordBreak: 'break-word' }} />
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1656,14 +1680,10 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
                           <span> · edited {formatDateTime(note.updatedAt)}</span>
                         )}
                       </div>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button className="btn-ghost" style={{ padding: 3 }} onClick={() => handleEditNote(note)}>
-                          <IoCreate size={13} color="var(--text-muted)" />
-                        </button>
-                        <button className="btn-ghost" style={{ padding: 3 }} onClick={() => handleDeleteNote(note._id)}>
-                          <IoTrash size={13} color="var(--danger)" />
-                        </button>
-                      </div>
+                      <button className="btn-ghost" style={{ padding: 3 }}
+                        onClick={e => { e.stopPropagation(); setConfirmDeleteNote(note._id); }}>
+                        <IoTrash size={13} color="var(--danger)" />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -1784,6 +1804,11 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
           onConfirm={handleDelete}
           title="Delete work order?"
           message={`Delete "${wo.title}"? This cannot be undone.`} />
+
+        <ConfirmModal open={!!confirmDeleteNote} onClose={() => setConfirmDeleteNote(null)}
+          onConfirm={() => { handleDeleteNote(confirmDeleteNote); setConfirmDeleteNote(null); }}
+          title="Delete note?"
+          message="Delete this note? This cannot be undone." />
       </div>
     </div>
   );
