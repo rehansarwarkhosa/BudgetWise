@@ -621,26 +621,67 @@ function CreateSubTopicModal({ open, topicId, onClose, onDone }) {
   );
 }
 
-// ─── Note Editor Modal ───
+// ─── Note Editor (Full-Screen Professional Editor) ───
 
 const COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
+const FONT_SIZES = [
+  { label: 'Small', value: '2' },
+  { label: 'Normal', value: '3' },
+  { label: 'Large', value: '5' },
+  { label: 'Huge', value: '7' },
+];
+const HEADING_OPTIONS = [
+  { label: 'Paragraph', tag: 'p' },
+  { label: 'Heading 1', tag: 'h1' },
+  { label: 'Heading 2', tag: 'h2' },
+  { label: 'Heading 3', tag: 'h3' },
+];
 
 function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsChanged }) {
   const [title, setTitle] = useState(note?.title || '');
   const [selectedTags, setSelectedTags] = useState(note?.tags?.map((t) => t._id) || []);
   const [loading, setLoading] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showHighlightPicker, setShowHighlightPicker] = useState(false);
+  const [showFontSize, setShowFontSize] = useState(false);
+  const [showHeading, setShowHeading] = useState(false);
+  const [showTags, setShowTags] = useState(false);
+  const [customColor, setCustomColor] = useState('#3AAFB9');
   const editorRef = useRef(null);
+  const savedSelection = useRef(null);
 
   useEffect(() => {
     if (editorRef.current && note?.description) {
       editorRef.current.innerHTML = note.description;
     }
+    // Focus editor after mount
+    setTimeout(() => editorRef.current?.focus(), 100);
   }, []);
 
+  const saveSelection = () => {
+    const sel = window.getSelection();
+    if (sel.rangeCount > 0) savedSelection.current = sel.getRangeAt(0);
+  };
+
+  const restoreSelection = () => {
+    if (savedSelection.current) {
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedSelection.current);
+    }
+  };
+
   const execCmd = (cmd, value = null) => {
+    restoreSelection();
     editorRef.current?.focus();
     document.execCommand(cmd, false, value);
+  };
+
+  const closeAllPickers = () => {
+    setShowColorPicker(false);
+    setShowHighlightPicker(false);
+    setShowFontSize(false);
+    setShowHeading(false);
   };
 
   const toggleTag = (tagId) => {
@@ -670,88 +711,325 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
     finally { setLoading(false); }
   };
 
+  const toolBtn = (active) => ({
+    padding: '6px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+    background: active ? 'var(--primary)' + '25' : 'transparent',
+    color: active ? 'var(--primary)' : 'var(--text-secondary)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    minWidth: 32, height: 32, position: 'relative',
+  });
+
+  const dropdownStyle = {
+    position: 'absolute', top: '100%', left: 0, zIndex: 20,
+    background: 'var(--bg-card)', border: '1px solid var(--border)',
+    borderRadius: 8, padding: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+    marginTop: 4,
+  };
+
   return (
-    <Modal open={true} onClose={onClose} title={note ? 'Edit Note' : 'New Note'}>
-      <div className="form-group">
-        <label>Title</label>
-        <input type="text" placeholder="Note title" value={title}
-          onChange={(e) => setTitle(e.target.value)} />
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 100,
+      background: 'var(--bg)', display: 'flex', flexDirection: 'column',
+    }}>
+      {/* Top Bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '10px 12px', borderBottom: '1px solid var(--border)',
+        background: 'var(--bg-card)', flexShrink: 0,
+      }}>
+        <button onClick={onClose} style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          padding: 4, display: 'flex', color: 'var(--text-secondary)',
+        }}>
+          <IoArrowBack size={22} />
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <input type="text" placeholder="Note title..." value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            style={{
+              width: '100%', border: 'none', background: 'transparent',
+              fontSize: 16, fontWeight: 700, color: 'var(--text)',
+              outline: 'none', padding: '4px 0',
+            }} />
+        </div>
+        <button onClick={handleSave} disabled={loading}
+          style={{
+            padding: '6px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            background: 'var(--primary)', color: 'white', fontSize: 13, fontWeight: 700,
+            opacity: loading ? 0.6 : 1,
+          }}>
+          {loading ? 'Saving...' : 'Save'}
+        </button>
       </div>
 
-      {/* Rich Text Toolbar */}
+      {/* Formatting Toolbar */}
       <div style={{
-        display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap',
-        padding: '6px 8px', background: 'var(--bg-input)', borderRadius: 8,
-      }}>
-        <button type="button" className="btn-ghost"
-          style={{ padding: '4px 8px', fontWeight: 700, fontSize: 14 }}
-          onClick={() => execCmd('bold')}>B</button>
-        <button type="button" className="btn-ghost"
-          style={{ padding: '4px 8px', fontStyle: 'italic', fontSize: 14 }}
-          onClick={() => execCmd('italic')}>I</button>
-        <button type="button" className="btn-ghost"
-          style={{ padding: '4px 8px', textDecoration: 'underline', fontSize: 14 }}
-          onClick={() => execCmd('underline')}>U</button>
-        <div style={{ position: 'relative' }}>
-          <button type="button" className="btn-ghost"
-            style={{ padding: '4px 8px' }}
-            onClick={() => setShowColorPicker(!showColorPicker)}>
-            <IoColorPalette size={16} />
+        display: 'flex', gap: 2, padding: '6px 8px',
+        borderBottom: '1px solid var(--border)', background: 'var(--bg-card)',
+        overflowX: 'auto', flexShrink: 0, alignItems: 'center',
+        WebkitOverflowScrolling: 'touch',
+      }}
+        onClick={() => closeAllPickers()}>
+
+        {/* Heading selector */}
+        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+          <button style={toolBtn(showHeading)}
+            onClick={() => { saveSelection(); closeAllPickers(); setShowHeading(!showHeading); }}>
+            <span style={{ fontSize: 12, fontWeight: 700 }}>H</span>
           </button>
-          {showColorPicker && (
-            <div style={{
-              position: 'absolute', top: '100%', left: 0, zIndex: 10,
-              background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: 8, padding: 8, display: 'flex', gap: 4, flexWrap: 'wrap', width: 140,
-            }}>
-              {COLORS.map((c) => (
-                <button key={c} type="button" onClick={() => { execCmd('foreColor', c); setShowColorPicker(false); }}
+          {showHeading && (
+            <div style={{ ...dropdownStyle, minWidth: 130 }}>
+              {HEADING_OPTIONS.map(h => (
+                <button key={h.tag} onClick={() => { execCmd('formatBlock', h.tag); setShowHeading(false); }}
                   style={{
-                    width: 24, height: 24, borderRadius: '50%', border: '2px solid var(--border)',
-                    background: c, cursor: 'pointer',
-                  }} />
+                    display: 'block', width: '100%', padding: '6px 10px', border: 'none',
+                    background: 'transparent', cursor: 'pointer', textAlign: 'left',
+                    fontSize: h.tag === 'p' ? 13 : h.tag === 'h3' ? 14 : h.tag === 'h2' ? 16 : 18,
+                    fontWeight: h.tag === 'p' ? 400 : 700, color: 'var(--text)',
+                    borderRadius: 4,
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-input)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  {h.label}
+                </button>
               ))}
             </div>
           )}
         </div>
+
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+
+        {/* Bold */}
+        <button style={toolBtn()} onClick={() => execCmd('bold')}>
+          <span style={{ fontWeight: 900, fontSize: 14 }}>B</span>
+        </button>
+        {/* Italic */}
+        <button style={toolBtn()} onClick={() => execCmd('italic')}>
+          <span style={{ fontStyle: 'italic', fontSize: 14, fontWeight: 500 }}>I</span>
+        </button>
+        {/* Underline */}
+        <button style={toolBtn()} onClick={() => execCmd('underline')}>
+          <span style={{ textDecoration: 'underline', fontSize: 14 }}>U</span>
+        </button>
+        {/* Strikethrough */}
+        <button style={toolBtn()} onClick={() => execCmd('strikeThrough')}>
+          <span style={{ textDecoration: 'line-through', fontSize: 14 }}>S</span>
+        </button>
+
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+
+        {/* Font Size */}
+        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+          <button style={toolBtn(showFontSize)}
+            onClick={() => { saveSelection(); closeAllPickers(); setShowFontSize(!showFontSize); }}>
+            <span style={{ fontSize: 11, fontWeight: 600 }}>A<span style={{ fontSize: 8 }}>A</span></span>
+          </button>
+          {showFontSize && (
+            <div style={{ ...dropdownStyle, minWidth: 100 }}>
+              {FONT_SIZES.map(f => (
+                <button key={f.value} onClick={() => { execCmd('fontSize', f.value); setShowFontSize(false); }}
+                  style={{
+                    display: 'block', width: '100%', padding: '6px 10px', border: 'none',
+                    background: 'transparent', cursor: 'pointer', textAlign: 'left',
+                    fontSize: 13, color: 'var(--text)', borderRadius: 4,
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-input)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Text Color */}
+        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+          <button style={toolBtn(showColorPicker)}
+            onClick={() => { saveSelection(); closeAllPickers(); setShowColorPicker(!showColorPicker); }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>A<span style={{
+              display: 'block', height: 3, background: customColor, borderRadius: 1, marginTop: -2,
+            }} /></span>
+          </button>
+          {showColorPicker && (
+            <div style={{ ...dropdownStyle, display: 'flex', gap: 4, flexWrap: 'wrap', width: 164 }}>
+              {COLORS.map(c => (
+                <button key={c} onClick={() => { execCmd('foreColor', c); setCustomColor(c); setShowColorPicker(false); }}
+                  style={{
+                    width: 28, height: 28, borderRadius: '50%',
+                    border: '2px solid var(--border)', background: c, cursor: 'pointer',
+                  }} />
+              ))}
+              <input type="color" value={customColor}
+                onChange={e => { execCmd('foreColor', e.target.value); setCustomColor(e.target.value); setShowColorPicker(false); }}
+                style={{ width: 28, height: 28, padding: 0, border: 'none', cursor: 'pointer', borderRadius: '50%' }} />
+            </div>
+          )}
+        </div>
+
+        {/* Highlight */}
+        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+          <button style={toolBtn(showHighlightPicker)}
+            onClick={() => { saveSelection(); closeAllPickers(); setShowHighlightPicker(!showHighlightPicker); }}>
+            <span style={{
+              fontSize: 13, fontWeight: 700, background: '#FFD93D50', padding: '0 3px', borderRadius: 2,
+            }}>H</span>
+          </button>
+          {showHighlightPicker && (
+            <div style={{ ...dropdownStyle, display: 'flex', gap: 4, flexWrap: 'wrap', width: 164 }}>
+              {['#FFD93D', '#FF6B6B', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', 'transparent'].map(c => (
+                <button key={c} onClick={() => { execCmd('hiliteColor', c); setShowHighlightPicker(false); }}
+                  style={{
+                    width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
+                    border: '2px solid var(--border)',
+                    background: c === 'transparent' ? 'var(--bg-input)' : c + '80',
+                  }}>
+                  {c === 'transparent' && <IoClose size={14} style={{ color: 'var(--text-muted)' }} />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+
+        {/* Bullet List */}
+        <button style={toolBtn()} onClick={() => execCmd('insertUnorderedList')}>
+          <span style={{ fontSize: 14 }}>&#8226;</span>
+        </button>
+        {/* Numbered List */}
+        <button style={toolBtn()} onClick={() => execCmd('insertOrderedList')}>
+          <span style={{ fontSize: 12, fontWeight: 600 }}>1.</span>
+        </button>
+
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+
+        {/* Indent / Outdent */}
+        <button style={toolBtn()} onClick={() => execCmd('indent')}
+          title="Indent">
+          <span style={{ fontSize: 13 }}>&rarr;</span>
+        </button>
+        <button style={toolBtn()} onClick={() => execCmd('outdent')}
+          title="Outdent">
+          <span style={{ fontSize: 13 }}>&larr;</span>
+        </button>
+
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+
+        {/* Alignment */}
+        <button style={toolBtn()} onClick={() => execCmd('justifyLeft')}
+          title="Align left">
+          <span style={{ fontSize: 11, lineHeight: 1 }}>&#9776;</span>
+        </button>
+        <button style={toolBtn()} onClick={() => execCmd('justifyCenter')}
+          title="Align center">
+          <span style={{ fontSize: 11, lineHeight: 1, textAlign: 'center', display: 'block' }}>&#9776;</span>
+        </button>
+        <button style={toolBtn()} onClick={() => execCmd('justifyRight')}
+          title="Align right">
+          <span style={{ fontSize: 11, lineHeight: 1 }}>&#9776;</span>
+        </button>
+
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+
+        {/* Quote */}
+        <button style={toolBtn()} onClick={() => execCmd('formatBlock', 'blockquote')}
+          title="Blockquote">
+          <span style={{ fontSize: 16, fontWeight: 700, fontStyle: 'italic', color: 'var(--text-muted)' }}>&ldquo;</span>
+        </button>
+        {/* Horizontal Rule */}
+        <button style={toolBtn()} onClick={() => execCmd('insertHorizontalRule')}
+          title="Horizontal line">
+          <span style={{ fontSize: 11, letterSpacing: 2 }}>&#8212;</span>
+        </button>
+        {/* Clear Formatting */}
+        <button style={toolBtn()} onClick={() => execCmd('removeFormat')}
+          title="Clear formatting">
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>T<span style={{ fontSize: 9 }}>x</span></span>
+        </button>
+
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+
+        {/* Undo / Redo */}
+        <button style={toolBtn()} onClick={() => execCmd('undo')} title="Undo">
+          <span style={{ fontSize: 14 }}>&#8630;</span>
+        </button>
+        <button style={toolBtn()} onClick={() => execCmd('redo')} title="Redo">
+          <span style={{ fontSize: 14 }}>&#8631;</span>
+        </button>
       </div>
 
-      {/* Content Editable */}
-      <div ref={editorRef} contentEditable suppressContentEditableWarning
-        style={{
-          minHeight: 150, padding: 12, background: 'var(--bg-input)', borderRadius: 8,
-          color: 'var(--text-primary)', fontSize: 14, lineHeight: 1.6,
-          outline: 'none', marginBottom: 12, overflowY: 'auto', maxHeight: 300,
-        }}
-        data-placeholder="Write your note..."
-      />
+      {/* Editor Area — takes all remaining space */}
+      <div style={{ flex: 1, overflow: 'auto', background: 'var(--bg)' }}
+        onClick={() => { closeAllPickers(); editorRef.current?.focus(); }}>
+        <div ref={editorRef} contentEditable suppressContentEditableWarning
+          onBlur={saveSelection}
+          style={{
+            minHeight: '100%', padding: '16px 14px', paddingBottom: 80,
+            color: 'var(--text)', fontSize: 15, lineHeight: 1.75,
+            outline: 'none', wordBreak: 'break-word',
+            maxWidth: 'var(--max-width)', margin: '0 auto',
+          }}
+          data-placeholder="Start writing..."
+        />
+      </div>
 
-      {/* Tags */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500, marginBottom: 6, display: 'block' }}>Tags</label>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {allTags.map((tag) => (
-            <button key={tag._id} type="button" onClick={() => toggleTag(tag._id)}
-              style={{
-                padding: '4px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
-                border: selectedTags.includes(tag._id) ? `2px solid ${tag.color}` : '2px solid transparent',
-                background: selectedTags.includes(tag._id) ? tag.color + '33' : 'var(--bg-input)',
-                color: selectedTags.includes(tag._id) ? tag.color : 'var(--text-muted)',
-                cursor: 'pointer',
-              }}>
-              {tag.name}
-            </button>
-          ))}
-          {allTags.length === 0 && (
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No tags yet — create from tag manager</span>
+      {/* Bottom Bar — Tags toggle */}
+      <div style={{
+        borderTop: '1px solid var(--border)', background: 'var(--bg-card)',
+        flexShrink: 0,
+      }}>
+        {/* Tags panel */}
+        {showTags && (
+          <div style={{
+            padding: '10px 14px', borderBottom: '1px solid var(--border)',
+            maxHeight: 120, overflowY: 'auto',
+          }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {allTags.map((tag) => (
+                <button key={tag._id} type="button" onClick={() => toggleTag(tag._id)}
+                  style={{
+                    padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                    border: selectedTags.includes(tag._id) ? `2px solid ${tag.color}` : '2px solid transparent',
+                    background: selectedTags.includes(tag._id) ? tag.color + '30' : 'var(--bg-input)',
+                    color: selectedTags.includes(tag._id) ? tag.color : 'var(--text-muted)',
+                    cursor: 'pointer', transition: 'all 0.15s',
+                  }}>
+                  {tag.name}
+                </button>
+              ))}
+              {allTags.length === 0 && (
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No tags yet</span>
+              )}
+            </div>
+          </div>
+        )}
+        <div style={{
+          display: 'flex', alignItems: 'center', padding: '8px 14px', gap: 12,
+        }}>
+          <button onClick={() => setShowTags(!showTags)}
+            style={{
+              background: showTags ? 'var(--primary)' + '20' : 'transparent',
+              border: 'none', cursor: 'pointer', padding: '4px 10px', borderRadius: 6,
+              display: 'flex', alignItems: 'center', gap: 4,
+              color: showTags ? 'var(--primary)' : 'var(--text-muted)', fontSize: 12, fontWeight: 600,
+            }}>
+            <IoPricetag size={14} /> Tags
+            {selectedTags.length > 0 && (
+              <span style={{
+                background: 'var(--primary)', color: 'white', fontSize: 10, fontWeight: 700,
+                padding: '1px 6px', borderRadius: 10, marginLeft: 2,
+              }}>{selectedTags.length}</span>
+            )}
+          </button>
+          <div style={{ flex: 1 }} />
+          {note?.updatedAt && (
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              Edited: {formatDateTime(note.updatedAt)}
+            </span>
           )}
         </div>
       </div>
-
-      <button type="button" className="btn-primary" disabled={loading} onClick={handleSave}>
-        {loading ? 'Saving...' : note ? 'Update Note' : 'Create Note'}
-      </button>
-    </Modal>
+    </div>
   );
 }
 
