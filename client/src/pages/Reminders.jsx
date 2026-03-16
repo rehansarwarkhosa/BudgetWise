@@ -459,7 +459,7 @@ export default function Reminders() {
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}><Spinner /></div>;
 
   return (
-    <div>
+    <div onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}>
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <button className="btn-ghost" onClick={toggleSearch}
