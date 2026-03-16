@@ -744,7 +744,7 @@ export default function KanbanBoard() {
             {/* Backlog action bar */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
               <button className="btn-primary" onClick={() => setShowBacklogCreate(true)}
-                style={{ padding: '6px 12px', fontSize: 11, width: 'auto', display: 'flex', alignItems: 'center', gap: 4, borderRadius: 8, background: '#8B5CF6' }}>
+                style={{ padding: '6px 12px', fontSize: 11, width: 'auto', display: 'flex', alignItems: 'center', gap: 4, borderRadius: 8 }}>
                 <IoAdd size={14} /> Add to Backlog
               </button>
               {backlogSelected.length > 0 && (
@@ -1088,7 +1088,7 @@ export default function KanbanBoard() {
               }}
                 style={{
                   flex: 1, padding: '12px 0', borderRadius: 12, fontSize: 14, fontWeight: 600,
-                  border: 'none', background: '#8B5CF6', color: '#fff', cursor: 'pointer',
+                  border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer',
                 }}>Duplicate</button>
             </div>
           </div>
