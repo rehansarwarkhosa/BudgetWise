@@ -322,6 +322,7 @@ function PriceItemDetailModal({ itemId, categories, categoryColorMap, onClose, o
   const [editCategory, setEditCategory] = useState('');
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeletePrice, setConfirmDeletePrice] = useState(null);
 
   // Add price state
   const [newPrice, setNewPrice] = useState('');
@@ -383,13 +384,15 @@ function PriceItemDetailModal({ itemId, categories, categoryColorMap, onClose, o
     } catch (err) { toast.error(err.message); }
   };
 
-  const handleDeletePrice = async (priceId) => {
+  const handleDeletePrice = async () => {
+    if (!confirmDeletePrice) return;
     try {
-      await deletePriceEntry(priceId);
-      setPrices(prev => prev.filter(p => p._id !== priceId));
+      await deletePriceEntry(confirmDeletePrice);
+      setPrices(prev => prev.filter(p => p._id !== confirmDeletePrice));
       toast.success('Price deleted');
       loadItem();
     } catch (err) { toast.error(err.message); }
+    setConfirmDeletePrice(null);
   };
 
   const handleDeleteItem = async () => {
@@ -570,7 +573,7 @@ function PriceItemDetailModal({ itemId, categories, categoryColorMap, onClose, o
                           onClick={() => { setEditPriceId(p._id); setEditPriceAmount(p.amount); setEditPriceStore(p.store || ''); }}>
                           <IoCreate size={13} color="var(--text-muted)" />
                         </button>
-                        <button className="btn-ghost" style={{ padding: 3 }} onClick={() => handleDeletePrice(p._id)}>
+                        <button className="btn-ghost" style={{ padding: 3 }} onClick={() => setConfirmDeletePrice(p._id)}>
                           <IoTrash size={13} color="var(--danger)" />
                         </button>
                       </div>
@@ -592,6 +595,10 @@ function PriceItemDetailModal({ itemId, categories, categoryColorMap, onClose, o
           onConfirm={handleDeleteItem}
           title="Delete product?"
           message={`Delete "${item.name}" and all ${prices.length} price entries?`} />
+        <ConfirmModal open={!!confirmDeletePrice} onClose={() => setConfirmDeletePrice(null)}
+          onConfirm={handleDeletePrice}
+          title="Delete Price Entry?"
+          message="Delete this price entry? This cannot be undone." />
       </div>
     </div>
   );

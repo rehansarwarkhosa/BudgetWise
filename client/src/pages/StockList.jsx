@@ -261,6 +261,7 @@ function StockDetailModal({ open, item, onClose, onDone, categoryNames }) {
   const [editUnit, setEditUnit] = useState('');
   const [editMinStock, setEditMinStock] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);
   const [consumeQty, setConsumeQty] = useState(1);
   const [refillQty, setRefillQty] = useState(1);
   const [showRefill, setShowRefill] = useState(false);
@@ -371,12 +372,14 @@ function StockDetailModal({ open, item, onClose, onDone, categoryNames }) {
     setTab('notes');
   };
 
-  const handleDeleteNote = async (noteId) => {
+  const handleDeleteNote = async () => {
+    if (!confirmDeleteNote) return;
     try {
-      await deleteStockNote(noteId);
-      setNotes(prev => prev.filter(n => n._id !== noteId));
+      await deleteStockNote(confirmDeleteNote);
+      setNotes(prev => prev.filter(n => n._id !== confirmDeleteNote));
       toast.success('Note deleted');
     } catch (err) { toast.error(err.message); }
+    setConfirmDeleteNote(null);
   };
 
   const execCmd = (cmd, val) => {
@@ -605,7 +608,8 @@ function StockDetailModal({ open, item, onClose, onDone, categoryNames }) {
           ) : (
             <div style={{ display: 'grid', gap: 8 }}>
               {notes.map(note => (
-                <div key={note._id} className="card" style={{ padding: 10 }}>
+                <div key={note._id} className="card" style={{ padding: 10, cursor: 'pointer' }}
+                  onClick={() => handleEditNote(note)}>
                   <div dangerouslySetInnerHTML={{ __html: note.content }}
                     style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 6, wordBreak: 'break-word' }} />
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -615,14 +619,9 @@ function StockDetailModal({ open, item, onClose, onDone, categoryNames }) {
                         <span> · edited {formatDateTime(note.updatedAt)}</span>
                       )}
                     </div>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn-ghost" style={{ padding: 3 }} onClick={() => handleEditNote(note)}>
-                        <IoCreate size={13} color="var(--text-muted)" />
-                      </button>
-                      <button className="btn-ghost" style={{ padding: 3 }} onClick={() => handleDeleteNote(note._id)}>
-                        <IoTrash size={13} color="var(--danger)" />
-                      </button>
-                    </div>
+                    <button className="btn-ghost" style={{ padding: 3 }} onClick={e => { e.stopPropagation(); setConfirmDeleteNote(note._id); }}>
+                      <IoTrash size={13} color="var(--danger)" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -670,6 +669,10 @@ function StockDetailModal({ open, item, onClose, onDone, categoryNames }) {
         onConfirm={handleDelete}
         title="Delete stock item?"
         message={`Delete "${current?.name}" and all its history? This cannot be undone.`} />
+      <ConfirmModal open={!!confirmDeleteNote} onClose={() => setConfirmDeleteNote(null)}
+        onConfirm={handleDeleteNote}
+        title="Delete Note?"
+        message="Delete this note? This cannot be undone." />
       </div>
     </Modal>
   );

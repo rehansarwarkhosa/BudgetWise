@@ -146,6 +146,39 @@ router.post('/test-email', async (req, res, next) => {
   }
 });
 
+// Test push notification
+const ONESIGNAL_APP_ID = '96cfa184-fc68-404e-a6ab-4b92fb13e6b1';
+router.post('/test-push', async (req, res, next) => {
+  try {
+    const apiKey = process.env.ONESIGNAL_REST_API_KEY;
+    if (!apiKey) return error(res, 'ONESIGNAL_REST_API_KEY not set in environment');
+
+    const response = await fetch('https://onesignal.com/api/v1/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${apiKey}` },
+      body: JSON.stringify({
+        app_id: ONESIGNAL_APP_ID,
+        included_segments: ['All'],
+        headings: { en: 'BudgetWise — Test Push' },
+        contents: { en: 'If you see this, push notifications are working!' },
+        url: 'https://budgetwise-f41c.onrender.com/',
+      }),
+    });
+    const data = await response.json();
+
+    await AuditLog.create({
+      action: 'PUSH_NOTIFY', entity: 'Settings',
+      details: `Test push: recipients=${data.recipients || 0}, id=${data.id || 'N/A'}${data.errors ? ', errors=' + JSON.stringify(data.errors) : ''}`,
+    });
+
+    if (data.errors) return error(res, 'OneSignal error: ' + JSON.stringify(data.errors));
+    success(res, { message: `Test push sent to ${data.recipients || 0} subscriber(s)`, recipients: data.recipients || 0, id: data.id });
+  } catch (err) {
+    console.error('Test push error:', err.message);
+    return error(res, 'Failed to send test push: ' + err.message);
+  }
+});
+
 // Export all data
 router.get('/export', async (req, res, next) => {
   try {

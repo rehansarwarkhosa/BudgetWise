@@ -5,7 +5,7 @@ import { useSettings } from '../context/SettingsContext';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
 import { IoSunny, IoMoon, IoTrash, IoAdd } from 'react-icons/io5';
-import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails, getAuditLogs, clearAuditLogs, getBudgetCategories, addBudgetCategory, updateBudgetCategory, deleteBudgetCategory, sendTestEmail } from '../api';
+import { updateSettings, deleteAllData, exportAllData, importAllData, deleteAllTrails, getAuditLogs, clearAuditLogs, getBudgetCategories, addBudgetCategory, updateBudgetCategory, deleteBudgetCategory, sendTestEmail, sendTestPush } from '../api';
 import { formatDate, formatDateTime } from '../utils/format';
 
 const PRESET_COLORS = [
@@ -305,6 +305,8 @@ export default function Settings() {
   const [deletingTrails, setDeletingTrails] = useState(false);
   const [importing, setImporting] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
+  const [pushStatus, setPushStatus] = useState('checking'); // 'checking' | 'subscribed' | 'unsubscribed' | 'denied' | 'unsupported'
+  const [pushSubscribing, setPushSubscribing] = useState(false);
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
@@ -383,6 +385,61 @@ export default function Settings() {
       setInitialized(true);
     }
   }, [settings, initialized]);
+
+  // Check OneSignal push notification subscription status
+  useEffect(() => {
+    const checkPush = () => {
+      try {
+        if (!window.OneSignal) { setPushStatus('unsupported'); return; }
+        const OneSignal = window.OneSignal;
+        // OneSignal v16: check Notifications.permission and PushSubscription
+        if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+          setPushStatus('denied');
+        } else if (OneSignal.User?.PushSubscription?.optedIn) {
+          setPushStatus('subscribed');
+        } else if (OneSignal.Notifications?.permission) {
+          setPushStatus('subscribed');
+        } else {
+          setPushStatus('unsubscribed');
+        }
+      } catch { setPushStatus('unsupported'); }
+    };
+    // Delay to let OneSignal init
+    const timer = setTimeout(checkPush, 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleSubscribePush = async () => {
+    setPushSubscribing(true);
+    try {
+      if (!window.OneSignal) { toast.error('Push notifications not supported'); return; }
+      const OneSignal = window.OneSignal;
+      // Try native permission request first
+      if (typeof Notification !== 'undefined') {
+        const perm = await Notification.requestPermission();
+        if (perm === 'denied') {
+          setPushStatus('denied');
+          toast.error('Notifications blocked. Please allow in browser settings.');
+          return;
+        }
+      }
+      // Use OneSignal's opt-in
+      if (OneSignal.User?.PushSubscription?.optIn) {
+        await OneSignal.User.PushSubscription.optIn();
+      } else if (OneSignal.Slidedown?.promptPush) {
+        await OneSignal.Slidedown.promptPush();
+      }
+      // Recheck
+      setTimeout(() => {
+        if (OneSignal.User?.PushSubscription?.optedIn || OneSignal.Notifications?.permission) {
+          setPushStatus('subscribed');
+          toast.success('Push notifications enabled!');
+        }
+      }, 1000);
+    } catch (err) {
+      toast.error('Failed to enable push: ' + err.message);
+    } finally { setPushSubscribing(false); }
+  };
 
   const fetchAuditLogs = async (page = 1, filters = {}) => {
     setAuditLoading(true);
@@ -759,6 +816,36 @@ export default function Settings() {
           </button>
         </div>
 
+        {/* Push Notifications */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div>
+            <span style={{ fontSize: 14, fontWeight: 500 }}>Push Notifications</span>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+              {pushStatus === 'subscribed' ? 'Receiving push notifications via OneSignal' :
+               pushStatus === 'denied' ? 'Blocked by browser — allow in browser settings' :
+               pushStatus === 'unsupported' ? 'Not supported in this browser' :
+               pushStatus === 'checking' ? 'Checking...' :
+               'Not subscribed — enable to receive reminders'}
+            </p>
+          </div>
+          {pushStatus === 'subscribed' ? (
+            <span style={{
+              fontSize: 11, fontWeight: 600, color: 'var(--success)',
+              padding: '4px 10px', borderRadius: 12, background: 'var(--success)15',
+            }}>Active</span>
+          ) : pushStatus === 'denied' || pushStatus === 'unsupported' ? (
+            <span style={{
+              fontSize: 11, fontWeight: 600, color: 'var(--danger)',
+              padding: '4px 10px', borderRadius: 12, background: 'var(--danger)15',
+            }}>{pushStatus === 'denied' ? 'Blocked' : 'N/A'}</span>
+          ) : pushStatus !== 'checking' ? (
+            <button className="btn-primary" onClick={handleSubscribePush} disabled={pushSubscribing}
+              style={{ padding: '6px 14px', fontSize: 12, borderRadius: 8, width: 'auto' }}>
+              {pushSubscribing ? 'Enabling...' : 'Enable'}
+            </button>
+          ) : null}
+        </div>
+
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-primary" style={{ flex: 1 }} onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : 'Save Settings'}
@@ -774,6 +861,20 @@ export default function Settings() {
               finally { setSendingTest(false); }
             }}>
             {sendingTest ? 'Sending...' : 'Test Email'}
+          </button>
+          <button className="btn-outline" style={{ flex: 'none', padding: '10px 14px' }}
+            onClick={async () => {
+              try {
+                const res = await sendTestPush();
+                const r = res.data;
+                if (r.recipients === 0) {
+                  toast.error('Push sent but 0 subscribers. Enable push notifications above first.');
+                } else {
+                  toast.success(`Test push sent to ${r.recipients} subscriber(s)!`);
+                }
+              } catch (err) { toast.error(err.response?.data?.error || err.message); }
+            }}>
+            Test Push
           </button>
         </div>
       </div>
