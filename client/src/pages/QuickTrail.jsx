@@ -85,9 +85,10 @@ export default function QuickTrail() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterMode, setFilterMode] = useState('all'); // 'all', 'with_reminders', 'plain'
+  const [filterMode, setFilterMode] = useState('all'); // 'all', 'with_reminders', 'plain', 'starred'
   const [dateFilter, setDateFilter] = useState(''); // '', 'today', 'YYYY-MM-DD'
   const [showFilter, setShowFilter] = useState(false);
+  const filterRef = useRef(null);
   const [detailEntry, setDetailEntry] = useState(null);
   useBackClose(!!detailEntry, () => setDetailEntry(null));
   const [activeTab, _setActiveTab] = useState(() => sessionStorage.getItem('quicktrail_tab') || 'trail');
@@ -184,6 +185,17 @@ export default function QuickTrail() {
   useEffect(() => {
     fetchTrails(1, false, '', 'all', '').finally(() => setLoading(false));
   }, []);
+
+  // Close filter dropdown on outside click
+  useEffect(() => {
+    if (!showFilter) return;
+    const handler = (e) => {
+      if (filterRef.current && !filterRef.current.contains(e.target)) setShowFilter(false);
+    };
+    document.addEventListener('mousedown', handler);
+    document.addEventListener('touchstart', handler);
+    return () => { document.removeEventListener('mousedown', handler); document.removeEventListener('touchstart', handler); };
+  }, [showFilter]);
 
   // Auto-focus trail input when trail tab is active
   // On Android, programmatic focus() doesn't open the keyboard unless it
@@ -326,7 +338,7 @@ export default function QuickTrail() {
         <h1 className="page-title" style={{ marginBottom: 0 }}>Trail</h1>
         {activeTab === 'trail' && (
           <div style={{ display: 'flex', gap: 4 }}>
-            <div style={{ position: 'relative' }}>
+            <div ref={filterRef} style={{ position: 'relative' }}>
               <button className="btn-ghost" onClick={() => setShowFilter(!showFilter)}
                 style={{ padding: 6, borderRadius: 8, background: (filterMode !== 'all' || dateFilter) ? 'var(--bg-input)' : 'transparent' }}>
                 <IoFilter size={18} color={(filterMode !== 'all' || dateFilter) ? 'var(--primary)' : undefined} />
@@ -340,6 +352,7 @@ export default function QuickTrail() {
                   <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', padding: '4px 8px', textTransform: 'uppercase' }}>Type</div>
                   {[
                     { key: 'all', label: 'All Items' },
+                    { key: 'starred', label: '⭐ Starred' },
                     { key: 'with_reminders', label: 'With Reminders' },
                     { key: 'plain', label: 'Plain Items' },
                   ].map(f => (
@@ -447,7 +460,7 @@ export default function QuickTrail() {
           <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
             {filterMode !== 'all' && (
               <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 12, background: 'var(--primary)', color: 'white', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                {filterMode === 'with_reminders' ? 'Reminders' : 'Plain'}
+                {filterMode === 'with_reminders' ? 'Reminders' : filterMode === 'starred' ? 'Starred' : 'Plain'}
                 <button onClick={() => handleFilterChange('all')} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1 }}>×</button>
               </span>
             )}

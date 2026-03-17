@@ -19,6 +19,7 @@ router.get('/', async (req, res, next) => {
     if (search) query.text = { $regex: search, $options: 'i' };
     if (filter === 'with_reminders') query['reminders.0'] = { $exists: true };
     else if (filter === 'plain') query['reminders.0'] = { $exists: false };
+    else if (filter === 'starred') query.highlighted = true;
 
     if (date) {
       // Single-day filter — return all entries for that day
