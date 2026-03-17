@@ -595,7 +595,7 @@ export default function QuickTrail() {
                                   )}
                                 </div>
                                 {trailShowDate && (
-                                  <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 1, opacity: 0.6 }}>
+                                  <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 1 }}>
                                     {formatDate(entry.createdAt)}
                                   </div>
                                 )}

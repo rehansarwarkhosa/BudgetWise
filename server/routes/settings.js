@@ -50,7 +50,7 @@ router.get('/', async (req, res, next) => {
 // Update settings
 router.put('/', async (req, res, next) => {
   try {
-    const { mode, negativeLimit, currentPeriod, notificationEmail, emailNotificationsEnabled, theme, trailBoldText, trailHighlights, routineHighlights, kanbanDueDateColors, menuSwipeEnabled, tabSwipeTrail, tabSwipeBudget, tabSwipeRoutines, tabSwipeNotes, trailReorderEnabled, trailReorderTaps, trailDetailEnabled, trailDetailTaps, budgetLocked, settingsLocked } = req.body;
+    const { mode, negativeLimit, currentPeriod, notificationEmail, emailNotificationsEnabled, theme, trailBoldText, trailShowDate, trailHighlights, routineHighlights, kanbanDueDateColors, menuSwipeEnabled, tabSwipeTrail, tabSwipeBudget, tabSwipeRoutines, tabSwipeNotes, trailReorderEnabled, trailReorderTaps, trailDetailEnabled, trailDetailTaps, budgetLocked, settingsLocked } = req.body;
     let settings = await Settings.findOne();
     if (!settings) {
       const period = getCurrentPeriod();
@@ -70,6 +70,8 @@ router.put('/', async (req, res, next) => {
     else if (theme !== undefined) settings.theme = theme;
     if (trailBoldText !== undefined && trailBoldText !== settings.trailBoldText) { changes.push(`trailBoldText: ${settings.trailBoldText} -> ${trailBoldText}`); settings.trailBoldText = trailBoldText; }
     else if (trailBoldText !== undefined) settings.trailBoldText = trailBoldText;
+    if (trailShowDate !== undefined && trailShowDate !== settings.trailShowDate) { changes.push(`trailShowDate: ${settings.trailShowDate} -> ${trailShowDate}`); settings.trailShowDate = trailShowDate; }
+    else if (trailShowDate !== undefined) settings.trailShowDate = trailShowDate;
     if (trailHighlights !== undefined) { settings.trailHighlights = trailHighlights; changes.push(`trailHighlights updated (${trailHighlights.length} rules)`); }
     if (routineHighlights !== undefined) { settings.routineHighlights = routineHighlights; changes.push(`routineHighlights updated (${routineHighlights.length} rules)`); }
     if (kanbanDueDateColors !== undefined) { settings.kanbanDueDateColors = kanbanDueDateColors; changes.push('kanbanDueDateColors updated'); }

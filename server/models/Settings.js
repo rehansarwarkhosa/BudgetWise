@@ -11,6 +11,7 @@ const settingsSchema = new mongoose.Schema({
   emailNotificationsEnabled: { type: Boolean, default: true },
   theme: { type: String, enum: ['dark', 'light'], default: 'dark' },
   trailBoldText: { type: Boolean, default: false },
+  trailShowDate: { type: Boolean, default: true },
   trailHighlights: [{
     keyword: { type: String, required: true },
     color: { type: String, required: true },
