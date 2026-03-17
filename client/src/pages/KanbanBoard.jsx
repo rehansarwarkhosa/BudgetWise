@@ -430,12 +430,13 @@ export default function KanbanBoard() {
           {/* Quick actions row */}
           <div style={{
             display: 'flex', gap: 6, justifyContent: 'space-between', alignItems: 'center',
-          }} onClick={e => e.stopPropagation()}>
+          }}>
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
               {/* Quick status change */}
               <div style={{ position: 'relative' }}>
                 <button className="btn-ghost"
                   onClick={(e) => {
+                    e.stopPropagation();
                     if (quickStatusId === wo._id) {
                       setQuickStatusId(null);
                       setQuickStatusPos(null);
@@ -457,7 +458,8 @@ export default function KanbanBoard() {
               {/* Quick budget edit for budget-linked WOs */}
               {wo.budgetId && (
                 <button className="btn-ghost"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setQuickBudgetWo(wo);
                     setQuickBudgetId(wo.budgetId?._id || wo.budgetId || '');
                     setQuickBudgetAmount(wo.budgetAmount || '');
@@ -473,7 +475,7 @@ export default function KanbanBoard() {
               )}
               {colName === 'done' && (
                 <button className="btn-ghost"
-                  onClick={() => handleArchive(wo._id)}
+                  onClick={(e) => { e.stopPropagation(); handleArchive(wo._id); }}
                   style={{
                     background: '#6B728018', border: 'none', borderRadius: 10, padding: '5px 10px',
                     fontSize: 10, fontWeight: 700, color: '#6B7280',
@@ -484,11 +486,11 @@ export default function KanbanBoard() {
               )}
             </div>
             <div style={{ display: 'flex', gap: 2 }}>
-              <button className="btn-ghost" style={{ padding: 4 }} onClick={() => handleCopy(wo)}>
+              <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); handleCopy(wo); }}>
                 <IoCopy size={12} color="var(--text-muted)" />
               </button>
               {!wo.locked && (
-                <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setConfirmDelete(wo)}>
+                <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setConfirmDelete(wo); }}>
                   <IoTrash size={12} color="var(--danger)" />
                 </button>
               )}

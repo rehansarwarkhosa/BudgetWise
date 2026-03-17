@@ -11,7 +11,7 @@ import useBackClose from '../hooks/useBackClose';
 
 import { IoReorderThree } from 'react-icons/io5';
 import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote, reorderTrails } from '../api';
-import { formatDateTime } from '../utils/format';
+import { formatDateTime, formatTime } from '../utils/format';
 import KanbanBoard from './KanbanBoard';
 import Reminders from './Reminders';
 
@@ -582,8 +582,8 @@ export default function QuickTrail() {
                             {quickEditId !== entry._id && (
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                  {formatDateTime(entry.createdAt)}
+                                <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: '0.01em' }}>
+                                  {formatTime(entry.createdAt)}
                                 </span>
                                 {entry.adjustedAt && (
                                   <IoTime size={12} color="#F59E0B" title="Time adjusted" />
