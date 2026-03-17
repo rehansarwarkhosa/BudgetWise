@@ -41,22 +41,23 @@ function getActiveRemindersForDate(reminders, date) {
   const dayOfWeek = date.getDay();
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   const target = new Date(date); target.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
   return reminders.filter(r => {
     const s = r.schedule;
     if (!s?.enabled) return false;
-    // Only show on/after creation date
+    // Only show on/after creation date and up to today for recurring types
     const created = new Date(r.createdAt); created.setHours(0, 0, 0, 0);
     if (target < created) return false;
     switch (s.type) {
-      case 'daily': return true;
-      case 'weekdays': return dayOfWeek >= 1 && dayOfWeek <= 5;
-      case 'custom_days': return (s.days || []).includes(dayOfWeek);
+      case 'daily': return target <= today;
+      case 'weekdays': return target <= today && dayOfWeek >= 1 && dayOfWeek <= 5;
+      case 'custom_days': return target <= today && (s.days || []).includes(dayOfWeek);
       case 'custom_dates': return (s.dates || []).some(d => new Date(d).toISOString().split('T')[0] === dateStr);
       case 'interval': {
         if (!s.intervalStartDate || !s.intervalDays) return false;
         const start = new Date(s.intervalStartDate); start.setHours(0, 0, 0, 0);
         const diff = Math.round((target - start) / 86400000);
-        return diff >= 0 && diff % s.intervalDays === 0;
+        return diff >= 0 && diff % s.intervalDays === 0 && target <= today;
       }
       case 'once': {
         if (s.fired) return false;
@@ -104,7 +105,8 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 export default function Reminders() {
   const [allReminders, setAllReminders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('list'); // 'list' | 'calendar'
+  const [viewMode, _setViewMode] = useState(() => sessionStorage.getItem('reminders_viewmode') || 'list');
+  const setViewMode = useCallback((v) => { _setViewMode(v); sessionStorage.setItem('reminders_viewmode', v); }, []);
   const [statusTab, _setStatusTab] = useState(() => sessionStorage.getItem('reminders_tab') || 'active');
   const setStatusTab = useCallback((t) => { _setStatusTab(t); sessionStorage.setItem('reminders_tab', t); }, []);
   const [searchMode, setSearchMode] = useState(false);
