@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import useBackClose from '../hooks/useBackClose';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useSettings } from '../context/SettingsContext';
@@ -321,6 +322,7 @@ export default function Settings() {
   const [auditPages, setAuditPages] = useState(1);
   const [auditLoading, setAuditLoading] = useState(false);
   const [showAuditLog, setShowAuditLog] = useState(false);
+  useBackClose(!!showAuditLog, () => setShowAuditLog(false));
   const [confirmClearAudit, setConfirmClearAudit] = useState(false);
   const [auditDateFilter, setAuditDateFilter] = useState('');
   const [auditActionFilter, setAuditActionFilter] = useState('');

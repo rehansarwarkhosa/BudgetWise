@@ -13,6 +13,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import { getReminders, createReminder, updateReminder as updateReminderApi, deleteReminder, toggleReminder, getReminderNotes, addReminderNote, updateReminderNote, deleteReminderNote, getArchivedReminders, bulkArchiveReminders } from '../api';
 import { formatDateTime } from '../utils/format';
 import RichTextEditor from '../components/RichTextEditor';
+import useBackClose from '../hooks/useBackClose';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const SCHEDULE_TYPES = [
@@ -106,6 +107,7 @@ export default function Reminders() {
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
+  useBackClose(!!showForm, () => { setShowForm(false); setEditingId(null); });
   const [editingId, setEditingId] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
@@ -115,6 +117,7 @@ export default function Reminders() {
   const [reminderNotes, setReminderNotes] = useState([]);
   const [notesLoading, setNotesLoading] = useState(false);
   const [richEditorOpen, setRichEditorOpen] = useState(false);
+  useBackClose(!!richEditorOpen, () => setRichEditorOpen(false));
   const [richEditorContent, setRichEditorContent] = useState('');
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [richEditorSaving, setRichEditorSaving] = useState(false);

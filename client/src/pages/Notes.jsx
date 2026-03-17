@@ -18,6 +18,7 @@ import {
 } from '../api';
 import { formatDateTime } from '../utils/format';
 import useSwipeTabs from '../hooks/useSwipeTabs';
+import useBackClose from '../hooks/useBackClose';
 
 import { useSettings } from '../context/SettingsContext';
 
@@ -45,6 +46,10 @@ export default function Notes() {
   const [createSubTopicModal, setCreateSubTopicModal] = useState(null); // topicId
   const [noteEditorModal, setNoteEditorModal] = useState(null); // null | { note, subTopicId }
   const [tagManagerModal, setTagManagerModal] = useState(false);
+  useBackClose(!!noteEditorModal, () => setNoteEditorModal(null));
+  useBackClose(!!createTopicModal, () => setCreateTopicModal(false));
+  useBackClose(!!createSubTopicModal, () => setCreateSubTopicModal(null));
+  useBackClose(!!tagManagerModal, () => setTagManagerModal(false));
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');

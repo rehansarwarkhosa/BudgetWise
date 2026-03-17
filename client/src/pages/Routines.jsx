@@ -8,6 +8,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import RichTextEditor from '../components/RichTextEditor';
 import useFetch from '../hooks/useFetch';
 import useSwipeTabs from '../hooks/useSwipeTabs';
+import useBackClose from '../hooks/useBackClose';
 
 import { formatDateTime, formatDate } from '../utils/format';
 import {
@@ -54,6 +55,9 @@ export default function Routines() {
   const [createModal, setCreateModal] = useState(false);
   const [detailRoutine, setDetailRoutine] = useState(null);
   const [cloneSource, setCloneSource] = useState(null);
+  useBackClose(!!createModal, () => setCreateModal(false));
+  useBackClose(!!detailRoutine, () => setDetailRoutine(null));
+  useBackClose(!!cloneSource, () => setCloneSource(null));
   const tabSwipeEnabled = settings?.tabSwipeRoutines !== false;
   const [activeTab, _setActiveTab] = useState(() => sessionStorage.getItem('routines_tab') || 'pending');
   const setActiveTab = useCallback((t) => { _setActiveTab(t); sessionStorage.setItem('routines_tab', t); }, []);
@@ -720,6 +724,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const [notesFetched, setNotesFetched] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [richEditorOpen, setRichEditorOpen] = useState(false);
+  useBackClose(!!richEditorOpen, () => setRichEditorOpen(false));
   const [richEditorContent, setRichEditorContent] = useState('');
   const [richEditorSaving, setRichEditorSaving] = useState(false);
   const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);

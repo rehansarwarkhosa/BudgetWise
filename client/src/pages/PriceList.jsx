@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import useBackClose from '../hooks/useBackClose';
 import toast from 'react-hot-toast';
 import {
   IoAdd, IoTrash, IoSearch, IoClose, IoFilter, IoPricetag, IoCreate,
@@ -22,6 +23,8 @@ export default function PriceList({ categoryColorMap: propColorMap }) {
   const [showFilters, setShowFilters] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [detailId, setDetailId] = useState(null);
+  useBackClose(!!showCreate, () => setShowCreate(false));
+  useBackClose(!!detailId, () => setDetailId(null));
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [categories, setCategories] = useState([]);
   const [categoryColorMap, setCategoryColorMap] = useState(propColorMap || {});

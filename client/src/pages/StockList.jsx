@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import useBackClose from '../hooks/useBackClose';
 import toast from 'react-hot-toast';
 import { IoAdd, IoTrash, IoCreate, IoRemove, IoRefresh, IoSearch, IoFilter, IoChevronForward } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
@@ -36,6 +37,8 @@ export default function StockList({ categoryNames, categoryColorMap }) {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [createModal, setCreateModal] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
+  useBackClose(!!createModal, () => setCreateModal(false));
+  useBackClose(!!detailItem, () => setDetailItem(null));
 
   const fetchItems = async () => {
     try {

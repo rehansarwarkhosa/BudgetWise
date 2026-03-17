@@ -13,6 +13,7 @@ import RichTextEditor from '../components/RichTextEditor';
 import { formatDateTime, formatDate, formatPKR } from '../utils/format';
 import { useSettings } from '../context/SettingsContext';
 import useSwipeTabs from '../hooks/useSwipeTabs';
+import useBackClose from '../hooks/useBackClose';
 import api from '../api/axios.js';
 import {
   getWorkOrders, createWorkOrder, updateWorkOrder, moveWorkOrder, deleteWorkOrder,
@@ -80,6 +81,12 @@ export default function KanbanBoard() {
   const [activeTab, _setActiveTab] = useState(() => sessionStorage.getItem('kanban_tab') || 'doing');
   const setActiveTab = useCallback((t) => { _setActiveTab(t); sessionStorage.setItem('kanban_tab', t); }, []);
   const [viewMode, setViewMode] = useState('tabs');
+  useBackClose(!!showCreate, () => setShowCreate(false));
+  useBackClose(!!detailId, () => setDetailId(null));
+  useBackClose(!!showBacklogCreate, () => setShowBacklogCreate(false));
+  useBackClose(!!duplicateWo, () => setDuplicateWo(null));
+  useBackClose(!!showArchived, () => setShowArchived(false));
+  useBackClose(!!showBacklog, () => setShowBacklog(false));
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
 
@@ -1159,7 +1166,7 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
   const [dueDate, setDueDate] = useState('');
   const [isBudget, setIsBudget] = useState(false);
   const [budgetId, setBudgetId] = useState('');
-  const [budgetAmount, setBudgetAmount] = useState('');
+  const [unitPriceInput, setUnitPriceInput] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [budgets, setBudgets] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -1180,16 +1187,15 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
     !title.trim() || item.name.toLowerCase().includes(title.toLowerCase())
   );
 
-  const unitPrice = selectedPriceItem?.latestPrice?.amount || null;
+  const computedTotal = (parseFloat(unitPriceInput) || 0) * (parseInt(quantity) || 1);
 
   const handleSelectPriceItem = (item) => {
     setTitle(item.name);
     setSelectedPriceItem(item);
     setShowPriceSuggestions(false);
     setIsBudget(true);
-    const price = item.latestPrice?.amount || 0;
-    const qty = parseInt(quantity) || 1;
-    setBudgetAmount(String(price * qty));
+    setUnitPriceInput(String(item.latestPrice?.amount || ''));
+    setQuantity('1');
   };
 
   const handleTitleChange = (e) => {
@@ -1197,15 +1203,7 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
     setShowPriceSuggestions(true);
     if (selectedPriceItem && e.target.value !== selectedPriceItem.name) {
       setSelectedPriceItem(null);
-      setBudgetAmount('');
-    }
-  };
-
-  const handleQuantityChange = (e) => {
-    const qty = e.target.value;
-    setQuantity(qty);
-    if (unitPrice) {
-      setBudgetAmount(String(unitPrice * (parseInt(qty) || 1)));
+      setUnitPriceInput('');
     }
   };
 
@@ -1223,13 +1221,14 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
   const doCreateWorkOrder = async (data, addToPriceList) => {
     setSaving(true);
     try {
-      if (addToPriceList && !selectedPriceItem && data.budgetAmount) {
-        // Save unit price to price list, not the total (amount / quantity)
-        const qty = parseInt(quantity) || 1;
-        const unitPriceToSave = qty > 1 ? Math.round((data.budgetAmount / qty) * 100) / 100 : data.budgetAmount;
-        const priceRes = await createPriceItem({ name: data.title, category: 'General', price: unitPriceToSave });
-        if (priceRes.data) {
-          setPriceItems(prev => [...prev, priceRes.data]);
+      if (addToPriceList && !selectedPriceItem) {
+        // Save unit price to price list (not total)
+        const up = parseFloat(unitPriceInput) || 0;
+        if (up > 0) {
+          const priceRes = await createPriceItem({ name: data.title, category: 'General', price: up });
+          if (priceRes.data) {
+            setPriceItems(prev => [...prev, priceRes.data]);
+          }
         }
       }
       const res = await createWorkOrder(data);
@@ -1246,11 +1245,11 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
     if (dueDate) data.dueDate = dueDate;
     if (isBudget && budgetId) {
       data.budgetId = budgetId;
-      data.budgetAmount = parseFloat(budgetAmount) || 0;
+      data.budgetAmount = computedTotal;
       data.budgetQuantity = parseInt(quantity) || 1;
     }
     // If budget entry but not from price list, prompt to add
-    if (isBudget && !selectedPriceItem && data.budgetAmount) {
+    if (isBudget && !selectedPriceItem && computedTotal > 0) {
       setPendingSubmitData(data);
       setShowPriceListPrompt(true);
       return;
@@ -1352,17 +1351,22 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
                 </select>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <div className="form-group" style={{ flex: '0 0 80px' }}>
-                  <label>Qty</label>
-                  <input type="number" value={quantity} onChange={handleQuantityChange}
-                    placeholder="1" min="1" step="1" />
-                </div>
                 <div className="form-group" style={{ flex: 1 }}>
-                  <label>Amount (PKR){unitPrice ? ` — ${formatPKR(unitPrice)}/unit` : ''}</label>
-                  <input type="number" value={budgetAmount} onChange={e => setBudgetAmount(e.target.value)}
+                  <label>Unit Price</label>
+                  <input type="number" value={unitPriceInput} onChange={e => setUnitPriceInput(e.target.value)}
                     placeholder="0" min="0" step="0.01" />
                 </div>
+                <div className="form-group" style={{ flex: '0 0 70px' }}>
+                  <label>Qty</label>
+                  <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)}
+                    placeholder="1" min="1" step="1" />
+                </div>
               </div>
+              {computedTotal > 0 && (
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--primary)', marginBottom: 12, marginTop: -4 }}>
+                  Total: {formatPKR(computedTotal)}
+                </div>
+              )}
             </>
           )}
 
@@ -1384,7 +1388,7 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
               border: '1px solid var(--border)',
             }}>
               <p style={{ fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>
-                <strong>"{title.trim()}"</strong> is not in your price list. Would you like to add it with a unit price of <strong>{formatPKR(Math.round(((parseFloat(budgetAmount) || 0) / (parseInt(quantity) || 1)) * 100) / 100)}</strong>?
+                <strong>"{title.trim()}"</strong> is not in your price list. Would you like to add it with a unit price of <strong>{formatPKR(parseFloat(unitPriceInput) || 0)}</strong>?
               </p>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn-ghost" onClick={() => handlePriceListResponse(false)}
@@ -1414,7 +1418,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   const [editPriority, setEditPriority] = useState('');
   const [editStatus, setEditStatus] = useState('');
   const [editBudgetId, setEditBudgetId] = useState('');
-  const [editBudgetAmount, setEditBudgetAmount] = useState('');
+  const [editUnitPrice, setEditUnitPrice] = useState('');
   const [editBudgetQuantity, setEditBudgetQuantity] = useState('1');
   const [editDueDate, setEditDueDate] = useState('');
   const [budgets, setBudgets] = useState([]);
@@ -1424,6 +1428,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   // Notes state
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [richEditorOpen, setRichEditorOpen] = useState(false);
+  useBackClose(!!richEditorOpen, () => setRichEditorOpen(false));
   const [richEditorContent, setRichEditorContent] = useState('');
   const [richEditorSaving, setRichEditorSaving] = useState(false);
   const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);
@@ -1447,8 +1452,9 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
       setEditPriority(data.priority);
       setEditStatus(data.status);
       setEditBudgetId(data.budgetId?._id || data.budgetId || '');
-      setEditBudgetAmount(data.budgetAmount || 0);
-      setEditBudgetQuantity(data.budgetQuantity || 1);
+      const qty = data.budgetQuantity || 1;
+      setEditUnitPrice(qty > 0 ? Math.round(((data.budgetAmount || 0) / qty) * 100) / 100 : 0);
+      setEditBudgetQuantity(qty);
       setEditDueDate(data.dueDate ? new Date(data.dueDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' }) : '');
       setReminders(data.reminders || []);
     } catch (err) { toast.error('Failed to load'); }
@@ -1459,11 +1465,13 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
     if (saving) return;
     setSaving(true);
     try {
+      const editQty = parseInt(editBudgetQuantity) || 1;
+      const editTotal = (parseFloat(editUnitPrice) || 0) * editQty;
       const data = {
         title: editTitle, priority: editPriority, status: editStatus,
         budgetId: editBudgetId || null,
-        budgetAmount: editBudgetId ? parseFloat(editBudgetAmount) || 0 : 0,
-        budgetQuantity: editBudgetId ? parseInt(editBudgetQuantity) || 1 : 1,
+        budgetAmount: editBudgetId ? editTotal : 0,
+        budgetQuantity: editBudgetId ? editQty : 1,
         dueDate: editDueDate || null,
       };
       if (remindersDirty) data.reminders = reminders;
@@ -1716,17 +1724,22 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
                       </select>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <div className="form-group" style={{ flex: '0 0 80px' }}>
+                      <div className="form-group" style={{ flex: 1 }}>
+                        <label>Unit Price</label>
+                        <input type="number" value={editUnitPrice} onChange={e => setEditUnitPrice(e.target.value)}
+                          min="0" step="0.01" />
+                      </div>
+                      <div className="form-group" style={{ flex: '0 0 70px' }}>
                         <label>Qty</label>
                         <input type="number" value={editBudgetQuantity} onChange={e => setEditBudgetQuantity(e.target.value)}
                           min="1" step="1" />
                       </div>
-                      <div className="form-group" style={{ flex: 1 }}>
-                        <label>Amount (PKR)</label>
-                        <input type="number" value={editBudgetAmount} onChange={e => setEditBudgetAmount(e.target.value)}
-                          min="0" step="0.01" />
-                      </div>
                     </div>
+                    {(parseFloat(editUnitPrice) || 0) * (parseInt(editBudgetQuantity) || 1) > 0 && (
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--primary)', marginBottom: 8, marginTop: -4 }}>
+                        Total: {formatPKR((parseFloat(editUnitPrice) || 0) * (parseInt(editBudgetQuantity) || 1))}
+                      </div>
+                    )}
                   </>
                 )}
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>

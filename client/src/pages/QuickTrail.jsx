@@ -7,6 +7,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import RichTextEditor from '../components/RichTextEditor';
 import { useSettings } from '../context/SettingsContext';
 import useSwipeTabs from '../hooks/useSwipeTabs';
+import useBackClose from '../hooks/useBackClose';
 
 import { IoReorderThree } from 'react-icons/io5';
 import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote, reorderTrails } from '../api';
@@ -87,6 +88,7 @@ export default function QuickTrail() {
   const [dateFilter, setDateFilter] = useState(''); // '', 'today', 'YYYY-MM-DD'
   const [showFilter, setShowFilter] = useState(false);
   const [detailEntry, setDetailEntry] = useState(null);
+  useBackClose(!!detailEntry, () => setDetailEntry(null));
   const [activeTab, _setActiveTab] = useState(() => sessionStorage.getItem('quicktrail_tab') || 'trail');
   const setActiveTab = useCallback((t) => { _setActiveTab(t); sessionStorage.setItem('quicktrail_tab', t); }, []);
   const tabSwipeEnabled = settings?.tabSwipeTrail !== false;
@@ -677,6 +679,7 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
   const [notesLoading, setNotesLoading] = useState(true);
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [richEditorOpen, setRichEditorOpen] = useState(false);
+  useBackClose(!!richEditorOpen, () => setRichEditorOpen(false));
   const [richEditorContent, setRichEditorContent] = useState('');
   const [richEditorSaving, setRichEditorSaving] = useState(false);
   const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);

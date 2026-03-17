@@ -9,6 +9,7 @@ import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import useFetch from '../hooks/useFetch';
 import useSwipeTabs from '../hooks/useSwipeTabs';
+import useBackClose from '../hooks/useBackClose';
 
 import { formatPKR, formatDate } from '../utils/format';
 import { useSettings } from '../context/SettingsContext';
@@ -43,6 +44,12 @@ export default function Budget() {
   const [detailModal, setDetailModal] = useState(null);
   const [incomeListModal, setIncomeListModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  useBackClose(!!detailModal, () => setDetailModal(null));
+  useBackClose(!!incomeModal, () => setIncomeModal(false));
+  useBackClose(!!budgetModal, () => setBudgetModal(false));
+  useBackClose(!!expenseModal, () => setExpenseModal(null));
+  useBackClose(!!fundsModal, () => setFundsModal(null));
+  useBackClose(!!incomeListModal, () => setIncomeListModal(false));
 
   const refreshAll = () => {
     refetchSummary();
@@ -252,6 +259,8 @@ function TemplatesView({ categoryColorMap, categoryNames, onBudgetsChanged }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmUse, setConfirmUse] = useState(null);
   const [detailTemplate, setDetailTemplate] = useState(null);
+  useBackClose(!!createModal, () => setCreateModal(false));
+  useBackClose(!!detailTemplate, () => setDetailTemplate(null));
 
   const handleDelete = async () => {
     if (!confirmDelete) return;

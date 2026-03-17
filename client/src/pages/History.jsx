@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
+import useBackClose from '../hooks/useBackClose';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Spinner from '../components/Spinner';
@@ -34,6 +35,7 @@ export default function History() {
   const [budgets, setBudgets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [detailBudget, setDetailBudget] = useState(null);
+  useBackClose(!!detailBudget, () => setDetailBudget(null));
   const [expenses, setExpenses] = useState([]);
   const [expLoading, setExpLoading] = useState(false);
   const [rolloverMonth, setRolloverMonth] = useState('');
