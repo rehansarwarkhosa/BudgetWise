@@ -77,7 +77,8 @@ export default function KanbanBoard() {
   const [showBacklogCreate, setShowBacklogCreate] = useState(false);
   const [duplicateWo, setDuplicateWo] = useState(null);
   const [duplicateCount, setDuplicateCount] = useState(1);
-  const [activeTab, setActiveTab] = useState('doing');
+  const [activeTab, _setActiveTab] = useState(() => sessionStorage.getItem('kanban_tab') || 'doing');
+  const setActiveTab = useCallback((t) => { _setActiveTab(t); sessionStorage.setItem('kanban_tab', t); }, []);
   const [viewMode, setViewMode] = useState('tabs');
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
@@ -1223,7 +1224,10 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
     setSaving(true);
     try {
       if (addToPriceList && !selectedPriceItem && data.budgetAmount) {
-        const priceRes = await createPriceItem({ name: data.title, category: 'General', price: data.budgetAmount });
+        // Save unit price to price list, not the total (amount / quantity)
+        const qty = parseInt(quantity) || 1;
+        const unitPriceToSave = qty > 1 ? Math.round((data.budgetAmount / qty) * 100) / 100 : data.budgetAmount;
+        const priceRes = await createPriceItem({ name: data.title, category: 'General', price: unitPriceToSave });
         if (priceRes.data) {
           setPriceItems(prev => [...prev, priceRes.data]);
         }
@@ -1243,6 +1247,7 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
     if (isBudget && budgetId) {
       data.budgetId = budgetId;
       data.budgetAmount = parseFloat(budgetAmount) || 0;
+      data.budgetQuantity = parseInt(quantity) || 1;
     }
     // If budget entry but not from price list, prompt to add
     if (isBudget && !selectedPriceItem && data.budgetAmount) {
@@ -1262,7 +1267,8 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
   };
 
   return (
-    <div style={modalBackdrop} onClick={onClose}>
+    <div style={modalBackdrop} onClick={onClose}
+      onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}>
       <div style={{ ...modalContent, position: 'relative', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700 }}>{isBacklog ? 'Add to Backlog' : 'New Work Order'}</h3>
@@ -1378,7 +1384,7 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
               border: '1px solid var(--border)',
             }}>
               <p style={{ fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>
-                <strong>"{title.trim()}"</strong> is not in your price list. Would you like to add it with the amount of <strong>{formatPKR(parseFloat(budgetAmount) || 0)}</strong>?
+                <strong>"{title.trim()}"</strong> is not in your price list. Would you like to add it with a unit price of <strong>{formatPKR(Math.round(((parseFloat(budgetAmount) || 0) / (parseInt(quantity) || 1)) * 100) / 100)}</strong>?
               </p>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn-ghost" onClick={() => handlePriceListResponse(false)}
@@ -1409,6 +1415,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   const [editStatus, setEditStatus] = useState('');
   const [editBudgetId, setEditBudgetId] = useState('');
   const [editBudgetAmount, setEditBudgetAmount] = useState('');
+  const [editBudgetQuantity, setEditBudgetQuantity] = useState('1');
   const [editDueDate, setEditDueDate] = useState('');
   const [budgets, setBudgets] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -1441,6 +1448,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
       setEditStatus(data.status);
       setEditBudgetId(data.budgetId?._id || data.budgetId || '');
       setEditBudgetAmount(data.budgetAmount || 0);
+      setEditBudgetQuantity(data.budgetQuantity || 1);
       setEditDueDate(data.dueDate ? new Date(data.dueDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' }) : '');
       setReminders(data.reminders || []);
     } catch (err) { toast.error('Failed to load'); }
@@ -1455,6 +1463,7 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
         title: editTitle, priority: editPriority, status: editStatus,
         budgetId: editBudgetId || null,
         budgetAmount: editBudgetId ? parseFloat(editBudgetAmount) || 0 : 0,
+        budgetQuantity: editBudgetId ? parseInt(editBudgetQuantity) || 1 : 1,
         dueDate: editDueDate || null,
       };
       if (remindersDirty) data.reminders = reminders;
@@ -1648,7 +1657,9 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
                   <InfoRow label="Priority" value={wo.priority} color={PRIORITY_COLORS[wo.priority]} />
                   <InfoRow label="Status" value={STATUS_LABELS[wo.status]} color={COLUMN_COLORS[wo.status]} />
                   {wo.dueDate && <InfoRow label="Due Date" value={formatDate(wo.dueDate)} color={getDueDateColor(wo.dueDate, settings?.kanbanDueDateColors)} />}
-                  {hasBudget && <InfoRow label="Budget" value={`${wo.budgetId?.name || ''} — ${formatPKR(wo.budgetAmount)}`} />}
+                  {hasBudget && <InfoRow label="Budget" value={wo.budgetId?.name || ''} />}
+                  {hasBudget && wo.budgetQuantity > 1 && <InfoRow label="Qty" value={`${wo.budgetQuantity} × ${formatPKR(Math.round((wo.budgetAmount / wo.budgetQuantity) * 100) / 100)}`} />}
+                  {hasBudget && <InfoRow label="Amount" value={formatPKR(wo.budgetAmount)} />}
                   {hasBudget && <InfoRow label="Expense Status" value={wo.budgetExpenseStatus} />}
                 </div>
               </div>
@@ -1704,10 +1715,17 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
                         ))}
                       </select>
                     </div>
-                    <div className="form-group">
-                      <label>Amount (PKR)</label>
-                      <input type="number" value={editBudgetAmount} onChange={e => setEditBudgetAmount(e.target.value)}
-                        min="0" step="0.01" />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div className="form-group" style={{ flex: '0 0 80px' }}>
+                        <label>Qty</label>
+                        <input type="number" value={editBudgetQuantity} onChange={e => setEditBudgetQuantity(e.target.value)}
+                          min="1" step="1" />
+                      </div>
+                      <div className="form-group" style={{ flex: 1 }}>
+                        <label>Amount (PKR)</label>
+                        <input type="number" value={editBudgetAmount} onChange={e => setEditBudgetAmount(e.target.value)}
+                          min="0" step="0.01" />
+                      </div>
                     </div>
                   </>
                 )}

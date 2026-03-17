@@ -26,7 +26,8 @@ import { useSettings } from '../context/SettingsContext';
 export default function Notes() {
   const { settings: appSettings } = useSettings();
   // Tab: 'tree' | 'recent' | 'search'
-  const [tab, setTab] = useState('tree');
+  const [tab, _setTab] = useState(() => sessionStorage.getItem('notes_tab') || 'tree');
+  const setTab = useCallback((t) => { _setTab(t); sessionStorage.setItem('notes_tab', t); }, []);
   const swipe = useSwipeTabs(['tree', 'recent'], tab, setTab, undefined, appSettings?.tabSwipeNotes !== false);
 
   // Tree data

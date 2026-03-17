@@ -87,7 +87,8 @@ export default function QuickTrail() {
   const [dateFilter, setDateFilter] = useState(''); // '', 'today', 'YYYY-MM-DD'
   const [showFilter, setShowFilter] = useState(false);
   const [detailEntry, setDetailEntry] = useState(null);
-  const [activeTab, setActiveTab] = useState('trail');
+  const [activeTab, _setActiveTab] = useState(() => sessionStorage.getItem('quicktrail_tab') || 'trail');
+  const setActiveTab = useCallback((t) => { _setActiveTab(t); sessionStorage.setItem('quicktrail_tab', t); }, []);
   const tabSwipeEnabled = settings?.tabSwipeTrail !== false;
   const swipe = useSwipeTabs(['trail', 'board', 'reminders'], activeTab, setActiveTab, undefined, tabSwipeEnabled);
   const inputRef = useRef(null);

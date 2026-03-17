@@ -92,7 +92,7 @@ router.get('/', async (req, res, next) => {
 // Create work order
 router.post('/', async (req, res, next) => {
   try {
-    const { title, priority, budgetId, budgetAmount, reminders, dueDate } = req.body;
+    const { title, priority, budgetId, budgetAmount, budgetQuantity, reminders, dueDate } = req.body;
     if (!title?.trim()) return error(res, 'Title is required');
 
     const wo = await WorkOrder.create({
@@ -101,6 +101,7 @@ router.post('/', async (req, res, next) => {
       status: 'todo',
       budgetId: budgetId || null,
       budgetAmount: budgetId ? (budgetAmount || 0) : 0,
+      budgetQuantity: budgetId ? (budgetQuantity || 1) : 1,
       budgetExpenseStatus: budgetId ? 'pending' : 'none',
       dueDate: dueDate || null,
       reminders: reminders || [],
@@ -301,7 +302,7 @@ router.get('/:id', async (req, res, next) => {
 // Update work order
 router.put('/:id', async (req, res, next) => {
   try {
-    const { title, priority, status, budgetId, budgetAmount, reminders, dueDate, locked } = req.body;
+    const { title, priority, status, budgetId, budgetAmount, budgetQuantity, reminders, dueDate, locked } = req.body;
     const wo = await WorkOrder.findById(req.params.id);
     if (!wo) return error(res, 'Work order not found', 404);
 
@@ -328,6 +329,10 @@ router.put('/:id', async (req, res, next) => {
     if (budgetAmount !== undefined && budgetAmount !== wo.budgetAmount) {
       changes.push(`budgetAmount: ${wo.budgetAmount} -> ${budgetAmount}`);
       wo.budgetAmount = budgetAmount;
+    }
+    if (budgetQuantity !== undefined && budgetQuantity !== wo.budgetQuantity) {
+      changes.push(`budgetQuantity: ${wo.budgetQuantity} -> ${budgetQuantity}`);
+      wo.budgetQuantity = budgetQuantity;
     }
     if (dueDate !== undefined) { wo.dueDate = dueDate || null; changes.push('dueDate updated'); }
     if (reminders !== undefined) { wo.reminders = reminders; changes.push(`reminders updated`); }

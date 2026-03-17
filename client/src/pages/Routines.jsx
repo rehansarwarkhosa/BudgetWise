@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { IoAdd, IoTrash, IoCheckmarkCircle, IoCloseCircle, IoChevronForward, IoCreate, IoCopy, IoFlash, IoCheckmarkDone, IoCalendar } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
@@ -55,7 +55,8 @@ export default function Routines() {
   const [detailRoutine, setDetailRoutine] = useState(null);
   const [cloneSource, setCloneSource] = useState(null);
   const tabSwipeEnabled = settings?.tabSwipeRoutines !== false;
-  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'done_today' | 'scheduled' | 'expired'
+  const [activeTab, _setActiveTab] = useState(() => sessionStorage.getItem('routines_tab') || 'pending');
+  const setActiveTab = useCallback((t) => { _setActiveTab(t); sessionStorage.setItem('routines_tab', t); }, []);
   const swipe = useSwipeTabs(['pending', 'done_today', 'scheduled', 'expired'], activeTab, setActiveTab, undefined, tabSwipeEnabled);
 
   if (loading && !routines) return <Spinner />;

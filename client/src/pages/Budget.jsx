@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoCreate, IoChevronUp, IoChevronDown, IoDocumentText, IoPlayCircle, IoBookmark, IoPricetag, IoCube, IoLockClosed, IoLockOpen } from 'react-icons/io5';
 import PriceList from './PriceList';
@@ -33,7 +33,8 @@ export default function Budget() {
   const { settings: appSettings, refetchSettings } = useSettings();
   const tabSwipeEnabled = appSettings?.tabSwipeBudget !== false;
   const budgetLocked = appSettings?.budgetLocked || false;
-  const [activeView, setActiveView] = useState('budgets'); // 'budgets' or 'templates'
+  const [activeView, _setActiveView] = useState(() => sessionStorage.getItem('budget_view') || 'budgets');
+  const setActiveView = useCallback((v) => { _setActiveView(v); sessionStorage.setItem('budget_view', v); }, []);
   const mainSwipe = useSwipeTabs(['budgets', 'templates', 'prices', 'stock'], activeView, setActiveView, undefined, tabSwipeEnabled);
   const [incomeModal, setIncomeModal] = useState(false);
   const [budgetModal, setBudgetModal] = useState(false);

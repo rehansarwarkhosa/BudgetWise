@@ -101,7 +101,8 @@ export default function Reminders() {
   const [allReminders, setAllReminders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('list'); // 'list' | 'calendar'
-  const [statusTab, setStatusTab] = useState('active');
+  const [statusTab, _setStatusTab] = useState(() => sessionStorage.getItem('reminders_tab') || 'active');
+  const setStatusTab = useCallback((t) => { _setStatusTab(t); sessionStorage.setItem('reminders_tab', t); }, []);
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
