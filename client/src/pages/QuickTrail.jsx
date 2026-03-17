@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoChevronDown, IoChevronForward, IoTime, IoCreate, IoCheckmark } from 'react-icons/io5';
+import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoChevronDown, IoChevronForward, IoTime, IoCreate, IoCheckmark, IoStar, IoStarOutline } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
@@ -506,7 +506,9 @@ export default function QuickTrail() {
                       )}
                       <div className="card" style={{
                         position: 'relative',
-                        ...(hlColor ? { background: hlColor + '20', borderLeft: `3px solid ${hlColor}` } : {}),
+                        ...(entry.highlighted
+                          ? { background: '#000', border: '1.5px solid #555' }
+                          : hlColor ? { background: hlColor + '20', borderLeft: `3px solid ${hlColor}` } : {}),
                         ...(isUnlocked ? { outline: '2px solid var(--primary)', outlineOffset: 1 } : {}),
                       }}
                         onClick={() => {
@@ -575,7 +577,7 @@ export default function QuickTrail() {
                               </div>
                             ) : (
                               <>
-                                <p style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 8, whiteSpace: 'pre-wrap', ...(trailBold ? { fontWeight: 700 } : {}) }}>
+                                <p style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 8, whiteSpace: 'pre-wrap', ...(trailBold ? { fontWeight: 700 } : {}), ...(entry.highlighted ? { color: '#fff', fontWeight: 700 } : {}) }}>
                                   {entry.text}
                                 </p>
                               </>
@@ -584,31 +586,40 @@ export default function QuickTrail() {
                             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                               <div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: entry.highlighted ? '#ccc' : 'var(--text-secondary)' }}>
                                     {formatTime(entry.createdAt)}
                                   </span>
                                   {entry.adjustedAt && (
-                                    <IoTime size={11} color="#F59E0B" title="Time adjusted" />
+                                    <IoTime size={12} color="#F59E0B" title="Time adjusted" />
                                   )}
                                   {hasReminders && (
-                                    <IoAlarm size={11} color="var(--primary)" title="Has reminders" />
+                                    <IoAlarm size={12} color="var(--primary)" title="Has reminders" />
                                   )}
                                 </div>
                                 {trailShowDate && (
-                                  <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 1 }}>
+                                  <div style={{ fontSize: 10, color: entry.highlighted ? '#999' : 'var(--text-muted)', marginTop: 1 }}>
                                     {formatDate(entry.createdAt)}
                                   </div>
                                 )}
                               </div>
                               <div style={{ display: 'flex', gap: 4 }}>
+                                <button className="btn-ghost" style={{ padding: 4 }} onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const res = await updateTrail(entry._id, { highlighted: !entry.highlighted });
+                                    setEntries(prev => prev.map(en => en._id === entry._id ? res.data : en));
+                                  } catch { toast.error('Failed to toggle highlight'); }
+                                }}>
+                                  {entry.highlighted ? <IoStar size={14} color="#FBBF24" /> : <IoStarOutline size={14} color="var(--text-muted)" />}
+                                </button>
                                 <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); startQuickEdit(entry); }}>
-                                  <IoCreate size={14} color="var(--text-muted)" />
+                                  <IoCreate size={14} color={entry.highlighted ? '#ccc' : 'var(--text-muted)'} />
                                 </button>
                                 <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setDetailEntry(entry); }}>
-                                  <IoDocumentText size={14} color="var(--text-muted)" />
+                                  <IoDocumentText size={14} color={entry.highlighted ? '#ccc' : 'var(--text-muted)'} />
                                 </button>
                                 <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); handleCopy(entry); }}>
-                                  <IoCopy size={14} color="var(--text-muted)" />
+                                  <IoCopy size={14} color={entry.highlighted ? '#ccc' : 'var(--text-muted)'} />
                                 </button>
                                 <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setConfirmDelete(entry); }}>
                                   <IoTrash size={14} color="var(--danger)" />

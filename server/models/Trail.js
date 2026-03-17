@@ -13,6 +13,7 @@ const reminderSchema = new mongoose.Schema({
 const trailSchema = new mongoose.Schema({
   text: { type: String, required: true },
   reminders: [reminderSchema],
+  highlighted: { type: Boolean, default: false },
   sortOrder: { type: Number, default: 0 },
   adjustedAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now },
