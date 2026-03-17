@@ -580,18 +580,22 @@ export default function QuickTrail() {
                               </>
                             )}
                             {quickEditId !== entry._id && (
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                  {formatDate(entry.createdAt)},{' '}
-                                  <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{formatTime(entry.createdAt)}</span>
-                                </span>
-                                {entry.adjustedAt && (
-                                  <IoTime size={12} color="#F59E0B" title="Time adjusted" />
-                                )}
-                                {hasReminders && (
-                                  <IoAlarm size={12} color="var(--primary)" title="Has reminders" />
-                                )}
+                            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                                    {formatTime(entry.createdAt)}
+                                  </span>
+                                  {entry.adjustedAt && (
+                                    <IoTime size={11} color="#F59E0B" title="Time adjusted" />
+                                  )}
+                                  {hasReminders && (
+                                    <IoAlarm size={11} color="var(--primary)" title="Has reminders" />
+                                  )}
+                                </div>
+                                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
+                                  {formatDate(entry.createdAt)}
+                                </div>
                               </div>
                               <div style={{ display: 'flex', gap: 4 }}>
                                 <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); startQuickEdit(entry); }}>
