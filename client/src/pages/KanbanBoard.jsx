@@ -18,7 +18,7 @@ import {
   getWorkOrders, createWorkOrder, updateWorkOrder, moveWorkOrder, deleteWorkOrder,
   getWorkOrderNotes, addWorkOrderNote, updateWorkOrderNote, deleteWorkOrderNote,
   logWorkOrderExpense, getBudgets, bulkArchiveWorkOrders, getArchivedWorkOrders,
-  getPriceItems, duplicateWorkOrder, bulkMoveWorkOrders,
+  getPriceItems, createPriceItem, addPriceEntry, duplicateWorkOrder, bulkMoveWorkOrders,
 } from '../api';
 
 const PRIORITY_COLORS = { low: '#22C55E', medium: '#F59E0B', high: '#EF4444' };
@@ -1159,11 +1159,14 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
   const [isBudget, setIsBudget] = useState(false);
   const [budgetId, setBudgetId] = useState('');
   const [budgetAmount, setBudgetAmount] = useState('');
+  const [quantity, setQuantity] = useState('1');
   const [budgets, setBudgets] = useState([]);
   const [saving, setSaving] = useState(false);
   const [priceItems, setPriceItems] = useState([]);
   const [showPriceSuggestions, setShowPriceSuggestions] = useState(false);
   const [selectedPriceItem, setSelectedPriceItem] = useState(null);
+  const [showPriceListPrompt, setShowPriceListPrompt] = useState(false);
+  const [pendingSubmitData, setPendingSubmitData] = useState(null);
   const titleRef = useRef(null);
   const suggestionsRef = useRef(null);
 
@@ -1176,14 +1179,16 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
     !title.trim() || item.name.toLowerCase().includes(title.toLowerCase())
   );
 
+  const unitPrice = selectedPriceItem?.latestPrice?.amount || null;
+
   const handleSelectPriceItem = (item) => {
     setTitle(item.name);
     setSelectedPriceItem(item);
     setShowPriceSuggestions(false);
     setIsBudget(true);
-    if (item.latestPrice) {
-      setBudgetAmount(String(item.latestPrice.amount || ''));
-    }
+    const price = item.latestPrice?.amount || 0;
+    const qty = parseInt(quantity) || 1;
+    setBudgetAmount(String(price * qty));
   };
 
   const handleTitleChange = (e) => {
@@ -1191,6 +1196,15 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
     setShowPriceSuggestions(true);
     if (selectedPriceItem && e.target.value !== selectedPriceItem.name) {
       setSelectedPriceItem(null);
+      setBudgetAmount('');
+    }
+  };
+
+  const handleQuantityChange = (e) => {
+    const qty = e.target.value;
+    setQuantity(qty);
+    if (unitPrice) {
+      setBudgetAmount(String(unitPrice * (parseInt(qty) || 1)));
     }
   };
 
@@ -1205,16 +1219,14 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!title.trim() || saving) return;
+  const doCreateWorkOrder = async (data, addToPriceList) => {
     setSaving(true);
     try {
-      const data = { title: title.trim(), priority };
-      if (dueDate) data.dueDate = dueDate;
-      if (isBudget && budgetId) {
-        data.budgetId = budgetId;
-        data.budgetAmount = parseFloat(budgetAmount) || 0;
+      if (addToPriceList && !selectedPriceItem && data.budgetAmount) {
+        const priceRes = await createPriceItem({ name: data.title, category: 'General', price: data.budgetAmount });
+        if (priceRes.data) {
+          setPriceItems(prev => [...prev, priceRes.data]);
+        }
       }
       const res = await createWorkOrder(data);
       onCreated(res.data);
@@ -1223,9 +1235,35 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
     finally { setSaving(false); }
   };
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!title.trim() || saving) return;
+    const data = { title: title.trim(), priority };
+    if (dueDate) data.dueDate = dueDate;
+    if (isBudget && budgetId) {
+      data.budgetId = budgetId;
+      data.budgetAmount = parseFloat(budgetAmount) || 0;
+    }
+    // If budget entry but not from price list, prompt to add
+    if (isBudget && !selectedPriceItem && data.budgetAmount) {
+      setPendingSubmitData(data);
+      setShowPriceListPrompt(true);
+      return;
+    }
+    await doCreateWorkOrder(data, false);
+  };
+
+  const handlePriceListResponse = async (addToPriceList) => {
+    setShowPriceListPrompt(false);
+    if (pendingSubmitData) {
+      await doCreateWorkOrder(pendingSubmitData, addToPriceList);
+      setPendingSubmitData(null);
+    }
+  };
+
   return (
     <div style={modalBackdrop} onClick={onClose}>
-      <div style={modalContent} onClick={e => e.stopPropagation()}>
+      <div style={{ ...modalContent, position: 'relative', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700 }}>{isBacklog ? 'Add to Backlog' : 'New Work Order'}</h3>
           <button className="btn-ghost" onClick={onClose} style={{ padding: 4 }}><IoClose size={20} /></button>
@@ -1307,10 +1345,17 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
                   ))}
                 </select>
               </div>
-              <div className="form-group">
-                <label>Amount (PKR)</label>
-                <input type="number" value={budgetAmount} onChange={e => setBudgetAmount(e.target.value)}
-                  placeholder="0" min="0" step="0.01" />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div className="form-group" style={{ flex: '0 0 80px' }}>
+                  <label>Qty</label>
+                  <input type="number" value={quantity} onChange={handleQuantityChange}
+                    placeholder="1" min="1" step="1" />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Amount (PKR){unitPrice ? ` — ${formatPKR(unitPrice)}/unit` : ''}</label>
+                  <input type="number" value={budgetAmount} onChange={e => setBudgetAmount(e.target.value)}
+                    placeholder="0" min="0" step="0.01" />
+                </div>
               </div>
             </>
           )}
@@ -1320,6 +1365,30 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
             {saving ? 'Creating...' : isBacklog ? 'Add to Backlog' : 'Create Work Order'}
           </button>
         </form>
+
+        {showPriceListPrompt && (
+          <div style={{
+            position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            borderRadius: 'var(--radius-lg)', zIndex: 20, padding: 16,
+          }}>
+            <div style={{
+              background: 'var(--bg-card)', borderRadius: 'var(--radius-md)',
+              padding: 20, maxWidth: 320, width: '100%',
+              border: '1px solid var(--border)',
+            }}>
+              <p style={{ fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>
+                <strong>"{title.trim()}"</strong> is not in your price list. Would you like to add it with the amount of <strong>{formatPKR(parseFloat(budgetAmount) || 0)}</strong>?
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn-ghost" onClick={() => handlePriceListResponse(false)}
+                  style={{ flex: 1, padding: '10px 0', fontSize: 13 }}>No, skip</button>
+                <button className="btn-primary" onClick={() => handlePriceListResponse(true)}
+                  style={{ flex: 1, padding: '10px 0', fontSize: 13 }}>Yes, add it</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

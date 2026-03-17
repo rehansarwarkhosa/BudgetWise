@@ -274,16 +274,12 @@ export default function Reminders() {
         closeForm();
         fetchReminders();
       } else {
-        const res = await createReminder(payload);
-        toast.success('Reminder created — add notes now');
+        await createReminder(payload);
+        toast.success('Reminder created');
         closeForm();
         await fetchReminders();
-        // Auto-expand and prompt to add note
-        const newId = res.data._id;
         setStatusTab('active');
         setViewMode('list');
-        setExpandedId(newId);
-        setPendingNoteForId(newId);
       }
     } catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
