@@ -333,6 +333,7 @@ export default function Settings() {
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState(null);
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
   const [trailBoldText, setTrailBoldText] = useState(false);
+  const [trailShowDate, setTrailShowDate] = useState(true);
   const [trailHighlights, setTrailHighlights] = useState([]);
   const [newKeyword, setNewKeyword] = useState('');
   const [newColor, setNewColor] = useState('#ef4444');
@@ -362,6 +363,7 @@ export default function Settings() {
       setTheme(settings.theme || 'dark');
       setEmailNotificationsEnabled(settings.emailNotificationsEnabled ?? true);
       setTrailBoldText(settings.trailBoldText || false);
+      setTrailShowDate(settings.trailShowDate ?? true);
       setTrailHighlights(settings.trailHighlights || []);
       setRoutineHighlights(settings.routineHighlights || []);
       const kdc = settings.kanbanDueDateColors || {};
@@ -940,6 +942,27 @@ export default function Settings() {
           }}>
             <span style={{
               position: 'absolute', top: 2, left: trailBoldText ? 22 : 2,
+              width: 20, height: 20, borderRadius: '50%', background: 'white',
+              transition: 'left 0.2s',
+            }} />
+          </button>
+        </div>
+
+        {/* Show date toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <span style={{ fontSize: 14 }}>Show date on entries</span>
+          <button onClick={async () => {
+            const next = !trailShowDate;
+            setTrailShowDate(next);
+            try { await updateSettings({ trailShowDate: next }); await refetchSettings(); setInitialized(false); }
+            catch (err) { toast.error(err.message); setTrailShowDate(!next); }
+          }} style={{
+            width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+            background: trailShowDate ? 'var(--primary)' : 'var(--bg-input)',
+            position: 'relative', transition: 'background 0.2s',
+          }}>
+            <span style={{
+              position: 'absolute', top: 2, left: trailShowDate ? 22 : 2,
               width: 20, height: 20, borderRadius: '50%', background: 'white',
               transition: 'left 0.2s',
             }} />

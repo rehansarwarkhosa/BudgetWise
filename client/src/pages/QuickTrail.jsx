@@ -69,6 +69,7 @@ function getEntryHighlight(text, highlights) {
 export default function QuickTrail() {
   const { settings } = useSettings();
   const trailBold = settings?.trailBoldText || false;
+  const trailShowDate = settings?.trailShowDate !== false;
   const trailHighlights = useMemo(() => settings?.trailHighlights || [], [settings?.trailHighlights]);
   const reorderEnabled = settings?.trailReorderEnabled !== false;
   const reorderTapsNeeded = settings?.trailReorderTaps || 2;
@@ -593,9 +594,11 @@ export default function QuickTrail() {
                                     <IoAlarm size={11} color="var(--primary)" title="Has reminders" />
                                   )}
                                 </div>
-                                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
-                                  {formatDate(entry.createdAt)}
-                                </div>
+                                {trailShowDate && (
+                                  <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 1, opacity: 0.6 }}>
+                                    {formatDate(entry.createdAt)}
+                                  </div>
+                                )}
                               </div>
                               <div style={{ display: 'flex', gap: 4 }}>
                                 <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); startQuickEdit(entry); }}>
