@@ -3,7 +3,7 @@ import useBackClose from '../hooks/useBackClose';
 import toast from 'react-hot-toast';
 import {
   IoAdd, IoTrash, IoSearch, IoClose, IoFilter, IoPricetag, IoCreate,
-  IoChevronDown, IoChevronUp, IoStorefront, IoTime,
+  IoChevronDown, IoChevronUp, IoStorefront, IoTime, IoChevronForward,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -12,9 +12,43 @@ import { formatPKR, formatDateTime, formatDate } from '../utils/format';
 import {
   getPriceItems, createPriceItem, updatePriceItem, deletePriceItem,
   addPriceEntry, updatePriceEntry, deletePriceEntry, getBudgetCategories,
+  getStores, createStore, deleteStore, updateStore,
 } from '../api';
 
 export default function PriceList({ categoryColorMap: propColorMap }) {
+  const [subTab, setSubTab] = useState('prices');
+
+  return (
+    <div>
+      {/* Sub-tab navigation */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '1px solid var(--border)' }}>
+        {[
+          { key: 'prices', label: 'Price List', icon: <IoPricetag size={13} /> },
+          { key: 'stores', label: 'Stores', icon: <IoStorefront size={13} /> },
+        ].map(t => (
+          <button key={t.key} className="btn-ghost"
+            onClick={() => setSubTab(t.key)}
+            style={{
+              flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 600,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              color: subTab === t.key ? 'var(--primary)' : 'var(--text-muted)',
+              borderBottom: `2px solid ${subTab === t.key ? 'var(--primary)' : 'transparent'}`,
+              borderRadius: 0, background: 'transparent',
+            }}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'prices' && <PriceListTab categoryColorMap={propColorMap} />}
+      {subTab === 'stores' && <StoresTab />}
+    </div>
+  );
+}
+
+// ──────────────────────── Price List Tab ────────────────────────
+
+function PriceListTab({ categoryColorMap: propColorMap }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,6 +62,7 @@ export default function PriceList({ categoryColorMap: propColorMap }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [categories, setCategories] = useState([]);
   const [categoryColorMap, setCategoryColorMap] = useState(propColorMap || {});
+  const [stores, setStores] = useState([]);
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
 
@@ -38,6 +73,7 @@ export default function PriceList({ categoryColorMap: propColorMap }) {
       res.data.forEach(c => { map[c.name] = c.color || '#3AAFB9'; });
       setCategoryColorMap(map);
     }).catch(() => {});
+    getStores().then(res => setStores(res.data || [])).catch(() => {});
   }, []);
 
   const fetchItems = async (search, category) => {
@@ -226,6 +262,7 @@ export default function PriceList({ categoryColorMap: propColorMap }) {
         <CreatePriceItemModal
           categories={categories}
           categoryColorMap={categoryColorMap}
+          stores={stores}
           onClose={() => setShowCreate(false)}
           onCreated={() => { setShowCreate(false); refresh(); }}
         />
@@ -237,6 +274,7 @@ export default function PriceList({ categoryColorMap: propColorMap }) {
           itemId={detailId}
           categories={categories}
           categoryColorMap={categoryColorMap}
+          stores={stores}
           onClose={() => { setDetailId(null); refresh(); }}
           onDeleted={() => { setDetailId(null); refresh(); }}
         />
@@ -250,9 +288,238 @@ export default function PriceList({ categoryColorMap: propColorMap }) {
   );
 }
 
+// ──────────────────────── Stores Tab ────────────────────────
+
+function StoresTab() {
+  const [stores, setStores] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newStoreName, setNewStoreName] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState('');
+
+  const fetchStores = async () => {
+    try {
+      const res = await getStores();
+      setStores(res.data || []);
+    } catch (err) { toast.error(err.message); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchStores(); }, []);
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!newStoreName.trim() || adding) return;
+    setAdding(true);
+    try {
+      await createStore({ name: newStoreName.trim() });
+      toast.success('Store added');
+      setNewStoreName('');
+      fetchStores();
+    } catch (err) { toast.error(err.message); }
+    finally { setAdding(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
+    try {
+      await deleteStore(confirmDelete._id);
+      toast.success('Store deleted');
+      setStores(prev => prev.filter(s => s._id !== confirmDelete._id));
+    } catch (err) { toast.error(err.message); }
+    setConfirmDelete(null);
+  };
+
+  const handleRename = async (id) => {
+    if (!editName.trim()) return;
+    try {
+      await updateStore(id, { name: editName.trim() });
+      toast.success('Store renamed');
+      setEditingId(null);
+      fetchStores();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div>
+      {/* Add Store Form */}
+      <form onSubmit={handleAdd} style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        <input type="text" value={newStoreName} onChange={e => setNewStoreName(e.target.value)}
+          placeholder="New store name..." style={{ flex: 1, fontSize: 13 }} />
+        <button type="submit" className="btn-primary" disabled={adding || !newStoreName.trim()}
+          style={{ padding: '8px 14px', fontSize: 13, width: 'auto' }}>
+          <IoAdd size={16} />
+        </button>
+      </form>
+
+      {stores.length === 0 ? (
+        <EmptyState icon="🏪" title="No stores yet" subtitle="Add stores to organize where you buy products" />
+      ) : (
+        <div style={{ display: 'grid', gap: 6 }}>
+          {stores.map(store => {
+            const isExpanded = expandedId === store._id;
+            const isEditing = editingId === store._id;
+            return (
+              <div key={store._id} className="card" style={{ overflow: 'hidden' }}>
+                {/* Store Header */}
+                <div style={{
+                  padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8,
+                  cursor: 'pointer',
+                }} onClick={() => setExpandedId(isExpanded ? null : store._id)}>
+                  <IoChevronForward size={14} style={{
+                    transition: 'transform 0.2s', flexShrink: 0,
+                    transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                    color: 'var(--text-muted)',
+                  }} />
+                  <IoStorefront size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                  {isEditing ? (
+                    <div style={{ display: 'flex', gap: 4, flex: 1 }} onClick={e => e.stopPropagation()}>
+                      <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
+                        style={{ flex: 1, fontSize: 13, padding: '4px 8px' }} autoFocus
+                        onKeyDown={e => { if (e.key === 'Enter') handleRename(store._id); if (e.key === 'Escape') setEditingId(null); }} />
+                      <button className="btn-primary" onClick={() => handleRename(store._id)}
+                        style={{ padding: '4px 8px', fontSize: 11, width: 'auto' }}>Save</button>
+                      <button className="btn-ghost" onClick={() => setEditingId(null)}
+                        style={{ padding: '4px 8px', fontSize: 11 }}>Cancel</button>
+                    </div>
+                  ) : (
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{store.name}</span>
+                  )}
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>
+                    {store.productCount} item{store.productCount !== 1 ? 's' : ''}
+                  </span>
+                  {!isEditing && (
+                    <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                      <button className="btn-ghost" style={{ padding: 3 }}
+                        onClick={() => { setEditingId(store._id); setEditName(store.name); }}>
+                        <IoCreate size={13} color="var(--text-muted)" />
+                      </button>
+                      <button className="btn-ghost" style={{ padding: 3 }}
+                        onClick={() => setConfirmDelete(store)}>
+                        <IoTrash size={13} color="var(--danger)" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Expanded Products */}
+                {isExpanded && (
+                  <div style={{
+                    borderTop: '1px solid var(--border)',
+                    background: 'var(--bg-input)',
+                  }}>
+                    {store.products.length === 0 ? (
+                      <p style={{ padding: 12, fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
+                        No products linked to this store yet
+                      </p>
+                    ) : (
+                      store.products.map(product => (
+                        <div key={product.priceItemId} style={{
+                          padding: '8px 12px 8px 40px', fontSize: 13,
+                          borderBottom: '1px solid var(--border)',
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <span style={{ fontWeight: 500 }}>{product.name}</span>
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 6 }}>
+                              {product.category}
+                            </span>
+                          </div>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>
+                              {formatPKR(product.latestPrice)}
+                            </span>
+                            <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+                              {formatDate(product.date)}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <ConfirmModal open={!!confirmDelete} onClose={() => setConfirmDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete store?"
+        message={`Delete "${confirmDelete?.name}"? Products won't be deleted, but their store reference will be cleared.`} />
+    </div>
+  );
+}
+
+// ──────────────────────── Searchable Store Dropdown ────────────────────────
+
+function StoreDropdown({ value, onChange, stores }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filtered = stores.filter(s =>
+    !search.trim() || s.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input type="text"
+        value={open ? search : value}
+        onChange={e => { setSearch(e.target.value); onChange(e.target.value); if (!open) setOpen(true); }}
+        onFocus={() => { setOpen(true); setSearch(value); }}
+        placeholder="Select store..."
+        style={{ width: '100%', fontSize: 13 }}
+      />
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)', maxHeight: 150, overflowY: 'auto',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)' }}>
+              {stores.length === 0 ? 'No stores added yet' : 'No match'}
+            </div>
+          ) : (
+            filtered.map(s => (
+              <div key={s._id} onClick={() => { onChange(s.name); setOpen(false); setSearch(''); }}
+                style={{
+                  padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                  borderBottom: '1px solid var(--border)',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                <IoStorefront size={12} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                {s.name}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ──────────────────────── Create Modal ────────────────────────
 
-function CreatePriceItemModal({ categories, categoryColorMap, onClose, onCreated }) {
+function CreatePriceItemModal({ categories, categoryColorMap, stores, onClose, onCreated }) {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('General');
   const [price, setPrice] = useState('');
@@ -301,8 +568,7 @@ function CreatePriceItemModal({ categories, categoryColorMap, onClose, onCreated
           </div>
           <div className="form-group">
             <label>Store (optional)</label>
-            <input type="text" value={store} onChange={e => setStore(e.target.value)}
-              placeholder="e.g., Imtiaz, Naheed" />
+            <StoreDropdown value={store} onChange={setStore} stores={stores} />
           </div>
           <button type="submit" className="btn-primary" disabled={saving || !name.trim()}
             style={{ width: '100%', marginTop: 8 }}>
@@ -316,7 +582,7 @@ function CreatePriceItemModal({ categories, categoryColorMap, onClose, onCreated
 
 // ──────────────────────── Detail Modal ────────────────────────
 
-function PriceItemDetailModal({ itemId, categories, categoryColorMap, onClose, onDeleted }) {
+function PriceItemDetailModal({ itemId, categories, categoryColorMap, stores, onClose, onDeleted }) {
   const [item, setItem] = useState(null);
   const [prices, setPrices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -502,9 +768,9 @@ function PriceItemDetailModal({ itemId, categories, categoryColorMap, onClose, o
           <input type="number" value={newPrice} onChange={e => setNewPrice(e.target.value)}
             placeholder="New price" min="0" step="0.01" required
             style={{ flex: '1 1 100px', fontSize: 13 }} />
-          <input type="text" value={newStore} onChange={e => setNewStore(e.target.value)}
-            placeholder="Store (optional)"
-            style={{ flex: '1 1 100px', fontSize: 13 }} />
+          <div style={{ flex: '1 1 100px' }}>
+            <StoreDropdown value={newStore} onChange={setNewStore} stores={stores} />
+          </div>
           <button type="submit" className="btn-primary" disabled={addingPrice || !newPrice}
             style={{ padding: '8px 14px', fontSize: 12, width: 'auto' }}>
             <IoAdd size={14} />
@@ -530,9 +796,9 @@ function PriceItemDetailModal({ itemId, categories, categoryColorMap, onClose, o
                       <input type="number" value={editPriceAmount}
                         onChange={e => setEditPriceAmount(e.target.value)}
                         style={{ flex: '1 1 80px', fontSize: 12 }} min="0" step="0.01" />
-                      <input type="text" value={editPriceStore}
-                        onChange={e => setEditPriceStore(e.target.value)}
-                        placeholder="Store" style={{ flex: '1 1 80px', fontSize: 12 }} />
+                      <div style={{ flex: '1 1 80px' }}>
+                        <StoreDropdown value={editPriceStore} onChange={setEditPriceStore} stores={stores} />
+                      </div>
                       <button className="btn-primary" onClick={() => handleUpdatePrice(p._id)}
                         style={{ padding: '6px 10px', fontSize: 11, width: 'auto' }}>Save</button>
                       <button className="btn-ghost" onClick={() => setEditPriceId(null)}

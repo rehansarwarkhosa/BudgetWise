@@ -4,7 +4,7 @@ import {
   IoAdd, IoTrash, IoCopy, IoSearch, IoClose, IoChevronForward, IoChevronBack,
   IoWallet, IoFlag, IoAlarm, IoCreate, IoFilter, IoCalendar,
   IoArchive, IoArrowUndo, IoChevronDown, IoChevronUp, IoList, IoGrid,
-  IoLockClosed, IoLockOpen,
+  IoLockClosed, IoLockOpen, IoStorefront,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -1294,16 +1294,25 @@ function CreateWorkOrderModal({ onClose, onCreated, isBacklog }) {
                     style={{
                       padding: '8px 12px', cursor: 'pointer', fontSize: 13,
                       borderBottom: '1px solid var(--border)',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <span>{item.name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({item.category})</span></span>
-                    {item.latestPrice && (
-                      <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>
-                        {formatPKR(item.latestPrice.amount)}
-                      </span>
-                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{item.name}</span>
+                      {item.latestPrice && (
+                        <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>
+                          {formatPKR(item.latestPrice.amount)}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>({item.category})</span>
+                      {item.latestPrice?.store && (
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <IoStorefront size={9} /> {item.latestPrice.store}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

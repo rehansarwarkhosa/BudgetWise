@@ -23,6 +23,7 @@ import priceItemRoutes from './routes/priceItems.js';
 import auditLogRoutes from './routes/auditLogs.js';
 import stockRoutes from './routes/stock.js';
 import reminderRoutes from './routes/reminders.js';
+import storeRoutes from './routes/stores.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -46,6 +47,7 @@ app.use('/api/price-items', priceItemRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
 app.use('/api/stock', stockRoutes);
 app.use('/api/reminders', reminderRoutes);
+app.use('/api/stores', storeRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, data: { status: 'ok' } });
