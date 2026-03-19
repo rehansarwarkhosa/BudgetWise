@@ -212,6 +212,35 @@ router.post('/:id/add-funds', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Deduct funds from budget (return to pool)
+router.post('/:id/deduct-funds', async (req, res, next) => {
+  try {
+    const { amount, note } = req.body;
+    if (!amount || !note) return error(res, 'Amount and note are required');
+    if (amount <= 0) return error(res, 'Amount must be greater than 0');
+
+    const budget = await Budget.findById(req.params.id);
+    if (!budget) return error(res, 'Budget not found', 404);
+
+    if (amount > budget.remainingAmount) {
+      return error(res, `Cannot deduct more than remaining amount (PKR ${budget.remainingAmount.toLocaleString()})`);
+    }
+
+    budget.allocatedAmount = round2(budget.allocatedAmount - amount);
+    budget.remainingAmount = round2(budget.remainingAmount - amount);
+    await budget.save();
+
+    await FundEntry.create({ budgetId: budget._id, amount: round2(-amount), note });
+
+    await AuditLog.create({
+      action: 'DEDUCT_FUNDS', entity: 'Budget', entityId: budget._id,
+      details: `Deducted ${amount.toLocaleString()} PKR from "${budget.name}" (Note: ${note})`,
+    });
+
+    success(res, budget);
+  } catch (err) { next(err); }
+});
+
 // Get fund entries for a budget
 router.get('/:id/funds', async (req, res, next) => {
   try {

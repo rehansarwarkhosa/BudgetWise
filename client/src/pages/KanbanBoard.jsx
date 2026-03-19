@@ -1435,6 +1435,10 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   const [budgets, setBudgets] = useState([]);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [priceItems, setPriceItems] = useState([]);
+  const [showPriceSuggestions, setShowPriceSuggestions] = useState(false);
+  const editTitleRef = useRef(null);
+  const editSuggestionsRef = useRef(null);
 
   // Notes state
   const [editingNoteId, setEditingNoteId] = useState(null);
@@ -1451,7 +1455,23 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
   useEffect(() => {
     loadDetail();
     getBudgets().then(res => setBudgets(res.data)).catch(() => {});
+    getPriceItems().then(res => setPriceItems(res.data || [])).catch(() => {});
   }, [workOrderId]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (editSuggestionsRef.current && !editSuggestionsRef.current.contains(e.target) &&
+          editTitleRef.current && !editTitleRef.current.contains(e.target)) {
+        setShowPriceSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredPriceItems = priceItems.filter(item =>
+    !editTitle.trim() || item.name.toLowerCase().includes(editTitle.toLowerCase())
+  );
 
   const loadDetail = async () => {
     try {
@@ -1684,9 +1704,48 @@ function WorkOrderDetailModal({ workOrderId, onClose, onDeleted }) {
               </div>
             ) : (
               <div>
-                <div className="form-group">
+                <div className="form-group" style={{ position: 'relative' }}>
                   <label>Title</label>
-                  <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)} />
+                  <input ref={editTitleRef} type="text" value={editTitle}
+                    onChange={e => { setEditTitle(e.target.value); setShowPriceSuggestions(true); }}
+                    onFocus={() => setShowPriceSuggestions(true)} />
+                  {showPriceSuggestions && filteredPriceItems.length > 0 && (
+                    <div ref={editSuggestionsRef} style={{
+                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                      background: 'var(--bg-card)', border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)', maxHeight: 180, overflowY: 'auto',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    }}>
+                      {filteredPriceItems.map(item => (
+                        <div key={item._id} onClick={() => {
+                          setEditTitle(item.name);
+                          setShowPriceSuggestions(false);
+                          if (item.latestPrice) setEditUnitPrice(String(item.latestPrice.amount));
+                          if (!editBudgetId) setEditBudgetId(budgets[0]?._id || '');
+                        }}
+                          style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)' }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{item.name}</span>
+                            {item.latestPrice && (
+                              <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>
+                                {formatPKR(item.latestPrice.amount)}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>({item.category})</span>
+                            {item.latestPrice?.store && (
+                              <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <IoStorefront size={9} /> {item.latestPrice.store}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
                   <label>Priority</label>

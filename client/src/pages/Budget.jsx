@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoCreate, IoChevronUp, IoChevronDown, IoDocumentText, IoPlayCircle, IoBookmark, IoPricetag, IoCube, IoLockClosed, IoLockOpen } from 'react-icons/io5';
+import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoRemoveCircle, IoCreate, IoChevronUp, IoChevronDown, IoDocumentText, IoPlayCircle, IoBookmark, IoPricetag, IoCube, IoLockClosed, IoLockOpen } from 'react-icons/io5';
 import PriceList from './PriceList';
 import StockList from './StockList';
 import Spinner from '../components/Spinner';
@@ -15,11 +15,12 @@ import { formatPKR, formatDate } from '../utils/format';
 import { useSettings } from '../context/SettingsContext';
 import {
   getIncomeSummary, getIncomes, addIncome, deleteIncome,
-  getBudgets, createBudget, updateBudget, deleteBudget, addFundsToBudget,
+  getBudgets, createBudget, updateBudget, deleteBudget, addFundsToBudget, deductFundsFromBudget,
   getExpenses, addExpense, updateExpense, deleteExpense,
   getFundEntries, deleteFundEntry, reorderBudget, getBudgetCategories,
   getBudgetTemplates, createBudgetTemplate, createTemplateFromBudgets,
   useBudgetTemplate, deleteBudgetTemplate, updateSettings,
+  getPriceItems,
 } from '../api';
 
 export default function Budget() {
@@ -708,6 +709,35 @@ function ExpenseModal({ open, budgetId, onClose, onDone }) {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
+  const [priceItems, setPriceItems] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const descRef = useRef(null);
+  const suggestRef = useRef(null);
+
+  useEffect(() => {
+    if (open) getPriceItems().then(res => setPriceItems(res.data || [])).catch(() => {});
+  }, [open]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (suggestRef.current && !suggestRef.current.contains(e.target) &&
+          descRef.current && !descRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredPriceItems = priceItems.filter(item =>
+    !description.trim() || item.name.toLowerCase().includes(description.toLowerCase())
+  );
+
+  const handleSelectPrice = (item) => {
+    setDescription(item.name);
+    if (item.latestPrice) setAmount(String(item.latestPrice.amount));
+    setShowSuggestions(false);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -724,10 +754,36 @@ function ExpenseModal({ open, budgetId, onClose, onDone }) {
   return (
     <Modal open={open} onClose={onClose} title="Log Expense">
       <form onSubmit={handleSubmit}>
-        <div className="form-group">
+        <div className="form-group" style={{ position: 'relative' }}>
           <label>Description</label>
-          <input type="text" placeholder="e.g., Weekly groceries" value={description}
-            onChange={(e) => setDescription(e.target.value)} required />
+          <input ref={descRef} type="text" placeholder="e.g., Weekly groceries" value={description}
+            onChange={(e) => { setDescription(e.target.value); setShowSuggestions(true); }}
+            onFocus={() => setShowSuggestions(true)} required />
+          {showSuggestions && filteredPriceItems.length > 0 && (
+            <div ref={suggestRef} style={{
+              position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', maxHeight: 180, overflowY: 'auto',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            }}>
+              {filteredPriceItems.map(item => (
+                <div key={item._id} onClick={() => handleSelectPrice(item)}
+                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{item.name}</span>
+                    {item.latestPrice && (
+                      <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>
+                        {formatPKR(item.latestPrice.amount)}
+                      </span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>({item.category})</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="form-group">
           <label>Amount (PKR)</label>
@@ -794,6 +850,14 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories, category
   const [confirmDeleteExp, setConfirmDeleteExp] = useState(null);
   const [confirmDeleteFund, setConfirmDeleteFund] = useState(null);
   const [fetched, setFetched] = useState(false);
+  const [deductMode, setDeductMode] = useState(false);
+  const [deductAmount, setDeductAmount] = useState('');
+  const [deductNote, setDeductNote] = useState('');
+  const [deductLoading, setDeductLoading] = useState(false);
+  const [priceItems, setPriceItems] = useState([]);
+  const [showEditSuggestions, setShowEditSuggestions] = useState(false);
+  const editDescRef = useRef(null);
+  const editSuggestRef = useRef(null);
 
   const fetchData = async () => {
     if (!budget?._id) return;
@@ -812,11 +876,41 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories, category
 
   if (open && budget?._id && !fetched && !loading) {
     fetchData();
+    getPriceItems().then(res => setPriceItems(res.data || [])).catch(() => {});
   }
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (editSuggestRef.current && !editSuggestRef.current.contains(e.target) &&
+          editDescRef.current && !editDescRef.current.contains(e.target)) {
+        setShowEditSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredEditPriceItems = priceItems.filter(item =>
+    !editDesc.trim() || item.name.toLowerCase().includes(editDesc.toLowerCase())
+  );
 
   const handleClose = () => {
     setExpenses([]); setFunds([]); setFetched(false); setEditingBudget(false); setEditingExpense(null); setActiveTab('expenses');
+    setDeductMode(false); setDeductAmount(''); setDeductNote('');
     onClose();
+  };
+
+  const handleDeductFunds = async () => {
+    if (!deductAmount || !deductNote) return;
+    setDeductLoading(true);
+    try {
+      await deductFundsFromBudget(budget._id, { amount: Number(deductAmount), note: deductNote });
+      toast.success('Funds deducted');
+      setDeductMode(false); setDeductAmount(''); setDeductNote('');
+      fetchData();
+      onDone();
+    } catch (err) { toast.error(err.message); }
+    finally { setDeductLoading(false); }
   };
 
   const handleSaveBudget = async () => {
@@ -918,6 +1012,35 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories, category
             </div>
           )}
 
+          {/* Deduct Funds */}
+          {!locked && !deductMode && budget?.remainingAmount > 0 && (
+            <button className="btn-outline" onClick={() => setDeductMode(true)}
+              style={{ width: '100%', fontSize: 13, marginBottom: 12, color: 'var(--warning)' }}>
+              <IoRemoveCircle size={14} style={{ marginRight: 4, verticalAlign: -2 }} /> Deduct Funds
+            </button>
+          )}
+          {deductMode && (
+            <div style={{ background: 'var(--bg-input)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+              <div className="form-group">
+                <label>Amount to Deduct (PKR)</label>
+                <input type="number" placeholder="0" value={deductAmount} onChange={(e) => setDeductAmount(e.target.value)}
+                  required min="1" max={budget?.remainingAmount} />
+              </div>
+              <div className="form-group">
+                <label>Reason / Note</label>
+                <textarea placeholder="e.g., Reduced budget allocation" value={deductNote}
+                  onChange={(e) => setDeductNote(e.target.value)} required rows={2} />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn-primary" style={{ flex: 1, background: 'var(--warning)' }}
+                  onClick={handleDeductFunds} disabled={deductLoading || !deductAmount || !deductNote}>
+                  {deductLoading ? 'Deducting...' : 'Deduct'}
+                </button>
+                <button className="btn-outline" style={{ flex: 1 }} onClick={() => { setDeductMode(false); setDeductAmount(''); setDeductNote(''); }}>Cancel</button>
+              </div>
+            </div>
+          )}
+
           {/* Tabs for Expenses / Funds */}
           <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--border)' }}>
             <button onClick={() => setActiveTab('expenses')}
@@ -950,15 +1073,43 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories, category
                   <div key={exp._id}>
                     {editingExpense?._id === exp._id ? (
                       <div style={{ background: 'var(--bg-input)', borderRadius: 8, padding: 12 }}>
-                        <div className="form-group">
-                          <input type="text" value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Description" />
+                        <div className="form-group" style={{ position: 'relative' }}>
+                          <input ref={editDescRef} type="text" value={editDesc}
+                            onChange={(e) => { setEditDesc(e.target.value); setShowEditSuggestions(true); }}
+                            onFocus={() => setShowEditSuggestions(true)}
+                            placeholder="Description" />
+                          {showEditSuggestions && filteredEditPriceItems.length > 0 && (
+                            <div ref={editSuggestRef} style={{
+                              position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                              background: 'var(--bg-card)', border: '1px solid var(--border)',
+                              borderRadius: 'var(--radius-sm)', maxHeight: 180, overflowY: 'auto',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                            }}>
+                              {filteredEditPriceItems.map(item => (
+                                <div key={item._id} onClick={() => { setEditDesc(item.name); if (item.latestPrice) setEditAmt(String(item.latestPrice.amount)); setShowEditSuggestions(false); }}
+                                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)' }}
+                                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{item.name}</span>
+                                    {item.latestPrice && (
+                                      <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>
+                                        {formatPKR(item.latestPrice.amount)}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>({item.category})</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="form-group">
                           <input type="number" value={editAmt} onChange={(e) => setEditAmt(e.target.value)} placeholder="Amount" min="1" />
                         </div>
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button className="btn-primary" style={{ flex: 1, fontSize: 13 }} onClick={handleSaveExpense}>Save</button>
-                          <button className="btn-outline" style={{ flex: 1, fontSize: 13 }} onClick={() => setEditingExpense(null)}>Cancel</button>
+                          <button className="btn-outline" style={{ flex: 1, fontSize: 13 }} onClick={() => { setEditingExpense(null); setShowEditSuggestions(false); }}>Cancel</button>
                         </div>
                       </div>
                     ) : (
@@ -1015,8 +1166,8 @@ function BudgetDetailModal({ open, budget, onClose, onDone, categories, category
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span className="pkr" style={{ fontWeight: 600, color: 'var(--success)' }}>
-                        +{formatPKR(fund.amount)}
+                      <span className="pkr" style={{ fontWeight: 600, color: fund.amount < 0 ? 'var(--warning)' : 'var(--success)' }}>
+                        {fund.amount < 0 ? '' : '+'}{formatPKR(fund.amount)}
                       </span>
                       {!locked && (
                         <button className="btn-ghost" style={{ color: 'var(--danger)', padding: 4 }}
