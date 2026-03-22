@@ -166,6 +166,23 @@ export const createStore = (data) => api.post('/stores', data);
 export const updateStore = (id, data) => api.put(`/stores/${id}`, data);
 export const deleteStore = (id) => api.delete(`/stores/${id}`);
 
+// Events
+export const getEvents = () => api.get('/events');
+export const createEvent = (data) => api.post('/events', data);
+export const updateEvent = (id, data) => api.put(`/events/${id}`, data);
+export const deleteEvent = (id) => api.delete(`/events/${id}`);
+export const getEventContainers = (eventId) => api.get(`/events/${eventId}/containers`);
+export const createEventContainer = (eventId, data) => api.post(`/events/${eventId}/containers`, data);
+export const updateEventContainer = (id, data) => api.put(`/events/containers/${id}`, data);
+export const deleteEventContainer = (id) => api.delete(`/events/containers/${id}`);
+export const getEventEntries = (containerId) => api.get(`/events/containers/${containerId}/entries`);
+export const createEventEntry = (containerId, data) => api.post(`/events/containers/${containerId}/entries`, data);
+export const updateEventEntry = (id, data) => api.put(`/events/entries/${id}`, data);
+export const deleteEventEntry = (id) => api.delete(`/events/entries/${id}`);
+
+// Event Transaction Types (via settings)
+export const getEventTransactionTypes = () => api.get('/settings').then(r => ({ data: r.data.eventTransactionTypes || ['Given', 'Received'] }));
+
 // Audit Logs
 export const getAuditLogs = (page = 1, { date, action } = {}) => api.get('/audit-logs', { params: { page, limit: 50, ...(date ? { date } : {}), ...(action ? { action } : {}) } });
 export const clearAuditLogs = () => api.delete('/audit-logs');

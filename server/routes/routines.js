@@ -8,6 +8,7 @@ import Settings from '../models/Settings.js';
 import AuditLog from '../models/AuditLog.js';
 import RoutineNote from '../models/RoutineNote.js';
 import Reminder from '../models/Reminder.js';
+import Event from '../models/Event.js';
 import { success, error } from '../utils/response.js';
 
 const router = Router();
@@ -724,6 +725,80 @@ router.get('/check-reminders', async (req, res, next) => {
       }
     }
 
+    // ─── Event Reminders (year-independent, month+day only) ───
+    const eventTriggered = [];
+    let evtEmailSent = false;
+    let evtEmailSkipReason = null;
+    let evtPushResult = null;
+
+    try {
+      const eventsWithReminder = await Event.find({ reminderEnabled: true });
+      for (const evt of eventsWithReminder) {
+        if (evt.reminderMonth === pkt.month && evt.reminderDay === pkt.day) {
+          const evtKey = `${todayStr}`;
+          if (evt.lastReminderNotifiedKey === evtKey) continue;
+          eventTriggered.push({ eventId: evt._id, eventName: evt.name });
+          evt.lastReminderNotifiedKey = evtKey;
+          await evt.save();
+        }
+      }
+    } catch (evtErr) {
+      console.error('[check-reminders] Event reminder error:', evtErr.message);
+    }
+
+    if (eventTriggered.length > 0) {
+      await AuditLog.create({
+        action: 'NOTIFY', entity: 'Event',
+        details: `${eventTriggered.length} event reminder(s): ${eventTriggered.map(t => `"${t.eventName}"`).join(', ')}`,
+      });
+
+      if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) {
+        evtEmailSkipReason = 'SendGrid not configured';
+      } else {
+        const evtSettings = await Settings.findOne();
+        if (evtSettings?.emailNotificationsEnabled === false) {
+          evtEmailSkipReason = 'notifications disabled';
+        } else {
+          const toEmail = evtSettings?.notificationEmail || process.env.NOTIFICATION_EMAIL;
+          if (!toEmail) {
+            evtEmailSkipReason = 'no notification email';
+          } else {
+            sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+            const evtList = eventTriggered.map(t => `<li><strong>${t.eventName}</strong></li>`).join('');
+            const timeStr = formatPKT(new Date());
+            try {
+              await sgMail.send({
+                to: toEmail,
+                from: process.env.SENDGRID_FROM_EMAIL,
+                subject: `BudgetWise — ${eventTriggered.length} Event Reminder${eventTriggered.length > 1 ? 's' : ''}`,
+                html: `
+                  <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #6C63FF; margin-bottom: 4px;">Event Reminders</h2>
+                    <p style="color: #666; font-size: 13px; margin-bottom: 16px;">${timeStr} (PKT)</p>
+                    <ul style="padding-left: 20px; line-height: 1.8;">${evtList}</ul>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+                    <p style="color: #999; font-size: 12px;">Sent by BudgetWise</p>
+                  </div>
+                `,
+              });
+              evtEmailSent = true;
+              await AuditLog.create({ action: 'NOTIFY', entity: 'Event', details: `Event reminder email sent to ${toEmail}` });
+            } catch (emailErr) {
+              evtEmailSkipReason = emailErr.message;
+            }
+          }
+        }
+      }
+
+      const evtPushTitle = `BudgetWise — ${eventTriggered.length} Event Reminder${eventTriggered.length > 1 ? 's' : ''}`;
+      const evtPushMessage = eventTriggered.map(t => t.eventName).join(', ');
+      evtPushResult = await sendPushNotification(evtPushTitle, evtPushMessage, 'https://budgetwise-f41c.onrender.com/notes');
+
+      if (evtPushResult.sent) {
+        await AuditLog.create({ action: 'PUSH_NOTIFY', entity: 'Event', details: `Event push sent to ${evtPushResult.recipients} subscriber(s): ${evtPushMessage}` });
+      }
+    }
+
     success(res, {
       triggered, emailSent, count: triggered.length,
       ...(emailSkipReason ? { emailSkipReason } : {}),
@@ -745,6 +820,12 @@ router.get('/check-reminders', async (req, res, next) => {
         emailSent: remEmailSent,
         ...(remEmailSkipReason ? { emailSkipReason: remEmailSkipReason } : {}),
         pushNotification: remPushResult,
+      },
+      events: {
+        triggered: eventTriggered, count: eventTriggered.length,
+        emailSent: evtEmailSent,
+        ...(evtEmailSkipReason ? { emailSkipReason: evtEmailSkipReason } : {}),
+        pushNotification: evtPushResult,
       },
     });
   } catch (err) { next(err); }

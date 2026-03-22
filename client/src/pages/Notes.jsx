@@ -3,7 +3,8 @@ import toast from 'react-hot-toast';
 import {
   IoAdd, IoTrash, IoChevronForward, IoChevronDown, IoSearch, IoArrowBack,
   IoClose, IoPricetag, IoCreate, IoColorPalette, IoTime,
-  IoLockClosed, IoLockOpen,
+  IoLockClosed, IoLockOpen, IoCalendar, IoNotifications, IoNotificationsOff,
+  IoChevronUp,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -15,8 +16,12 @@ import {
   getNotes, createNote, updateNote, deleteNote,
   getTags, createTag, updateTag, deleteTag,
   searchNotes, getRecentNotes, getNotesTree,
+  getEvents, createEvent, updateEvent, deleteEvent,
+  getEventContainers, createEventContainer, updateEventContainer, deleteEventContainer,
+  getEventEntries, createEventEntry, updateEventEntry, deleteEventEntry,
+  getSettings, updateSettings,
 } from '../api';
-import { formatDateTime } from '../utils/format';
+import { formatDateTime, formatDate, formatPKR } from '../utils/format';
 import useSwipeTabs from '../hooks/useSwipeTabs';
 import useBackClose from '../hooks/useBackClose';
 
@@ -26,43 +31,62 @@ import { useSettings } from '../context/SettingsContext';
 
 export default function Notes() {
   const { settings: appSettings } = useSettings();
-  // Tab: 'tree' | 'recent' | 'search'
+  // Parent tab: 'notes' | 'events'
+  const [parentTab, _setParentTab] = useState(() => sessionStorage.getItem('notes_parent_tab') || 'notes');
+  const setParentTab = useCallback((t) => { _setParentTab(t); sessionStorage.setItem('notes_parent_tab', t); }, []);
+
+  return (
+    <div className="page">
+      {/* Parent Tab Bar */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 14, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+        {[{ key: 'notes', label: 'Notes' }, { key: 'events', label: 'Events' }].map(t => (
+          <button key={t.key} onClick={() => setParentTab(t.key)} style={{
+            flex: 1, padding: '10px 0', fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer',
+            background: parentTab === t.key ? 'var(--primary)' : 'transparent',
+            color: parentTab === t.key ? 'white' : 'var(--text-secondary)',
+            transition: 'all 0.2s',
+          }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {parentTab === 'notes' ? <NotesSection appSettings={appSettings} /> : <EventsSection appSettings={appSettings} />}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// ─── Notes Section (existing functionality) ───
+// ════════════════════════════════════════════════════════════
+
+function NotesSection({ appSettings }) {
   const [tab, _setTab] = useState(() => sessionStorage.getItem('notes_tab') || 'tree');
   const setTab = useCallback((t) => { _setTab(t); sessionStorage.setItem('notes_tab', t); }, []);
   const swipe = useSwipeTabs(['tree', 'recent'], tab, setTab, undefined, appSettings?.tabSwipeNotes !== false);
 
-  // Tree data
   const [tree, setTree] = useState([]);
   const [treeLoading, setTreeLoading] = useState(true);
   const [expandedTopics, setExpandedTopics] = useState({});
   const [expandedSubs, setExpandedSubs] = useState({});
-
-  // Recent
   const [recentNotes, setRecentNotes] = useState([]);
   const [recentLoading, setRecentLoading] = useState(false);
-
-  // Modals
   const [createTopicModal, setCreateTopicModal] = useState(false);
-  const [createSubTopicModal, setCreateSubTopicModal] = useState(null); // topicId
-  const [noteEditorModal, setNoteEditorModal] = useState(null); // null | { note, subTopicId }
+  const [createSubTopicModal, setCreateSubTopicModal] = useState(null);
+  const [noteEditorModal, setNoteEditorModal] = useState(null);
   const [tagManagerModal, setTagManagerModal] = useState(false);
   useBackClose(!!noteEditorModal, () => setNoteEditorModal(null));
   useBackClose(!!createTopicModal, () => setCreateTopicModal(false));
   useBackClose(!!createSubTopicModal, () => setCreateSubTopicModal(null));
   useBackClose(!!tagManagerModal, () => setTagManagerModal(false));
 
-  // Search
   const [searchQuery, setSearchQuery] = useState('');
   const [searchTag, setSearchTag] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [allTags, setAllTags] = useState([]);
-
-  // Edit state
   const [editItem, setEditItem] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
-
-  // Topic color editing
   const topicColorRef = useRef(null);
   const [editingTopicColor, setEditingTopicColor] = useState(null);
 
@@ -109,20 +133,13 @@ export default function Notes() {
   }, []);
 
   useEffect(() => { fetchTree(); fetchTags(); }, []);
-
   useEffect(() => {
     if (tab === 'recent' && !recentFetched.current) fetchRecent();
   }, [tab]);
 
-  const toggleTopic = (topicId) => {
-    setExpandedTopics(prev => ({ ...prev, [topicId]: !prev[topicId] }));
-  };
+  const toggleTopic = (topicId) => setExpandedTopics(prev => ({ ...prev, [topicId]: !prev[topicId] }));
+  const toggleSub = (subId) => setExpandedSubs(prev => ({ ...prev, [subId]: !prev[subId] }));
 
-  const toggleSub = (subId) => {
-    setExpandedSubs(prev => ({ ...prev, [subId]: !prev[subId] }));
-  };
-
-  // Search
   const doSearch = async () => {
     if (!searchQuery && !searchTag) return;
     setSearchLoading(true);
@@ -143,47 +160,33 @@ export default function Notes() {
     }
   }, [searchQuery, searchTag, tab]);
 
-  // Edit inline
   const handleRename = async () => {
     if (!editItem) return;
     try {
-      if (editItem.type === 'topic') {
-        await updateTopic(editItem.id, { name: editItem.name });
-      } else if (editItem.type === 'subtopic') {
-        await updateSubTopic(editItem.id, { name: editItem.name });
-      }
+      if (editItem.type === 'topic') await updateTopic(editItem.id, { name: editItem.name });
+      else if (editItem.type === 'subtopic') await updateSubTopic(editItem.id, { name: editItem.name });
       toast.success('Renamed');
       fetchTree();
     } catch (err) { toast.error(err.message); }
     setEditItem(null);
   };
 
-  // Delete handlers
   const handleConfirmDelete = async () => {
     if (!confirmDelete) return;
     try {
-      if (confirmDelete.type === 'topic') {
-        await deleteTopic(confirmDelete.id);
-        toast.success('Topic deleted');
-      } else if (confirmDelete.type === 'subtopic') {
-        await deleteSubTopic(confirmDelete.id);
-        toast.success('SubTopic deleted');
-      } else if (confirmDelete.type === 'note') {
-        await deleteNote(confirmDelete.id);
-        toast.success('Note deleted');
-      }
+      if (confirmDelete.type === 'topic') { await deleteTopic(confirmDelete.id); toast.success('Topic deleted'); }
+      else if (confirmDelete.type === 'subtopic') { await deleteSubTopic(confirmDelete.id); toast.success('SubTopic deleted'); }
+      else if (confirmDelete.type === 'note') { await deleteNote(confirmDelete.id); toast.success('Note deleted'); }
       fetchTree();
     } catch (err) { toast.error(err.message); }
   };
 
   const refreshAll = () => { fetchTree(); fetchTags(); if (tab === 'recent') fetchRecent(); };
 
-  if (treeLoading && tree.length === 0) return (
-    <div className="page"><h1 className="page-title">Notes</h1><Spinner /></div>
-  );
+  if (treeLoading && tree.length === 0) return <Spinner />;
 
   return (
-    <div className="page" onTouchStart={tab !== 'search' ? swipe.onTouchStart : undefined} onTouchEnd={tab !== 'search' ? swipe.onTouchEnd : undefined}>
+    <div onTouchStart={tab !== 'search' ? swipe.onTouchStart : undefined} onTouchEnd={tab !== 'search' ? swipe.onTouchEnd : undefined}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         {tab === 'search' && (
@@ -278,7 +281,7 @@ export default function Notes() {
       {/* Recent Notes */}
       <div style={{ display: tab === 'recent' ? 'block' : 'none' }}>
           {recentLoading ? <Spinner /> : recentNotes.length === 0 ? (
-            <EmptyState icon="🕐" title="No recent notes" subtitle="Notes you edit will appear here" />
+            <EmptyState icon="clock" title="No recent notes" subtitle="Notes you edit will appear here" />
           ) : (
             <div style={{ display: 'grid', gap: 8 }}>
               {recentNotes.map((note) => {
@@ -321,12 +324,11 @@ export default function Notes() {
       {/* Tree View */}
       <div style={{ display: tab === 'tree' ? 'block' : 'none' }}>
           {tree.length === 0 ? (
-            <EmptyState icon="📝" title="No topics yet" subtitle="Create a topic to organize your notes" />
+            <EmptyState icon="doc" title="No topics yet" subtitle="Create a topic to organize your notes" />
           ) : (
             <div style={{ display: 'grid', gap: 0 }}>
               {tree.map((topic) => (
                 <div key={topic._id}>
-                  {/* Topic row */}
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 6, padding: '10px 8px',
                     borderBottom: '1px solid var(--border)',
@@ -339,7 +341,6 @@ export default function Notes() {
                         ? <IoChevronDown size={16} color={topic.color || 'var(--primary)'} />
                         : <IoChevronForward size={16} color="var(--text-muted)" />}
                     </button>
-
                     {editItem?.type === 'topic' && editItem.id === topic._id ? (
                       <form onSubmit={(e) => { e.preventDefault(); handleRename(); }} style={{ flex: 1, display: 'flex', gap: 6 }}>
                         <input type="text" value={editItem.name} autoFocus
@@ -376,8 +377,6 @@ export default function Notes() {
                       </>
                     )}
                   </div>
-
-                  {/* SubTopics (expanded) */}
                   {expandedTopics[topic._id] && (
                     <div style={{ paddingLeft: 20 }}>
                       {topic.subTopics.length === 0 ? (
@@ -386,7 +385,6 @@ export default function Notes() {
                         </div>
                       ) : topic.subTopics.map((sub) => (
                         <div key={sub._id}>
-                          {/* SubTopic row */}
                           <div style={{
                             display: 'flex', alignItems: 'center', gap: 6, padding: '8px 6px',
                             borderBottom: '1px solid var(--border)',
@@ -398,7 +396,6 @@ export default function Notes() {
                                 ? <IoChevronDown size={14} color="var(--primary)" />
                                 : <IoChevronForward size={14} color="var(--text-muted)" />}
                             </button>
-
                             {editItem?.type === 'subtopic' && editItem.id === sub._id ? (
                               <form onSubmit={(e) => { e.preventDefault(); handleRename(); }} style={{ flex: 1, display: 'flex', gap: 6 }}>
                                 <input type="text" value={editItem.name} autoFocus
@@ -430,8 +427,6 @@ export default function Notes() {
                               </>
                             )}
                           </div>
-
-                          {/* Notes (expanded) */}
                           {expandedSubs[sub._id] && (
                             <div style={{ paddingLeft: 20 }}>
                               {sub.notes.length === 0 ? (
@@ -477,33 +472,22 @@ export default function Notes() {
               ))}
             </div>
           )}
-
-          {/* FAB */}
           <button className="fab" onClick={() => setCreateTopicModal(true)}>
             <IoAdd />
           </button>
       </div>
 
-      {/* Hidden color picker for topic color editing */}
       <input ref={topicColorRef} type="color"
         value={tree.find(t => t._id === editingTopicColor)?.color || '#3AAFB9'}
         onChange={handleTopicColorChange}
         style={{ position: 'fixed', top: -100, left: -100, width: 0, height: 0, opacity: 0, pointerEvents: 'none' }} />
 
-      {/* Modals */}
-      <CreateTopicModal open={createTopicModal} onClose={() => setCreateTopicModal(false)}
-        onDone={refreshAll} />
+      <CreateTopicModal open={createTopicModal} onClose={() => setCreateTopicModal(false)} onDone={refreshAll} />
       <CreateSubTopicModal open={!!createSubTopicModal} topicId={createSubTopicModal}
         onClose={() => setCreateSubTopicModal(null)} onDone={refreshAll} />
       {noteEditorModal && (
-        <NoteEditorModal
-          note={noteEditorModal.note}
-          subTopicId={noteEditorModal.subTopicId}
-          allTags={allTags}
-          onClose={() => setNoteEditorModal(null)}
-          onDone={refreshAll}
-          onTagsChanged={fetchTags}
-        />
+        <NoteEditorModal note={noteEditorModal.note} subTopicId={noteEditorModal.subTopicId}
+          allTags={allTags} onClose={() => setNoteEditorModal(null)} onDone={refreshAll} onTagsChanged={fetchTags} />
       )}
       <TagManagerModal open={tagManagerModal} tags={allTags}
         onClose={() => setTagManagerModal(false)} onDone={fetchTags} />
@@ -511,6 +495,813 @@ export default function Notes() {
         onConfirm={handleConfirmDelete}
         title={`Delete ${confirmDelete?.type}?`}
         message={`Are you sure you want to delete "${confirmDelete?.name}"?${confirmDelete?.type === 'topic' ? ' All subtopics and notes will also be deleted.' : confirmDelete?.type === 'subtopic' ? ' All notes inside will also be deleted.' : ''}`} />
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// ─── Events Section ───
+// ════════════════════════════════════════════════════════════
+
+function EventsSection() {
+  const [tab, _setTab] = useState(() => sessionStorage.getItem('events_tab') || 'add');
+  const setTab = useCallback((t) => { _setTab(t); sessionStorage.setItem('events_tab', t); }, []);
+
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [transactionTypes, setTransactionTypes] = useState(['Given', 'Received']);
+
+  // Event note editor
+  const [eventNoteEditor, setEventNoteEditor] = useState(null); // { content, onSave }
+  useBackClose(!!eventNoteEditor, () => setEventNoteEditor(null));
+
+  // Event detail view (containers + entries)
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  useBackClose(!!selectedEvent, () => setSelectedEvent(null));
+
+  const fetchEvents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await getEvents();
+      setEvents(res.data);
+    } catch (err) { toast.error(err.message); }
+    finally { setLoading(false); }
+  }, []);
+
+  const fetchTypes = useCallback(async () => {
+    try {
+      const res = await getSettings();
+      const types = res.data.eventTransactionTypes;
+      if (types && types.length > 0) setTransactionTypes(types);
+    } catch { /* use defaults */ }
+  }, []);
+
+  useEffect(() => { fetchEvents(); fetchTypes(); }, []);
+
+  return (
+    <div>
+      {selectedEvent ? (
+        <EventDetailView
+          event={selectedEvent}
+          onBack={() => { setSelectedEvent(null); fetchEvents(); }}
+          transactionTypes={transactionTypes}
+        />
+      ) : eventNoteEditor ? (
+        <RichNoteEditor
+          initialContent={eventNoteEditor.content}
+          onSave={(html) => { eventNoteEditor.onSave(html); setEventNoteEditor(null); }}
+          onClose={() => setEventNoteEditor(null)}
+        />
+      ) : (
+        <>
+          {/* Sub-tab bar */}
+          <div style={{ display: 'flex', gap: 0, marginBottom: 14, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+            {[{ key: 'add', label: 'Add Event' }, { key: 'all', label: 'All Events' }].map(t => (
+              <button key={t.key} onClick={() => setTab(t.key)} style={{
+                flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+                background: tab === t.key ? 'var(--primary)' : 'transparent',
+                color: tab === t.key ? 'white' : 'var(--text-secondary)',
+                transition: 'all 0.2s',
+              }}>
+                {t.key === 'add' && <IoAdd size={13} style={{ marginRight: 4, verticalAlign: -2 }} />}
+                {t.key === 'all' && <IoCalendar size={13} style={{ marginRight: 4, verticalAlign: -2 }} />}
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {tab === 'add' && (
+            <AddEventForm
+              onCreated={() => { fetchEvents(); setTab('all'); }}
+              onOpenNoteEditor={(content, onSave) => setEventNoteEditor({ content, onSave })}
+            />
+          )}
+          {tab === 'all' && (
+            <AllEventsList
+              events={events}
+              loading={loading}
+              onRefresh={fetchEvents}
+              onSelectEvent={setSelectedEvent}
+            />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Add Event Form ───
+
+function AddEventForm({ onCreated, onOpenNoteEditor }) {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  const [name, setName] = useState('');
+  const [date, setDate] = useState(todayStr);
+  const [time, setTime] = useState(nowTime);
+  const [notes, setNotes] = useState('');
+  const [reminder, setReminder] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) { toast.error('Event name is required'); return; }
+    setSaving(true);
+    try {
+      await createEvent({
+        name: name.trim(),
+        date: date || todayStr,
+        time: time || nowTime,
+        notes,
+        reminderEnabled: reminder,
+      });
+      toast.success('Event created');
+      setName(''); setDate(todayStr); setTime(nowTime); setNotes(''); setReminder(false);
+      onCreated();
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
+    finally { setSaving(false); }
+  };
+
+  const notesPreview = notes ? (
+    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}
+      dangerouslySetInnerHTML={{ __html: notes.length > 100 ? notes.substring(0, 100) + '...' : notes }} />
+  ) : null;
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className="form-group">
+        <label>Event Name *</label>
+        <input type="text" placeholder="e.g., Wife's Birthday, Eid" value={name}
+          onChange={(e) => setName(e.target.value)} required autoFocus />
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+        <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+          <label>Date</label>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+          <label>Time</label>
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+        </div>
+      </div>
+      <div className="form-group">
+        <label>Notes</label>
+        <button type="button" onClick={() => onOpenNoteEditor(notes, (html) => setNotes(html))}
+          style={{
+            width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)',
+            background: 'var(--bg-card)', cursor: 'pointer', textAlign: 'left',
+            color: notes ? 'var(--text)' : 'var(--text-muted)', fontSize: 13,
+          }}>
+          {notes ? 'Edit notes...' : 'Tap to add notes...'}
+        </button>
+        {notesPreview}
+      </div>
+      <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <label style={{ flex: 1, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {reminder ? <IoNotifications size={18} color="var(--primary)" /> : <IoNotificationsOff size={18} color="var(--text-muted)" />}
+          Yearly Reminder
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>(month & day only)</span>
+        </label>
+        <button type="button" onClick={() => setReminder(!reminder)}
+          style={{
+            width: 48, height: 26, borderRadius: 13, border: 'none', cursor: 'pointer',
+            background: reminder ? 'var(--primary)' : 'var(--border)',
+            position: 'relative', transition: 'background 0.2s',
+          }}>
+          <span style={{
+            position: 'absolute', top: 3, left: reminder ? 25 : 3,
+            width: 20, height: 20, borderRadius: '50%', background: 'white',
+            transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+          }} />
+        </button>
+      </div>
+      {reminder && (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12, padding: '6px 10px', background: 'var(--primary)10', borderRadius: 6 }}>
+          You'll be reminded every year on {date ? new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) : 'the selected date'} via push notification and email (if enabled).
+        </div>
+      )}
+      <button type="submit" className="btn-primary" disabled={saving}>
+        {saving ? 'Creating...' : 'Create Event'}
+      </button>
+    </form>
+  );
+}
+
+// ─── All Events List ───
+
+function AllEventsList({ events, loading, onRefresh, onSelectEvent }) {
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  const handleDelete = async () => {
+    if (!confirmDel) return;
+    try {
+      await deleteEvent(confirmDel._id);
+      toast.success('Event deleted');
+      onRefresh();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  if (loading) return <Spinner />;
+  if (events.length === 0) return <EmptyState icon="calendar" title="No events yet" subtitle="Create your first event from the Add Event tab" />;
+
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      {events.map((evt) => (
+        <div key={evt._id} className="card" style={{ padding: '12px 14px', cursor: 'pointer' }}
+          onClick={() => onSelectEvent(evt)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 2 }}>{evt.name}</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+                <span><IoCalendar size={11} style={{ verticalAlign: -1, marginRight: 3 }} />{formatDate(evt.date)}</span>
+                {evt.time && <span>{evt.time}</span>}
+                {evt.reminderEnabled && (
+                  <span style={{ color: 'var(--primary)', fontWeight: 600 }}>
+                    <IoNotifications size={11} style={{ verticalAlign: -1, marginRight: 2 }} />Reminder
+                  </span>
+                )}
+              </div>
+            </div>
+            <button className="btn-ghost" style={{ padding: 4 }}
+              onClick={(e) => { e.stopPropagation(); setConfirmDel(evt); }}>
+              <IoTrash size={14} color="var(--danger)" />
+            </button>
+          </div>
+        </div>
+      ))}
+      <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)}
+        onConfirm={handleDelete}
+        title="Delete event?"
+        message={`Delete "${confirmDel?.name}" and all its containers/entries?`} />
+    </div>
+  );
+}
+
+// ─── Event Detail View (Containers + Entries) ───
+
+function EventDetailView({ event, onBack, transactionTypes }) {
+  const [containers, setContainers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [askContainerName, setAskContainerName] = useState(false);
+  const [containerName, setContainerName] = useState('');
+  const [expandedContainer, setExpandedContainer] = useState(null);
+  const [entries, setEntries] = useState({});
+  const [editingEvent, setEditingEvent] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  // Entry form state
+  const [entryForm, setEntryForm] = useState({ name: '', type: transactionTypes[0] || 'Given', amount: '' });
+  const [entrySaving, setEntrySaving] = useState(false);
+  const [editingEntry, setEditingEntry] = useState(null);
+  const [confirmDelEntry, setConfirmDelEntry] = useState(null);
+
+  useBackClose(!!askContainerName, () => setAskContainerName(false));
+  useBackClose(!!editingEvent, () => setEditingEvent(false));
+
+  const fetchContainers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await getEventContainers(event._id);
+      setContainers(res.data);
+    } catch (err) { toast.error(err.message); }
+    finally { setLoading(false); }
+  }, [event._id]);
+
+  useEffect(() => { fetchContainers(); }, []);
+
+  const fetchEntries = useCallback(async (containerId) => {
+    try {
+      const res = await getEventEntries(containerId);
+      setEntries(prev => ({ ...prev, [containerId]: res.data }));
+    } catch (err) { toast.error(err.message); }
+  }, []);
+
+  const handleToggleContainer = (containerId) => {
+    if (expandedContainer === containerId) {
+      setExpandedContainer(null);
+    } else {
+      setExpandedContainer(containerId);
+      if (!entries[containerId]) fetchEntries(containerId);
+      setEntryForm({ name: '', type: transactionTypes[0] || 'Given', amount: '' });
+      setEditingEntry(null);
+    }
+  };
+
+  const handleCreateContainer = async (e) => {
+    e.preventDefault();
+    if (!containerName.trim()) return;
+    try {
+      await createEventContainer(event._id, { name: containerName.trim() });
+      toast.success('Container created');
+      setContainerName('');
+      setAskContainerName(false);
+      fetchContainers();
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
+  };
+
+  const handleDeleteContainer = async () => {
+    if (!confirmDel) return;
+    try {
+      await deleteEventContainer(confirmDel._id);
+      toast.success('Container deleted');
+      if (expandedContainer === confirmDel._id) setExpandedContainer(null);
+      fetchContainers();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleAddEntry = async (e) => {
+    e.preventDefault();
+    if (!entryForm.name.trim() || !entryForm.amount) { toast.error('Name and amount are required'); return; }
+    setEntrySaving(true);
+    try {
+      if (editingEntry) {
+        await updateEventEntry(editingEntry._id, { name: entryForm.name.trim(), type: entryForm.type, amount: Number(entryForm.amount) });
+        toast.success('Entry updated');
+        setEditingEntry(null);
+      } else {
+        await createEventEntry(expandedContainer, { name: entryForm.name.trim(), type: entryForm.type, amount: Number(entryForm.amount) });
+        toast.success('Entry added');
+      }
+      setEntryForm({ name: '', type: transactionTypes[0] || 'Given', amount: '' });
+      fetchEntries(expandedContainer);
+      fetchContainers();
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
+    finally { setEntrySaving(false); }
+  };
+
+  const handleDeleteEntry = async () => {
+    if (!confirmDelEntry) return;
+    try {
+      await deleteEventEntry(confirmDelEntry._id);
+      toast.success('Entry deleted');
+      fetchEntries(expandedContainer);
+      fetchContainers();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const startEditEntry = (entry) => {
+    setEditingEntry(entry);
+    setEntryForm({ name: entry.name, type: entry.type, amount: String(entry.amount) });
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+        <button className="btn-ghost" style={{ padding: 4 }} onClick={onBack}>
+          <IoArrowBack size={20} />
+        </button>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{event.name}</h2>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            {formatDate(event.date)}{event.time ? ` at ${event.time}` : ''}
+            {event.reminderEnabled && <span style={{ color: 'var(--primary)', marginLeft: 8 }}><IoNotifications size={10} style={{ verticalAlign: -1 }} /> Reminder ON</span>}
+          </div>
+        </div>
+        <button className="btn-ghost" style={{ padding: 4 }}
+          onClick={() => setEditingEvent(true)}>
+          <IoCreate size={16} color="var(--text-muted)" />
+        </button>
+        <button className="btn-primary" style={{ padding: '6px 12px', fontSize: 12 }}
+          onClick={() => setAskContainerName(true)}>
+          <IoAdd size={14} style={{ verticalAlign: -2, marginRight: 3 }} />New
+        </button>
+      </div>
+
+      {/* Container Name Prompt */}
+      {askContainerName && (
+        <div className="card" style={{ padding: '12px 14px', marginBottom: 12, background: 'var(--primary)08', border: '1px solid var(--primary)30' }}>
+          <form onSubmit={handleCreateContainer} style={{ display: 'flex', gap: 8 }}>
+            <input type="text" placeholder="Container name (e.g., Eid 2026)" value={containerName}
+              onChange={(e) => setContainerName(e.target.value)} autoFocus style={{ flex: 1 }} />
+            <button type="submit" className="btn-primary" style={{ padding: '8px 16px', fontSize: 12 }}>Create</button>
+            <button type="button" className="btn-ghost" onClick={() => { setAskContainerName(false); setContainerName(''); }}
+              style={{ padding: '8px' }}><IoClose size={16} /></button>
+          </form>
+        </div>
+      )}
+
+      {/* Containers */}
+      {loading ? <Spinner /> : containers.length === 0 ? (
+        <EmptyState icon="folder" title="No containers yet" subtitle="Create a container to start tracking entries" />
+      ) : (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {containers.map((c) => {
+            const isExpanded = expandedContainer === c._id;
+            const cEntries = entries[c._id] || [];
+            return (
+              <div key={c._id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                {/* Container Header */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px',
+                  cursor: 'pointer', borderBottom: isExpanded ? '1px solid var(--border)' : 'none',
+                }}
+                  onClick={() => handleToggleContainer(c._id)}>
+                  {isExpanded ? <IoChevronDown size={16} color="var(--primary)" /> : <IoChevronForward size={16} color="var(--text-muted)" />}
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600 }}>{c.name}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
+                      {c.entryCount || 0} entries
+                    </span>
+                    {c.summary && Object.keys(c.summary).length > 0 && (
+                      <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                        {Object.entries(c.summary).map(([type, total]) => (
+                          <span key={type} style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                            {type}: {formatPKR(total)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{formatDate(c.createdAt)}</span>
+                  <button className="btn-ghost" style={{ padding: 2 }}
+                    onClick={(e) => { e.stopPropagation(); setConfirmDel(c); }}>
+                    <IoTrash size={13} color="var(--danger)" />
+                  </button>
+                </div>
+
+                {/* Expanded: Entry Form + Entries List */}
+                {isExpanded && (
+                  <div style={{ padding: '10px 14px' }}>
+                    {/* Entry Form */}
+                    <form onSubmit={handleAddEntry} style={{ marginBottom: 12 }}>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                        <input type="text" placeholder="Name (e.g., Rehan)" value={entryForm.name}
+                          onChange={(e) => setEntryForm(p => ({ ...p, name: e.target.value }))}
+                          style={{ flex: 2 }} />
+                        <input type="number" placeholder="Amount" value={entryForm.amount}
+                          onChange={(e) => setEntryForm(p => ({ ...p, amount: e.target.value }))}
+                          style={{ flex: 1 }} min="0" />
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <select value={entryForm.type}
+                          onChange={(e) => setEntryForm(p => ({ ...p, type: e.target.value }))}
+                          style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', fontSize: 13 }}>
+                          {transactionTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <button type="submit" className="btn-primary" style={{ padding: '8px 16px', fontSize: 12 }} disabled={entrySaving}>
+                          {editingEntry ? 'Update' : 'Add'}
+                        </button>
+                        {editingEntry && (
+                          <button type="button" className="btn-ghost" style={{ padding: 6 }}
+                            onClick={() => { setEditingEntry(null); setEntryForm({ name: '', type: transactionTypes[0] || 'Given', amount: '' }); }}>
+                            <IoClose size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </form>
+
+                    {/* Entries List */}
+                    {cEntries.length === 0 ? (
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 10 }}>
+                        No entries yet
+                      </div>
+                    ) : (
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        {cEntries.map((entry) => (
+                          <div key={entry._id} style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '8px 10px', borderRadius: 6,
+                            background: entry.type === (transactionTypes[1] || 'Received') ? 'rgba(34, 197, 94, 0.06)' : 'rgba(239, 68, 68, 0.06)',
+                            border: '1px solid var(--border)',
+                          }}>
+                            <div style={{ flex: 1 }}>
+                              <span style={{ fontSize: 13, fontWeight: 500 }}>{entry.name}</span>
+                              <span style={{
+                                marginLeft: 8, fontSize: 10, fontWeight: 700, padding: '1px 6px',
+                                borderRadius: 4,
+                                background: entry.type === (transactionTypes[1] || 'Received') ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                color: entry.type === (transactionTypes[1] || 'Received') ? '#22c55e' : '#ef4444',
+                              }}>{entry.type}</span>
+                            </div>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{formatPKR(entry.amount)}</span>
+                            <button className="btn-ghost" style={{ padding: 2 }}
+                              onClick={() => startEditEntry(entry)}>
+                              <IoCreate size={12} color="var(--text-muted)" />
+                            </button>
+                            <button className="btn-ghost" style={{ padding: 2 }}
+                              onClick={() => setConfirmDelEntry(entry)}>
+                              <IoTrash size={12} color="var(--danger)" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Edit Event Modal */}
+      {editingEvent && (
+        <EditEventModal event={event} onClose={() => setEditingEvent(false)} onDone={() => { setEditingEvent(false); onBack(); }} />
+      )}
+
+      <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)}
+        onConfirm={handleDeleteContainer}
+        title="Delete container?"
+        message={`Delete "${confirmDel?.name}" and all its entries?`} />
+      <ConfirmModal open={!!confirmDelEntry} onClose={() => setConfirmDelEntry(null)}
+        onConfirm={handleDeleteEntry}
+        title="Delete entry?"
+        message={`Delete entry "${confirmDelEntry?.name}" (${confirmDelEntry?.type} ${formatPKR(confirmDelEntry?.amount || 0)})?`} />
+    </div>
+  );
+}
+
+// ─── Edit Event Modal ───
+
+function EditEventModal({ event, onClose, onDone }) {
+  const [name, setName] = useState(event.name);
+  const [date, setDate] = useState(event.date ? new Date(event.date).toISOString().split('T')[0] : '');
+  const [time, setTime] = useState(event.time || '');
+  const [reminder, setReminder] = useState(event.reminderEnabled || false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await updateEvent(event._id, { name, date, time, reminderEnabled: reminder });
+      toast.success('Event updated');
+      onDone();
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <Modal open={true} onClose={onClose} title="Edit Event">
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label>Event Name</label>
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} required />
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+          <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+            <label>Date</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+            <label>Time</label>
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          </div>
+        </div>
+        <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <label style={{ flex: 1, margin: 0 }}>Yearly Reminder</label>
+          <button type="button" onClick={() => setReminder(!reminder)}
+            style={{
+              width: 48, height: 26, borderRadius: 13, border: 'none', cursor: 'pointer',
+              background: reminder ? 'var(--primary)' : 'var(--border)',
+              position: 'relative', transition: 'background 0.2s',
+            }}>
+            <span style={{
+              position: 'absolute', top: 3, left: reminder ? 25 : 3,
+              width: 20, height: 20, borderRadius: '50%', background: 'white',
+              transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+            }} />
+          </button>
+        </div>
+        <button type="submit" className="btn-primary" disabled={saving}>
+          {saving ? 'Saving...' : 'Save Changes'}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+// ─── Rich Note Editor (Full-Screen, reusable) ───
+
+const COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
+const FONT_SIZES = [
+  { label: 'Small', value: '2' },
+  { label: 'Normal', value: '3' },
+  { label: 'Large', value: '5' },
+  { label: 'Huge', value: '7' },
+];
+const HEADING_OPTIONS = [
+  { label: 'Paragraph', tag: 'p' },
+  { label: 'Heading 1', tag: 'h1' },
+  { label: 'Heading 2', tag: 'h2' },
+  { label: 'Heading 3', tag: 'h3' },
+];
+
+function RichNoteEditor({ initialContent, onSave, onClose }) {
+  const editorRef = useRef(null);
+  const savedSelection = useRef(null);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showHighlightPicker, setShowHighlightPicker] = useState(false);
+  const [showFontSize, setShowFontSize] = useState(false);
+  const [showHeading, setShowHeading] = useState(false);
+  const [customColor, setCustomColor] = useState('#3AAFB9');
+
+  useEffect(() => {
+    if (editorRef.current && initialContent) editorRef.current.innerHTML = initialContent;
+    setTimeout(() => editorRef.current?.focus(), 100);
+  }, []);
+
+  const saveSelection = () => {
+    const sel = window.getSelection();
+    if (sel.rangeCount > 0) savedSelection.current = sel.getRangeAt(0);
+  };
+
+  const restoreSelection = () => {
+    if (savedSelection.current) {
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedSelection.current);
+    }
+  };
+
+  const execCmd = (cmd, value = null) => {
+    restoreSelection();
+    editorRef.current?.focus();
+    document.execCommand(cmd, false, value);
+  };
+
+  const closeAllPickers = () => {
+    setShowColorPicker(false);
+    setShowHighlightPicker(false);
+    setShowFontSize(false);
+    setShowHeading(false);
+  };
+
+  const toolBtn = (active) => ({
+    padding: '6px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+    background: active ? 'var(--primary)' + '25' : 'transparent',
+    color: active ? 'var(--primary)' : 'var(--text-secondary)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    minWidth: 32, height: 32, position: 'relative',
+  });
+
+  const dropdownStyle = {
+    position: 'absolute', top: '100%', left: 0, zIndex: 20,
+    background: 'var(--bg-card)', border: '1px solid var(--border)',
+    borderRadius: 8, padding: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+    marginTop: 4,
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 100,
+      background: 'var(--bg)', display: 'flex', flexDirection: 'column',
+    }}>
+      {/* Top Bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '10px 12px', borderBottom: '1px solid var(--border)',
+        background: 'var(--bg-card)', flexShrink: 0,
+      }}>
+        <button onClick={onClose} style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          padding: 4, display: 'flex', color: 'var(--text-secondary)',
+        }}>
+          <IoArrowBack size={22} />
+        </button>
+        <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Edit Notes</span>
+        <button onClick={() => onSave(editorRef.current?.innerHTML || '')}
+          style={{
+            padding: '6px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            background: 'var(--primary)', color: 'white', fontSize: 13, fontWeight: 700,
+          }}>
+          Done
+        </button>
+      </div>
+
+      {/* Formatting Toolbar */}
+      <div style={{
+        display: 'flex', gap: 2, padding: '6px 8px',
+        borderBottom: '1px solid var(--border)', background: 'var(--bg-card)',
+        overflowX: 'auto', flexShrink: 0, alignItems: 'center',
+        WebkitOverflowScrolling: 'touch',
+      }}
+        onClick={() => closeAllPickers()}>
+        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+          <button style={toolBtn(showHeading)}
+            onClick={() => { saveSelection(); closeAllPickers(); setShowHeading(!showHeading); }}>
+            <span style={{ fontSize: 12, fontWeight: 700 }}>H</span>
+          </button>
+          {showHeading && (
+            <div style={{ ...dropdownStyle, minWidth: 130 }}>
+              {HEADING_OPTIONS.map(h => (
+                <button key={h.tag} onClick={() => { execCmd('formatBlock', h.tag); setShowHeading(false); }}
+                  style={{
+                    display: 'block', width: '100%', padding: '6px 10px', border: 'none',
+                    background: 'transparent', cursor: 'pointer', textAlign: 'left',
+                    fontSize: h.tag === 'p' ? 13 : h.tag === 'h3' ? 14 : h.tag === 'h2' ? 16 : 18,
+                    fontWeight: h.tag === 'p' ? 400 : 700, color: 'var(--text)', borderRadius: 4,
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-input)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  {h.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+        <button style={toolBtn()} onClick={() => execCmd('bold')}><span style={{ fontWeight: 900, fontSize: 14 }}>B</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('italic')}><span style={{ fontStyle: 'italic', fontSize: 14, fontWeight: 500 }}>I</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('underline')}><span style={{ textDecoration: 'underline', fontSize: 14 }}>U</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('strikeThrough')}><span style={{ textDecoration: 'line-through', fontSize: 14 }}>S</span></button>
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+          <button style={toolBtn(showFontSize)}
+            onClick={() => { saveSelection(); closeAllPickers(); setShowFontSize(!showFontSize); }}>
+            <span style={{ fontSize: 11, fontWeight: 600 }}>A<span style={{ fontSize: 8 }}>A</span></span>
+          </button>
+          {showFontSize && (
+            <div style={{ ...dropdownStyle, minWidth: 100 }}>
+              {FONT_SIZES.map(f => (
+                <button key={f.value} onClick={() => { execCmd('fontSize', f.value); setShowFontSize(false); }}
+                  style={{
+                    display: 'block', width: '100%', padding: '6px 10px', border: 'none',
+                    background: 'transparent', cursor: 'pointer', textAlign: 'left',
+                    fontSize: 13, color: 'var(--text)', borderRadius: 4,
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-input)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+          <button style={toolBtn(showColorPicker)}
+            onClick={() => { saveSelection(); closeAllPickers(); setShowColorPicker(!showColorPicker); }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>A<span style={{
+              display: 'block', height: 3, background: customColor, borderRadius: 1, marginTop: -2,
+            }} /></span>
+          </button>
+          {showColorPicker && (
+            <div style={{ ...dropdownStyle, display: 'flex', gap: 4, flexWrap: 'wrap', width: 164 }}>
+              {COLORS.map(c => (
+                <button key={c} onClick={() => { execCmd('foreColor', c); setCustomColor(c); setShowColorPicker(false); }}
+                  style={{ width: 28, height: 28, borderRadius: '50%', border: '2px solid var(--border)', background: c, cursor: 'pointer' }} />
+              ))}
+              <input type="color" value={customColor}
+                onChange={e => { execCmd('foreColor', e.target.value); setCustomColor(e.target.value); setShowColorPicker(false); }}
+                style={{ width: 28, height: 28, padding: 0, border: 'none', cursor: 'pointer', borderRadius: '50%' }} />
+            </div>
+          )}
+        </div>
+        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+          <button style={toolBtn(showHighlightPicker)}
+            onClick={() => { saveSelection(); closeAllPickers(); setShowHighlightPicker(!showHighlightPicker); }}>
+            <span style={{ fontSize: 13, fontWeight: 700, background: '#FFD93D50', padding: '0 3px', borderRadius: 2 }}>H</span>
+          </button>
+          {showHighlightPicker && (
+            <div style={{ ...dropdownStyle, display: 'flex', gap: 4, flexWrap: 'wrap', width: 164 }}>
+              {['#FFD93D', '#FF6B6B', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', 'transparent'].map(c => (
+                <button key={c} onClick={() => { execCmd('hiliteColor', c); setShowHighlightPicker(false); }}
+                  style={{
+                    width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
+                    border: '2px solid var(--border)',
+                    background: c === 'transparent' ? 'var(--bg-input)' : c + '80',
+                  }}>
+                  {c === 'transparent' && <IoClose size={14} style={{ color: 'var(--text-muted)' }} />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+        <button style={toolBtn()} onClick={() => execCmd('insertUnorderedList')}><span style={{ fontSize: 14 }}>&#8226;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('insertOrderedList')}><span style={{ fontSize: 12, fontWeight: 600 }}>1.</span></button>
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+        <button style={toolBtn()} onClick={() => execCmd('indent')} title="Indent"><span style={{ fontSize: 13 }}>&rarr;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('outdent')} title="Outdent"><span style={{ fontSize: 13 }}>&larr;</span></button>
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+        <button style={toolBtn()} onClick={() => execCmd('justifyLeft')}><span style={{ fontSize: 11, lineHeight: 1 }}>&#9776;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('justifyCenter')}><span style={{ fontSize: 11, lineHeight: 1, textAlign: 'center', display: 'block' }}>&#9776;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('justifyRight')}><span style={{ fontSize: 11, lineHeight: 1 }}>&#9776;</span></button>
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+        <button style={toolBtn()} onClick={() => execCmd('formatBlock', 'blockquote')}><span style={{ fontSize: 16, fontWeight: 700, fontStyle: 'italic', color: 'var(--text-muted)' }}>&ldquo;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('insertHorizontalRule')}><span style={{ fontSize: 11, letterSpacing: 2 }}>&#8212;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('removeFormat')}><span style={{ fontSize: 12, color: 'var(--text-muted)' }}>T<span style={{ fontSize: 9 }}>x</span></span></button>
+        <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+        <button style={toolBtn()} onClick={() => execCmd('undo')} title="Undo"><span style={{ fontSize: 14 }}>&#8630;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('redo')} title="Redo"><span style={{ fontSize: 14 }}>&#8631;</span></button>
+      </div>
+
+      {/* Editor Area */}
+      <div style={{ flex: 1, overflow: 'auto', background: 'var(--bg)' }}
+        onClick={() => { closeAllPickers(); editorRef.current?.focus(); }}>
+        <div ref={editorRef} contentEditable suppressContentEditableWarning
+          onBlur={saveSelection}
+          style={{
+            minHeight: '100%', padding: '16px 14px', paddingBottom: 80,
+            color: 'var(--text)', fontSize: 15, lineHeight: 1.75,
+            outline: 'none', wordBreak: 'break-word',
+            maxWidth: 'var(--max-width)', margin: '0 auto',
+          }}
+          data-placeholder="Start writing..."
+        />
+      </div>
     </div>
   );
 }
@@ -537,15 +1328,8 @@ function CreateTopicModal({ open, onClose, onDone }) {
   const [loading, setLoading] = useState(false);
   const colorPickerRef = useRef(null);
 
-  const handleColorChange = (c) => {
-    setColor(c);
-    setHexInput(c);
-  };
-
-  const handleHexInput = (val) => {
-    setHexInput(val);
-    if (/^#[0-9A-Fa-f]{6}$/.test(val)) setColor(val);
-  };
+  const handleColorChange = (c) => { setColor(c); setHexInput(c); };
+  const handleHexInput = (val) => { setHexInput(val); if (/^#[0-9A-Fa-f]{6}$/.test(val)) setColor(val); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -636,20 +1420,6 @@ function CreateSubTopicModal({ open, topicId, onClose, onDone }) {
 
 // ─── Note Editor (Full-Screen Professional Editor) ───
 
-const COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', '#1A1A2E', '#F1F1F6'];
-const FONT_SIZES = [
-  { label: 'Small', value: '2' },
-  { label: 'Normal', value: '3' },
-  { label: 'Large', value: '5' },
-  { label: 'Huge', value: '7' },
-];
-const HEADING_OPTIONS = [
-  { label: 'Paragraph', tag: 'p' },
-  { label: 'Heading 1', tag: 'h1' },
-  { label: 'Heading 2', tag: 'h2' },
-  { label: 'Heading 3', tag: 'h3' },
-];
-
 function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsChanged }) {
   const [title, setTitle] = useState(note?.title || '');
   const [selectedTags, setSelectedTags] = useState(note?.tags?.map((t) => t._id) || []);
@@ -665,10 +1435,7 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
   const savedSelection = useRef(null);
 
   useEffect(() => {
-    if (editorRef.current && note?.description) {
-      editorRef.current.innerHTML = note.description;
-    }
-    // Focus editor after mount
+    if (editorRef.current && note?.description) editorRef.current.innerHTML = note.description;
     setTimeout(() => editorRef.current?.focus(), 100);
   }, []);
 
@@ -709,25 +1476,16 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
     if (!title.trim()) { toast.error('Title is required'); return; }
     setLoading(true);
     try {
-      const data = {
-        title,
-        description: editorRef.current?.innerHTML || '',
-        tags: selectedTags,
-      };
-      if (note?._id) {
-        await updateNote(note._id, data);
-        toast.success('Note updated');
-      } else {
-        await createNote(subTopicId, data);
-        toast.success('Note created');
-      }
+      const data = { title, description: editorRef.current?.innerHTML || '', tags: selectedTags };
+      if (note?._id) { await updateNote(note._id, data); toast.success('Note updated'); }
+      else { await createNote(subTopicId, data); toast.success('Note created'); }
       onClose(); onDone();
     } catch (err) { toast.error(err.response?.data?.error || err.message); }
     finally { setLoading(false); }
   };
 
   const handleToggleLock = async () => {
-    if (!note?._id) return; // Can't lock unsaved notes
+    if (!note?._id) return;
     try {
       await updateNote(note._id, { locked: !isLocked });
       setIsLocked(!isLocked);
@@ -756,7 +1514,6 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
       position: 'fixed', inset: 0, zIndex: 100,
       background: 'var(--bg)', display: 'flex', flexDirection: 'column',
     }}>
-      {/* Top Bar */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '10px 12px', borderBottom: '1px solid var(--border)',
@@ -808,8 +1565,6 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
         WebkitOverflowScrolling: 'touch',
       }}
         onClick={() => closeAllPickers()}>
-
-        {/* Heading selector */}
         <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
           <button style={toolBtn(showHeading)}
             onClick={() => { saveSelection(); closeAllPickers(); setShowHeading(!showHeading); }}>
@@ -823,8 +1578,7 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
                     display: 'block', width: '100%', padding: '6px 10px', border: 'none',
                     background: 'transparent', cursor: 'pointer', textAlign: 'left',
                     fontSize: h.tag === 'p' ? 13 : h.tag === 'h3' ? 14 : h.tag === 'h2' ? 16 : 18,
-                    fontWeight: h.tag === 'p' ? 400 : 700, color: 'var(--text)',
-                    borderRadius: 4,
+                    fontWeight: h.tag === 'p' ? 400 : 700, color: 'var(--text)', borderRadius: 4,
                   }}
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-input)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
@@ -834,29 +1588,12 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
             </div>
           )}
         </div>
-
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
-
-        {/* Bold */}
-        <button style={toolBtn()} onClick={() => execCmd('bold')}>
-          <span style={{ fontWeight: 900, fontSize: 14 }}>B</span>
-        </button>
-        {/* Italic */}
-        <button style={toolBtn()} onClick={() => execCmd('italic')}>
-          <span style={{ fontStyle: 'italic', fontSize: 14, fontWeight: 500 }}>I</span>
-        </button>
-        {/* Underline */}
-        <button style={toolBtn()} onClick={() => execCmd('underline')}>
-          <span style={{ textDecoration: 'underline', fontSize: 14 }}>U</span>
-        </button>
-        {/* Strikethrough */}
-        <button style={toolBtn()} onClick={() => execCmd('strikeThrough')}>
-          <span style={{ textDecoration: 'line-through', fontSize: 14 }}>S</span>
-        </button>
-
+        <button style={toolBtn()} onClick={() => execCmd('bold')}><span style={{ fontWeight: 900, fontSize: 14 }}>B</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('italic')}><span style={{ fontStyle: 'italic', fontSize: 14, fontWeight: 500 }}>I</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('underline')}><span style={{ textDecoration: 'underline', fontSize: 14 }}>U</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('strikeThrough')}><span style={{ textDecoration: 'line-through', fontSize: 14 }}>S</span></button>
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
-
-        {/* Font Size */}
         <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
           <button style={toolBtn(showFontSize)}
             onClick={() => { saveSelection(); closeAllPickers(); setShowFontSize(!showFontSize); }}>
@@ -879,8 +1616,6 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
             </div>
           )}
         </div>
-
-        {/* Text Color */}
         <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
           <button style={toolBtn(showColorPicker)}
             onClick={() => { saveSelection(); closeAllPickers(); setShowColorPicker(!showColorPicker); }}>
@@ -892,10 +1627,7 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
             <div style={{ ...dropdownStyle, display: 'flex', gap: 4, flexWrap: 'wrap', width: 164 }}>
               {COLORS.map(c => (
                 <button key={c} onClick={() => { execCmd('foreColor', c); setCustomColor(c); setShowColorPicker(false); }}
-                  style={{
-                    width: 28, height: 28, borderRadius: '50%',
-                    border: '2px solid var(--border)', background: c, cursor: 'pointer',
-                  }} />
+                  style={{ width: 28, height: 28, borderRadius: '50%', border: '2px solid var(--border)', background: c, cursor: 'pointer' }} />
               ))}
               <input type="color" value={customColor}
                 onChange={e => { execCmd('foreColor', e.target.value); setCustomColor(e.target.value); setShowColorPicker(false); }}
@@ -903,14 +1635,10 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
             </div>
           )}
         </div>
-
-        {/* Highlight */}
         <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
           <button style={toolBtn(showHighlightPicker)}
             onClick={() => { saveSelection(); closeAllPickers(); setShowHighlightPicker(!showHighlightPicker); }}>
-            <span style={{
-              fontSize: 13, fontWeight: 700, background: '#FFD93D50', padding: '0 3px', borderRadius: 2,
-            }}>H</span>
+            <span style={{ fontSize: 13, fontWeight: 700, background: '#FFD93D50', padding: '0 3px', borderRadius: 2 }}>H</span>
           </button>
           {showHighlightPicker && (
             <div style={{ ...dropdownStyle, display: 'flex', gap: 4, flexWrap: 'wrap', width: 164 }}>
@@ -927,76 +1655,26 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
             </div>
           )}
         </div>
-
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
-
-        {/* Bullet List */}
-        <button style={toolBtn()} onClick={() => execCmd('insertUnorderedList')}>
-          <span style={{ fontSize: 14 }}>&#8226;</span>
-        </button>
-        {/* Numbered List */}
-        <button style={toolBtn()} onClick={() => execCmd('insertOrderedList')}>
-          <span style={{ fontSize: 12, fontWeight: 600 }}>1.</span>
-        </button>
-
+        <button style={toolBtn()} onClick={() => execCmd('insertUnorderedList')}><span style={{ fontSize: 14 }}>&#8226;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('insertOrderedList')}><span style={{ fontSize: 12, fontWeight: 600 }}>1.</span></button>
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
-
-        {/* Indent / Outdent */}
-        <button style={toolBtn()} onClick={() => execCmd('indent')}
-          title="Indent">
-          <span style={{ fontSize: 13 }}>&rarr;</span>
-        </button>
-        <button style={toolBtn()} onClick={() => execCmd('outdent')}
-          title="Outdent">
-          <span style={{ fontSize: 13 }}>&larr;</span>
-        </button>
-
+        <button style={toolBtn()} onClick={() => execCmd('indent')} title="Indent"><span style={{ fontSize: 13 }}>&rarr;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('outdent')} title="Outdent"><span style={{ fontSize: 13 }}>&larr;</span></button>
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
-
-        {/* Alignment */}
-        <button style={toolBtn()} onClick={() => execCmd('justifyLeft')}
-          title="Align left">
-          <span style={{ fontSize: 11, lineHeight: 1 }}>&#9776;</span>
-        </button>
-        <button style={toolBtn()} onClick={() => execCmd('justifyCenter')}
-          title="Align center">
-          <span style={{ fontSize: 11, lineHeight: 1, textAlign: 'center', display: 'block' }}>&#9776;</span>
-        </button>
-        <button style={toolBtn()} onClick={() => execCmd('justifyRight')}
-          title="Align right">
-          <span style={{ fontSize: 11, lineHeight: 1 }}>&#9776;</span>
-        </button>
-
+        <button style={toolBtn()} onClick={() => execCmd('justifyLeft')}><span style={{ fontSize: 11, lineHeight: 1 }}>&#9776;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('justifyCenter')}><span style={{ fontSize: 11, lineHeight: 1, textAlign: 'center', display: 'block' }}>&#9776;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('justifyRight')}><span style={{ fontSize: 11, lineHeight: 1 }}>&#9776;</span></button>
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
-
-        {/* Quote */}
-        <button style={toolBtn()} onClick={() => execCmd('formatBlock', 'blockquote')}
-          title="Blockquote">
-          <span style={{ fontSize: 16, fontWeight: 700, fontStyle: 'italic', color: 'var(--text-muted)' }}>&ldquo;</span>
-        </button>
-        {/* Horizontal Rule */}
-        <button style={toolBtn()} onClick={() => execCmd('insertHorizontalRule')}
-          title="Horizontal line">
-          <span style={{ fontSize: 11, letterSpacing: 2 }}>&#8212;</span>
-        </button>
-        {/* Clear Formatting */}
-        <button style={toolBtn()} onClick={() => execCmd('removeFormat')}
-          title="Clear formatting">
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>T<span style={{ fontSize: 9 }}>x</span></span>
-        </button>
-
+        <button style={toolBtn()} onClick={() => execCmd('formatBlock', 'blockquote')}><span style={{ fontSize: 16, fontWeight: 700, fontStyle: 'italic', color: 'var(--text-muted)' }}>&ldquo;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('insertHorizontalRule')}><span style={{ fontSize: 11, letterSpacing: 2 }}>&#8212;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('removeFormat')}><span style={{ fontSize: 12, color: 'var(--text-muted)' }}>T<span style={{ fontSize: 9 }}>x</span></span></button>
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
-
-        {/* Undo / Redo */}
-        <button style={toolBtn()} onClick={() => execCmd('undo')} title="Undo">
-          <span style={{ fontSize: 14 }}>&#8630;</span>
-        </button>
-        <button style={toolBtn()} onClick={() => execCmd('redo')} title="Redo">
-          <span style={{ fontSize: 14 }}>&#8631;</span>
-        </button>
+        <button style={toolBtn()} onClick={() => execCmd('undo')} title="Undo"><span style={{ fontSize: 14 }}>&#8630;</span></button>
+        <button style={toolBtn()} onClick={() => execCmd('redo')} title="Redo"><span style={{ fontSize: 14 }}>&#8631;</span></button>
       </div>
 
-      {/* Editor Area — takes all remaining space */}
+      {/* Editor Area */}
       <div style={{ flex: 1, overflow: 'auto', background: 'var(--bg)' }}
         onClick={() => { closeAllPickers(); editorRef.current?.focus(); }}>
         <div ref={editorRef} contentEditable suppressContentEditableWarning
@@ -1011,17 +1689,10 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
         />
       </div>
 
-      {/* Bottom Bar — Tags toggle */}
-      <div style={{
-        borderTop: '1px solid var(--border)', background: 'var(--bg-card)',
-        flexShrink: 0,
-      }}>
-        {/* Tags panel */}
+      {/* Bottom Bar */}
+      <div style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0 }}>
         {showTags && (
-          <div style={{
-            padding: '10px 14px', borderBottom: '1px solid var(--border)',
-            maxHeight: 120, overflowY: 'auto',
-          }}>
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', maxHeight: 120, overflowY: 'auto' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {allTags.map((tag) => (
                 <button key={tag._id} type="button" onClick={() => toggleTag(tag._id)}
@@ -1035,15 +1706,11 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
                   {tag.name}
                 </button>
               ))}
-              {allTags.length === 0 && (
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No tags yet</span>
-              )}
+              {allTags.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No tags yet</span>}
             </div>
           </div>
         )}
-        <div style={{
-          display: 'flex', alignItems: 'center', padding: '8px 14px', gap: 12,
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '8px 14px', gap: 12 }}>
           <button onClick={() => setShowTags(!showTags)}
             style={{
               background: showTags ? 'var(--primary)' + '20' : 'transparent',
@@ -1108,11 +1775,7 @@ function TagManagerModal({ open, tags, onClose, onDone }) {
     } catch (err) { toast.error(err.message); }
   };
 
-  const startEdit = (tag) => {
-    setEditingTag(tag);
-    setName(tag.name);
-    setColor(tag.color);
-  };
+  const startEdit = (tag) => { setEditingTag(tag); setName(tag.name); setColor(tag.color); };
 
   return (
     <Modal open={open} onClose={() => { setEditingTag(null); setName(''); onClose(); }} title="Manage Tags">
@@ -1131,16 +1794,13 @@ function TagManagerModal({ open, tags, onClose, onDone }) {
           </button>
         )}
       </form>
-
       <div style={{ display: 'grid', gap: 8 }}>
         {tags.map((tag) => (
           <div key={tag._id} style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '8px 0', borderBottom: '1px solid var(--border)',
           }}>
-            <span style={{
-              width: 16, height: 16, borderRadius: '50%', background: tag.color, flexShrink: 0,
-            }} />
+            <span style={{ width: 16, height: 16, borderRadius: '50%', background: tag.color, flexShrink: 0 }} />
             <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>{tag.name}</span>
             <button className="btn-ghost" style={{ padding: 4 }} onClick={() => startEdit(tag)}>
               <IoCreate size={14} color="var(--text-muted)" />
@@ -1150,11 +1810,8 @@ function TagManagerModal({ open, tags, onClose, onDone }) {
             </button>
           </div>
         ))}
-        {tags.length === 0 && (
-          <EmptyState title="No tags" subtitle="Create your first tag above" />
-        )}
+        {tags.length === 0 && <EmptyState title="No tags" subtitle="Create your first tag above" />}
       </div>
-
       <ConfirmModal open={!!confirmDeleteTag} onClose={() => setConfirmDeleteTag(null)}
         onConfirm={handleDeleteTag}
         title="Delete tag?"

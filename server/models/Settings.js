@@ -39,6 +39,7 @@ const settingsSchema = new mongoose.Schema({
   trailDetailTaps: { type: Number, default: 3, min: 2, max: 5 },
   budgetLocked: { type: Boolean, default: false },
   settingsLocked: { type: Boolean, default: false },
+  eventTransactionTypes: [{ type: String, trim: true }],
 }, { timestamps: true });
 
 export default mongoose.model('Settings', settingsSchema);

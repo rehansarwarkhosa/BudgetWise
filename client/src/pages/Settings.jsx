@@ -354,6 +354,8 @@ export default function Settings() {
   const [trailReorderTaps, setTrailReorderTaps] = useState(2);
   const [trailDetailEnabled, setTrailDetailEnabled] = useState(true);
   const [trailDetailTaps, setTrailDetailTaps] = useState(3);
+  const [eventTypes, setEventTypes] = useState(['Given', 'Received']);
+  const [newEventType, setNewEventType] = useState('');
 
   useEffect(() => {
     if (settings && !initialized) {
@@ -386,6 +388,7 @@ export default function Settings() {
       setTrailReorderTaps(settings.trailReorderTaps ?? 2);
       setTrailDetailEnabled(settings.trailDetailEnabled ?? true);
       setTrailDetailTaps(settings.trailDetailTaps ?? 3);
+      setEventTypes(settings.eventTransactionTypes?.length ? settings.eventTransactionTypes : ['Given', 'Received']);
       setInitialized(true);
     }
   }, [settings, initialized]);
@@ -1310,6 +1313,48 @@ export default function Settings() {
         title="Clear audit logs?"
         message="This will permanently delete all audit log entries. This action cannot be undone."
         confirmText="Clear All" />
+
+      {/* Event Transaction Types */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Event Transaction Types</h3>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+          Manage the dropdown options for event entry types (e.g., Given, Received).
+        </p>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {eventTypes.map((t, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px',
+              background: 'var(--bg-input)', borderRadius: 16, fontSize: 12, fontWeight: 600,
+            }}>
+              <span>{t}</span>
+              <button className="btn-ghost" style={{ padding: 2 }}
+                onClick={async () => {
+                  if (eventTypes.length <= 1) { toast.error('At least one type is required'); return; }
+                  const updated = eventTypes.filter((_, j) => j !== i);
+                  setEventTypes(updated);
+                  try { await updateSettings({ eventTransactionTypes: updated }); await refetchSettings(); setInitialized(false); }
+                  catch (err) { toast.error(err.message); }
+                }}>
+                <IoTrash size={11} color="var(--danger)" />
+              </button>
+            </div>
+          ))}
+        </div>
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          if (!newEventType.trim()) return;
+          if (eventTypes.includes(newEventType.trim())) { toast.error('Type already exists'); return; }
+          const updated = [...eventTypes, newEventType.trim()];
+          setEventTypes(updated);
+          setNewEventType('');
+          try { await updateSettings({ eventTransactionTypes: updated }); await refetchSettings(); setInitialized(false); toast.success('Type added'); }
+          catch (err) { toast.error(err.message); }
+        }} style={{ display: 'flex', gap: 8 }}>
+          <input type="text" placeholder="New type name..." value={newEventType}
+            onChange={(e) => setNewEventType(e.target.value)} style={{ flex: 1 }} />
+          <button type="submit" className="btn-primary" style={{ padding: '8px 16px', fontSize: 12 }}>Add</button>
+        </form>
+      </div>
 
       {/* Backup & Restore */}
       <div className="card" style={{ marginBottom: 16 }}>
