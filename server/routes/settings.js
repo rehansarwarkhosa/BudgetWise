@@ -104,6 +104,14 @@ router.put('/', async (req, res, next) => {
       settings.eventTransactionTypes = req.body.eventTransactionTypes;
       changes.push(`eventTransactionTypes updated (${req.body.eventTransactionTypes.length} types)`);
     }
+    if (req.body.trailQuickPhrases !== undefined) {
+      settings.trailQuickPhrases = req.body.trailQuickPhrases;
+      changes.push(`trailQuickPhrases updated (${req.body.trailQuickPhrases.length} phrases)`);
+    }
+    if (req.body.trailFlashMinutes !== undefined) {
+      settings.trailFlashMinutes = req.body.trailFlashMinutes;
+      changes.push(`trailFlashMinutes: ${req.body.trailFlashMinutes}`);
+    }
     await settings.save();
 
     if (changes.length) {
@@ -343,6 +351,8 @@ router.post('/import', async (req, res, next) => {
           budgetLocked: data.settings.budgetLocked ?? false,
           settingsLocked: data.settings.settingsLocked ?? false,
           eventTransactionTypes: data.settings.eventTransactionTypes || [],
+          trailQuickPhrases: data.settings.trailQuickPhrases || [],
+          trailFlashMinutes: data.settings.trailFlashMinutes ?? 10,
         }, { upsert: true });
       }
 

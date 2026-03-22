@@ -75,6 +75,8 @@ export default function QuickTrail() {
   const reorderTapsNeeded = settings?.trailReorderTaps || 2;
   const detailEnabled = settings?.trailDetailEnabled !== false;
   const detailTapsNeeded = settings?.trailDetailTaps || 3;
+  const quickPhrases = useMemo(() => settings?.trailQuickPhrases || [], [settings?.trailQuickPhrases]);
+  const flashMinutes = settings?.trailFlashMinutes ?? 10;
   const [entries, setEntries] = useState([]);
   const [text, setText] = useState('');
   const [page, setPage] = useState(1);
@@ -98,6 +100,42 @@ export default function QuickTrail() {
   const inputRef = useRef(null);
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
+
+  // Quick phrases popup state
+  const [showQuickPhrases, setShowQuickPhrases] = useState(false);
+  const inputDoubleTapRef = useRef({ last: 0 });
+  useBackClose(showQuickPhrases, () => setShowQuickPhrases(false));
+
+  const handleInputDoubleTap = useCallback(() => {
+    if (quickPhrases.length === 0) return;
+    const now = Date.now();
+    if (now - inputDoubleTapRef.current.last < 400) {
+      setShowQuickPhrases(true);
+      inputDoubleTapRef.current.last = 0;
+    } else {
+      inputDoubleTapRef.current.last = now;
+    }
+  }, [quickPhrases]);
+
+  const handleQuickPhraseSend = async (phrase) => {
+    setShowQuickPhrases(false);
+    if (sending) return;
+    setSending(true);
+    try {
+      const res = await createTrail({ text: phrase });
+      setEntries(prev => [res.data, ...prev]);
+      toast.success('Added');
+    } catch (err) { toast.error(err.message); }
+    finally { setSending(false); }
+  };
+
+  // Flash timer - force re-render every 30s to update flash state
+  const [, setFlashTick] = useState(0);
+  useEffect(() => {
+    if (flashMinutes <= 0) return;
+    const interval = setInterval(() => setFlashTick(t => t + 1), 30000);
+    return () => clearInterval(interval);
+  }, [flashMinutes]);
   const [collapsedGroups, setCollapsedGroups] = useState({});
   const [quickEditId, setQuickEditId] = useState(null);
   const [quickEditText, setQuickEditText] = useState('');
@@ -440,9 +478,11 @@ export default function QuickTrail() {
           <input
             ref={inputRef}
             type="text"
-            placeholder="Quick thought..."
+            placeholder={quickPhrases.length > 0 ? 'Quick thought... (double-tap for phrases)' : 'Quick thought...'}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onClick={handleInputDoubleTap}
+            onTouchEnd={handleInputDoubleTap}
             style={{ flex: 1 }}
             autoFocus
             inputMode="text"
@@ -454,6 +494,46 @@ export default function QuickTrail() {
             <IoSend size={18} />
           </button>
         </form>
+
+        {/* Quick Phrases Popup */}
+        {showQuickPhrases && quickPhrases.length > 0 && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 200,
+            background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20,
+          }} onClick={() => setShowQuickPhrases(false)}>
+            <div style={{
+              background: 'var(--bg-card)', borderRadius: 16, padding: 20,
+              width: '100%', maxWidth: 360, maxHeight: '70vh', overflowY: 'auto',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, flex: 1, margin: 0 }}>Quick Phrases</h3>
+                <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setShowQuickPhrases(false)}>
+                  <IoClose size={20} />
+                </button>
+              </div>
+              <div style={{ display: 'grid', gap: 6 }}>
+                {quickPhrases.map((phrase, i) => (
+                  <button key={i} onClick={() => handleQuickPhraseSend(phrase)}
+                    style={{
+                      padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border)',
+                      background: 'var(--bg-input)', cursor: 'pointer', textAlign: 'left',
+                      color: 'var(--text)', fontSize: 14, fontWeight: 500,
+                      transition: 'all 0.15s',
+                    }}
+                    onTouchStart={e => e.currentTarget.style.background = 'var(--primary)20'}
+                    onTouchEnd={e => e.currentTarget.style.background = 'var(--bg-input)'}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--primary)20'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-input)'}>
+                    <IoSend size={12} style={{ marginRight: 8, color: 'var(--primary)', verticalAlign: -1 }} />
+                    {phrase}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Active filter badges */}
         {(filterMode !== 'all' || dateFilter) && (
@@ -511,13 +591,15 @@ export default function QuickTrail() {
                     const hlColor = getEntryHighlight(entry.text, trailHighlights);
                     const hasReminders = entry.reminders?.length > 0;
                     const isUnlocked = reorderEntryId === entry._id;
+                    const ageMs = Date.now() - new Date(entry.createdAt).getTime();
+                    const isRecent = flashMinutes > 0 && ageMs < flashMinutes * 60 * 1000;
                     return (
                     <div key={entry._id}>
                       {/* Drop target above */}
                       {reorderEntryId && reorderEntryId !== entry._id && dragOverIdx === entryIdx && (
                         <div style={{ height: 4, background: 'var(--primary)', borderRadius: 2, marginBottom: 4 }} />
                       )}
-                      <div className="card" style={{
+                      <div className={`card${isRecent ? ' trail-flash' : ''}`} style={{
                         position: 'relative',
                         ...(entry.highlighted
                           ? { background: '#000', border: '1.5px solid #555' }

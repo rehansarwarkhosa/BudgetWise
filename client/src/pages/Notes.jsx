@@ -848,36 +848,49 @@ function EventDetailView({ event, onBack, transactionTypes }) {
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        <button className="btn-ghost" style={{ padding: 4 }} onClick={onBack}>
-          <IoArrowBack size={20} />
-        </button>
-        <div style={{ flex: 1 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{event.name}</h2>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            {formatDate(event.date)}{event.time ? ` at ${event.time}` : ''}
-            {event.reminderEnabled && <span style={{ color: 'var(--primary)', marginLeft: 8 }}><IoNotifications size={10} style={{ verticalAlign: -1 }} /> Reminder ON</span>}
+      <div className="card" style={{ padding: '14px 16px', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <button className="btn-ghost" style={{ padding: 4, marginTop: 2 }} onClick={onBack}>
+            <IoArrowBack size={20} />
+          </button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px 0', wordBreak: 'break-word' }}>{event.name}</h2>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <IoCalendar size={12} /> {formatDate(event.date)}
+              </span>
+              {event.time && <span>{event.time}</span>}
+              {event.reminderEnabled && (
+                <span style={{ color: 'var(--primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <IoNotifications size={12} /> Yearly Reminder
+                </span>
+              )}
+            </div>
           </div>
+          <button className="btn-ghost" style={{ padding: 6 }}
+            onClick={() => setEditingEvent(true)}>
+            <IoCreate size={18} color="var(--text-muted)" />
+          </button>
         </div>
-        <button className="btn-ghost" style={{ padding: 4 }}
-          onClick={() => setEditingEvent(true)}>
-          <IoCreate size={16} color="var(--text-muted)" />
-        </button>
-        <button className="btn-primary" style={{ padding: '6px 12px', fontSize: 12 }}
+        <button className="btn-primary" style={{ width: '100%', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
           onClick={() => setAskContainerName(true)}>
-          <IoAdd size={14} style={{ verticalAlign: -2, marginRight: 3 }} />New
+          <IoAdd size={16} /> New Container
         </button>
       </div>
 
       {/* Container Name Prompt */}
       {askContainerName && (
-        <div className="card" style={{ padding: '12px 14px', marginBottom: 12, background: 'var(--primary)08', border: '1px solid var(--primary)30' }}>
-          <form onSubmit={handleCreateContainer} style={{ display: 'flex', gap: 8 }}>
-            <input type="text" placeholder="Container name (e.g., Eid 2026)" value={containerName}
-              onChange={(e) => setContainerName(e.target.value)} autoFocus style={{ flex: 1 }} />
-            <button type="submit" className="btn-primary" style={{ padding: '8px 16px', fontSize: 12 }}>Create</button>
-            <button type="button" className="btn-ghost" onClick={() => { setAskContainerName(false); setContainerName(''); }}
-              style={{ padding: '8px' }}><IoClose size={16} /></button>
+        <div className="card" style={{ padding: '14px 16px', marginBottom: 12, background: 'rgba(118, 210, 219, 0.06)', border: '1px solid rgba(118, 210, 219, 0.2)' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Enter container name</div>
+          <form onSubmit={handleCreateContainer}>
+            <input type="text" placeholder="e.g., Eid 2026, Birthday 2026" value={containerName}
+              onChange={(e) => setContainerName(e.target.value)} autoFocus
+              style={{ width: '100%', marginBottom: 10 }} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="submit" className="btn-primary" style={{ flex: 1 }}>Create Container</button>
+              <button type="button" className="btn-ghost" onClick={() => { setAskContainerName(false); setContainerName(''); }}
+                style={{ padding: '10px 14px' }}><IoClose size={18} /></button>
+            </div>
           </form>
         </div>
       )}
@@ -923,30 +936,32 @@ function EventDetailView({ event, onBack, transactionTypes }) {
 
                 {/* Expanded: Entry Form + Entries List */}
                 {isExpanded && (
-                  <div style={{ padding: '10px 14px' }}>
+                  <div style={{ padding: '12px 14px' }}>
                     {/* Entry Form */}
-                    <form onSubmit={handleAddEntry} style={{ marginBottom: 12 }}>
-                      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                    <form onSubmit={handleAddEntry} style={{ marginBottom: 14 }}>
+                      <div className="form-group" style={{ marginBottom: 8 }}>
                         <input type="text" placeholder="Name (e.g., Rehan)" value={entryForm.name}
                           onChange={(e) => setEntryForm(p => ({ ...p, name: e.target.value }))}
-                          style={{ flex: 2 }} />
-                        <input type="number" placeholder="Amount" value={entryForm.amount}
+                          style={{ width: '100%' }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                        <select value={entryForm.type}
+                          onChange={(e) => setEntryForm(p => ({ ...p, type: e.target.value }))}
+                          style={{ flex: 1 }}>
+                          {transactionTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <input type="number" placeholder="Amount (PKR)" value={entryForm.amount}
                           onChange={(e) => setEntryForm(p => ({ ...p, amount: e.target.value }))}
                           style={{ flex: 1 }} min="0" />
                       </div>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <select value={entryForm.type}
-                          onChange={(e) => setEntryForm(p => ({ ...p, type: e.target.value }))}
-                          style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', fontSize: 13 }}>
-                          {transactionTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                        <button type="submit" className="btn-primary" style={{ padding: '8px 16px', fontSize: 12 }} disabled={entrySaving}>
-                          {editingEntry ? 'Update' : 'Add'}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={entrySaving}>
+                          {editingEntry ? 'Update Entry' : 'Add Entry'}
                         </button>
                         {editingEntry && (
-                          <button type="button" className="btn-ghost" style={{ padding: 6 }}
+                          <button type="button" className="btn-ghost" style={{ padding: '10px 14px' }}
                             onClick={() => { setEditingEntry(null); setEntryForm({ name: '', type: transactionTypes[0] || 'Given', amount: '' }); }}>
-                            <IoClose size={16} />
+                            Cancel
                           </button>
                         )}
                       </div>

@@ -356,6 +356,9 @@ export default function Settings() {
   const [trailDetailTaps, setTrailDetailTaps] = useState(3);
   const [eventTypes, setEventTypes] = useState(['Given', 'Received']);
   const [newEventType, setNewEventType] = useState('');
+  const [quickPhrases, setQuickPhrases] = useState([]);
+  const [newPhrase, setNewPhrase] = useState('');
+  const [flashMinutes, setFlashMinutes] = useState(10);
 
   useEffect(() => {
     if (settings && !initialized) {
@@ -389,6 +392,8 @@ export default function Settings() {
       setTrailDetailEnabled(settings.trailDetailEnabled ?? true);
       setTrailDetailTaps(settings.trailDetailTaps ?? 3);
       setEventTypes(settings.eventTransactionTypes?.length ? settings.eventTransactionTypes : ['Given', 'Received']);
+      setQuickPhrases(settings.trailQuickPhrases || []);
+      setFlashMinutes(settings.trailFlashMinutes ?? 10);
       setInitialized(true);
     }
   }, [settings, initialized]);
@@ -1313,6 +1318,68 @@ export default function Settings() {
         title="Clear audit logs?"
         message="This will permanently delete all audit log entries. This action cannot be undone."
         confirmText="Clear All" />
+
+      {/* Trail Quick Phrases */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Trail Quick Phrases</h3>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+          Double-tap the trail input to instantly send one of these phrases.
+        </p>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {quickPhrases.map((p, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px',
+              background: 'var(--bg-input)', borderRadius: 16, fontSize: 12, fontWeight: 600,
+            }}>
+              <span>{p}</span>
+              <button className="btn-ghost" style={{ padding: 2 }}
+                onClick={async () => {
+                  const updated = quickPhrases.filter((_, j) => j !== i);
+                  setQuickPhrases(updated);
+                  try { await updateSettings({ trailQuickPhrases: updated }); await refetchSettings(); setInitialized(false); }
+                  catch (err) { toast.error(err.message); }
+                }}>
+                <IoTrash size={11} color="var(--danger)" />
+              </button>
+            </div>
+          ))}
+          {quickPhrases.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No phrases yet</span>}
+        </div>
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          if (!newPhrase.trim()) return;
+          if (quickPhrases.includes(newPhrase.trim())) { toast.error('Phrase already exists'); return; }
+          const updated = [...quickPhrases, newPhrase.trim()];
+          setQuickPhrases(updated);
+          setNewPhrase('');
+          try { await updateSettings({ trailQuickPhrases: updated }); await refetchSettings(); setInitialized(false); toast.success('Phrase added'); }
+          catch (err) { toast.error(err.message); }
+        }} style={{ display: 'flex', gap: 8 }}>
+          <input type="text" placeholder="New phrase..." value={newPhrase}
+            onChange={(e) => setNewPhrase(e.target.value)} style={{ flex: 1 }} />
+          <button type="submit" className="btn-primary" style={{ padding: '8px 16px', fontSize: 12 }}>Add</button>
+        </form>
+      </div>
+
+      {/* Trail Flash Duration */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>New Entry Flash</h3>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+          Recent trail entries flash smoothly for this many minutes after creation.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <input type="number" value={flashMinutes} min={0} max={60}
+            onChange={(e) => setFlashMinutes(Number(e.target.value))}
+            style={{ width: 80, textAlign: 'center' }} />
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>minutes</span>
+          <button className="btn-primary" style={{ padding: '8px 16px', fontSize: 12, marginLeft: 'auto' }}
+            onClick={async () => {
+              try { await updateSettings({ trailFlashMinutes: flashMinutes }); await refetchSettings(); setInitialized(false); toast.success('Saved'); }
+              catch (err) { toast.error(err.message); }
+            }}>Save</button>
+        </div>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Set to 0 to disable flashing.</p>
+      </div>
 
       {/* Event Transaction Types */}
       <div className="card" style={{ marginBottom: 16 }}>
