@@ -1003,7 +1003,7 @@ function EventDetailView({ event, onBack, transactionTypes }) {
                           <div key={entry._id} style={{
                             display: 'flex', alignItems: 'center', gap: 8,
                             padding: '8px 10px', borderRadius: 6,
-                            background: entry.type === (transactionTypes[1] || 'Received') ? 'rgba(34, 197, 94, 0.06)' : 'rgba(239, 68, 68, 0.06)',
+                            background: entry.type.toLowerCase() === 'received' ? 'rgba(34, 197, 94, 0.06)' : 'rgba(239, 68, 68, 0.06)',
                             border: '1px solid var(--border)',
                           }}>
                             <div style={{ flex: 1 }}>
@@ -1011,8 +1011,8 @@ function EventDetailView({ event, onBack, transactionTypes }) {
                               <span style={{
                                 marginLeft: 8, fontSize: 10, fontWeight: 700, padding: '1px 6px',
                                 borderRadius: 4,
-                                background: entry.type === (transactionTypes[1] || 'Received') ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                                color: entry.type === (transactionTypes[1] || 'Received') ? '#22c55e' : '#ef4444',
+                                background: entry.type.toLowerCase() === 'received' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                color: entry.type.toLowerCase() === 'received' ? '#22c55e' : '#ef4444',
                               }}>{entry.type}</span>
                             </div>
                             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{formatPKR(entry.amount)}</span>
