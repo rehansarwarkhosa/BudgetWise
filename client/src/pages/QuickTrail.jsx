@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoChevronDown, IoChevronForward, IoTime, IoCreate, IoCheckmark, IoStar, IoStarOutline } from 'react-icons/io5';
+import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoChevronDown, IoChevronForward, IoTime, IoCreate, IoCheckmark, IoStar, IoStarOutline, IoFlash } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
@@ -138,7 +138,7 @@ export default function QuickTrail() {
     if (sending) return;
     setSending(true);
     try {
-      const res = await createTrail({ text: phrase });
+      const res = await createTrail({ text: phrase, quickPhrase: true });
       setEntries(prev => [res.data, ...prev]);
       toast.success('Added');
     } catch (err) { toast.error(err.message); }
@@ -700,6 +700,9 @@ export default function QuickTrail() {
                                   <span style={{ fontSize: 13, fontWeight: 600, color: entry.highlighted ? '#ccc' : 'var(--text-secondary)' }}>
                                     {formatTime(entry.createdAt)}
                                   </span>
+                                  {entry.quickPhrase && (
+                                    <IoFlash size={12} color="#F59E0B" title="Quick phrase" />
+                                  )}
                                   {entry.adjustedAt && (
                                     <IoTime size={12} color="#F59E0B" title="Time adjusted" />
                                   )}

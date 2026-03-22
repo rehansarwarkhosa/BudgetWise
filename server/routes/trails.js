@@ -84,9 +84,9 @@ router.get('/', async (req, res, next) => {
 // POST / — create entry
 router.post('/', async (req, res, next) => {
   try {
-    const { text } = req.body;
+    const { text, quickPhrase } = req.body;
     if (!text?.trim()) return error(res, 'Text is required');
-    const entry = await Trail.create({ text: text.trim() });
+    const entry = await Trail.create({ text: text.trim(), ...(quickPhrase ? { quickPhrase: true } : {}) });
     await AuditLog.create({ action: 'CREATE', entity: 'Trail', entityId: entry._id, details: `Created trail entry "${text.trim().slice(0, 50)}"` });
     success(res, entry, 201);
   } catch (err) { next(err); }
