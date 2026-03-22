@@ -733,12 +733,12 @@ function AllEventsList({ events, loading, onRefresh, onSelectEvent }) {
       <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)}
         onConfirm={handleDelete}
         title="Delete event?"
-        message={`Delete "${confirmDel?.name}" and all its containers/entries?`} />
+        message={`Delete "${confirmDel?.name}" and all its occasions/entries?`} />
     </div>
   );
 }
 
-// ─── Event Detail View (Containers + Entries) ───
+// ─── Event Detail View (Occasions + Entries) ───
 
 function EventDetailView({ event, onBack, transactionTypes }) {
   const [containers, setContainers] = useState([]);
@@ -804,7 +804,7 @@ function EventDetailView({ event, onBack, transactionTypes }) {
     if (!containerName.trim()) return;
     try {
       await createEventContainer(event._id, { name: containerName.trim(), date: containerDate, time: containerTime });
-      toast.success('Container created');
+      toast.success('Occasion created');
       setContainerName('');
       setContainerDate('');
       setContainerTime('');
@@ -817,7 +817,7 @@ function EventDetailView({ event, onBack, transactionTypes }) {
     if (!confirmDel) return;
     try {
       await deleteEventContainer(confirmDel._id);
-      toast.success('Container deleted');
+      toast.success('Occasion deleted');
       if (expandedContainer === confirmDel._id) setExpandedContainer(null);
       fetchContainers();
     } catch (err) { toast.error(err.message); }
@@ -887,14 +887,14 @@ function EventDetailView({ event, onBack, transactionTypes }) {
         </div>
         <button className="btn-primary" style={{ width: '100%', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
           onClick={() => { const n = getNowPKT(); setContainerDate(n.date); setContainerTime(n.time); setAskContainerName(true); }}>
-          <IoAdd size={16} /> New Container
+          <IoAdd size={16} /> New Occasion
         </button>
       </div>
 
-      {/* Container Name Prompt */}
+      {/* Occasion Name Prompt */}
       {askContainerName && (
         <div className="card" style={{ padding: '14px 16px', marginBottom: 12, background: 'rgba(118, 210, 219, 0.06)', border: '1px solid rgba(118, 210, 219, 0.2)' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Enter container name</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Enter occasion name</div>
           <form onSubmit={handleCreateContainer}>
             <input type="text" placeholder="e.g., Eid 2026, Birthday 2026" value={containerName}
               onChange={(e) => setContainerName(e.target.value)} autoFocus
@@ -906,7 +906,7 @@ function EventDetailView({ event, onBack, transactionTypes }) {
                 style={{ flex: 1 }} />
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="submit" className="btn-primary" style={{ flex: 1 }}>Create Container</button>
+              <button type="submit" className="btn-primary" style={{ flex: 1 }}>Create Occasion</button>
               <button type="button" className="btn-ghost" onClick={() => { setAskContainerName(false); setContainerName(''); setContainerDate(''); setContainerTime(''); }}
                 style={{ padding: '10px 14px' }}><IoClose size={18} /></button>
             </div>
@@ -914,9 +914,9 @@ function EventDetailView({ event, onBack, transactionTypes }) {
         </div>
       )}
 
-      {/* Containers */}
+      {/* Occasions */}
       {loading ? <Spinner /> : containers.length === 0 ? (
-        <EmptyState icon="folder" title="No containers yet" subtitle="Create a container to start tracking entries" />
+        <EmptyState icon="folder" title="No occasions yet" subtitle="Create an occasion to start tracking entries" />
       ) : (
         <div style={{ display: 'grid', gap: 8 }}>
           {containers.map((c) => {
@@ -924,7 +924,7 @@ function EventDetailView({ event, onBack, transactionTypes }) {
             const cEntries = entries[c._id] || [];
             return (
               <div key={c._id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                {/* Container Header */}
+                {/* Occasion Header */}
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px',
                   cursor: 'pointer', borderBottom: isExpanded ? '1px solid var(--border)' : 'none',
@@ -1043,7 +1043,7 @@ function EventDetailView({ event, onBack, transactionTypes }) {
 
       <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)}
         onConfirm={handleDeleteContainer}
-        title="Delete container?"
+        title="Delete occasion?"
         message={`Delete "${confirmDel?.name}" and all its entries?`} />
       <ConfirmModal open={!!confirmDelEntry} onClose={() => setConfirmDelEntry(null)}
         onConfirm={handleDeleteEntry}

@@ -1354,10 +1354,10 @@ export default function Settings() {
           setNewPhrase('');
           try { await updateSettings({ trailQuickPhrases: updated }); await refetchSettings(); setInitialized(false); toast.success('Phrase added'); }
           catch (err) { toast.error(err.message); }
-        }} style={{ display: 'flex', gap: 8 }}>
+        }}>
           <input type="text" placeholder="New phrase..." value={newPhrase}
-            onChange={(e) => setNewPhrase(e.target.value)} style={{ flex: 1, minHeight: 40, padding: '8px 12px', fontSize: 14 }} />
-          <button type="submit" className="btn-primary" style={{ padding: '8px 16px', fontSize: 12 }}>Add</button>
+            onChange={(e) => setNewPhrase(e.target.value)} style={{ marginBottom: 8 }} />
+          <button type="submit" className="btn-primary" style={{ width: '100%', padding: '10px 16px', fontSize: 13 }}>Add Phrase</button>
         </form>
       </div>
 
@@ -1416,10 +1416,10 @@ export default function Settings() {
           setNewEventType('');
           try { await updateSettings({ eventTransactionTypes: updated }); await refetchSettings(); setInitialized(false); toast.success('Type added'); }
           catch (err) { toast.error(err.message); }
-        }} style={{ display: 'flex', gap: 8 }}>
+        }}>
           <input type="text" placeholder="New type name..." value={newEventType}
-            onChange={(e) => setNewEventType(e.target.value)} style={{ flex: 1, minHeight: 40, padding: '8px 12px', fontSize: 14 }} />
-          <button type="submit" className="btn-primary" style={{ padding: '8px 16px', fontSize: 12 }}>Add</button>
+            onChange={(e) => setNewEventType(e.target.value)} style={{ marginBottom: 8 }} />
+          <button type="submit" className="btn-primary" style={{ width: '100%', padding: '10px 16px', fontSize: 13 }}>Add Type</button>
         </form>
       </div>
 
