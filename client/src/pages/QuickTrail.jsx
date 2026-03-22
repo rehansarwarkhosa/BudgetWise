@@ -103,18 +103,34 @@ export default function QuickTrail() {
 
   // Quick phrases popup state
   const [showQuickPhrases, setShowQuickPhrases] = useState(false);
-  const inputDoubleTapRef = useRef({ last: 0 });
+  const inputDoubleTapRef = useRef({ last: 0, count: 0 });
   useBackClose(showQuickPhrases, () => setShowQuickPhrases(false));
 
-  const handleInputDoubleTap = useCallback(() => {
+  // Touch-only double-tap (onTouchStart fires once per tap on Android)
+  const handleInputTouchStart = useCallback((e) => {
     if (quickPhrases.length === 0) return;
     const now = Date.now();
-    if (now - inputDoubleTapRef.current.last < 400) {
-      setShowQuickPhrases(true);
-      inputDoubleTapRef.current.last = 0;
+    const ref = inputDoubleTapRef.current;
+    if (now - ref.last < 400) {
+      ref.count++;
     } else {
-      inputDoubleTapRef.current.last = now;
+      ref.count = 1;
     }
+    ref.last = now;
+    if (ref.count >= 2) {
+      e.preventDefault();
+      ref.count = 0;
+      // Blur input to dismiss keyboard before showing popup
+      inputRef.current?.blur();
+      setTimeout(() => setShowQuickPhrases(true), 100);
+    }
+  }, [quickPhrases]);
+
+  // Desktop: native dblclick
+  const handleInputDoubleClick = useCallback(() => {
+    if (quickPhrases.length === 0) return;
+    inputRef.current?.blur();
+    setTimeout(() => setShowQuickPhrases(true), 50);
   }, [quickPhrases]);
 
   const handleQuickPhraseSend = async (phrase) => {
@@ -478,11 +494,11 @@ export default function QuickTrail() {
           <input
             ref={inputRef}
             type="text"
-            placeholder={quickPhrases.length > 0 ? 'Quick thought... (double-tap for phrases)' : 'Quick thought...'}
+            placeholder={quickPhrases.length > 0 ? 'Quick thought... (2x tap for phrases)' : 'Quick thought...'}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            onClick={handleInputDoubleTap}
-            onTouchEnd={handleInputDoubleTap}
+            onTouchStart={handleInputTouchStart}
+            onDoubleClick={handleInputDoubleClick}
             style={{ flex: 1 }}
             autoFocus
             inputMode="text"
@@ -495,17 +511,17 @@ export default function QuickTrail() {
           </button>
         </form>
 
-        {/* Quick Phrases Popup */}
+        {/* Quick Phrases Popup - positioned at top to stay above Android keyboard */}
         {showQuickPhrases && quickPhrases.length > 0 && (
           <div style={{
-            position: 'fixed', inset: 0, zIndex: 200,
-            background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 20,
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            paddingTop: 60, paddingLeft: 16, paddingRight: 16,
           }} onClick={() => setShowQuickPhrases(false)}>
             <div style={{
               background: 'var(--bg-card)', borderRadius: 16, padding: 20,
-              width: '100%', maxWidth: 360, maxHeight: '70vh', overflowY: 'auto',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+              width: '100%', maxWidth: 360, maxHeight: '50vh', overflowY: 'auto',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
             }} onClick={e => e.stopPropagation()}>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
                 <h3 style={{ fontSize: 15, fontWeight: 700, flex: 1, margin: 0 }}>Quick Phrases</h3>

@@ -109,12 +109,15 @@ router.get('/:eventId/containers', async (req, res, next) => {
 // Create container
 router.post('/:eventId/containers', async (req, res, next) => {
   try {
-    const { name } = req.body;
+    const { name, date, time } = req.body;
     if (!name?.trim()) return error(res, 'Container name is required');
     const event = await Event.findById(req.params.eventId);
     if (!event) return error(res, 'Event not found', 404);
 
-    const container = await EventContainer.create({ eventId: req.params.eventId, name: name.trim() });
+    const containerData = { eventId: req.params.eventId, name: name.trim() };
+    if (date) containerData.date = date;
+    if (time) containerData.time = time;
+    const container = await EventContainer.create(containerData);
     await AuditLog.create({ action: 'CREATE', entity: 'EventContainer', entityId: container._id, details: `Created container "${name.trim()}" in event "${event.name}"` });
     success(res, container, 201);
   } catch (err) { next(err); }

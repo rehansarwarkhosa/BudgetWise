@@ -745,12 +745,23 @@ function EventDetailView({ event, onBack, transactionTypes }) {
   const [loading, setLoading] = useState(true);
   const [askContainerName, setAskContainerName] = useState(false);
   const [containerName, setContainerName] = useState('');
+  const [containerDate, setContainerDate] = useState('');
+  const [containerTime, setContainerTime] = useState('');
   const [expandedContainer, setExpandedContainer] = useState(null);
   const [entries, setEntries] = useState({});
   const [editingEvent, setEditingEvent] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
 
-  // Entry form state
+  // Helper to get current PKT date/time strings
+  const getNowPKT = () => {
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+    return {
+      date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
+      time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+    };
+  };
+
+  // Entry form state - default to first type (Given)
   const [entryForm, setEntryForm] = useState({ name: '', type: transactionTypes[0] || 'Given', amount: '' });
   const [entrySaving, setEntrySaving] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
@@ -792,9 +803,11 @@ function EventDetailView({ event, onBack, transactionTypes }) {
     e.preventDefault();
     if (!containerName.trim()) return;
     try {
-      await createEventContainer(event._id, { name: containerName.trim() });
+      await createEventContainer(event._id, { name: containerName.trim(), date: containerDate, time: containerTime });
       toast.success('Container created');
       setContainerName('');
+      setContainerDate('');
+      setContainerTime('');
       setAskContainerName(false);
       fetchContainers();
     } catch (err) { toast.error(err.response?.data?.error || err.message); }
@@ -873,7 +886,7 @@ function EventDetailView({ event, onBack, transactionTypes }) {
           </button>
         </div>
         <button className="btn-primary" style={{ width: '100%', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-          onClick={() => setAskContainerName(true)}>
+          onClick={() => { const n = getNowPKT(); setContainerDate(n.date); setContainerTime(n.time); setAskContainerName(true); }}>
           <IoAdd size={16} /> New Container
         </button>
       </div>
@@ -886,9 +899,15 @@ function EventDetailView({ event, onBack, transactionTypes }) {
             <input type="text" placeholder="e.g., Eid 2026, Birthday 2026" value={containerName}
               onChange={(e) => setContainerName(e.target.value)} autoFocus
               style={{ width: '100%', marginBottom: 10 }} />
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <input type="date" value={containerDate} onChange={(e) => setContainerDate(e.target.value)}
+                style={{ flex: 1 }} />
+              <input type="time" value={containerTime} onChange={(e) => setContainerTime(e.target.value)}
+                style={{ flex: 1 }} />
+            </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="submit" className="btn-primary" style={{ flex: 1 }}>Create Container</button>
-              <button type="button" className="btn-ghost" onClick={() => { setAskContainerName(false); setContainerName(''); }}
+              <button type="button" className="btn-ghost" onClick={() => { setAskContainerName(false); setContainerName(''); setContainerDate(''); setContainerTime(''); }}
                 style={{ padding: '10px 14px' }}><IoClose size={18} /></button>
             </div>
           </form>
@@ -917,6 +936,12 @@ function EventDetailView({ event, onBack, transactionTypes }) {
                     <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
                       {c.entryCount || 0} entries
                     </span>
+                    {(c.date || c.time) && (
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                        {c.date ? new Date(c.date).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' }) : ''}
+                        {c.date && c.time ? ' · ' : ''}{c.time || ''}
+                      </div>
+                    )}
                     {c.summary && Object.keys(c.summary).length > 0 && (
                       <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
                         {Object.entries(c.summary).map(([type, total]) => (
