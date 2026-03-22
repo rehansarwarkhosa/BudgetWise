@@ -303,10 +303,17 @@ button {
 
 /* Trail flash animation for recent entries */
 @keyframes trailFlash {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
+  0%, 100% {
+    border-color: var(--border);
+    box-shadow: none;
+  }
+  50% {
+    border-color: var(--primary);
+    box-shadow: 0 0 8px rgba(118, 210, 219, 0.35);
+  }
 }
 
 .trail-flash {
-  animation: trailFlash 2.5s ease-in-out infinite;
+  animation: trailFlash 2s ease-in-out infinite;
+  border: 1.5px solid var(--border);
 }

@@ -678,6 +678,145 @@ export default function Settings() {
       </div>
 
       <div style={settingsLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}>
+      {/* Audit Log */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600 }}>Audit Log</h3>
+          {showAuditLog && auditLogs.length > 0 && (
+            <button className="btn-ghost" style={{ fontSize: 12, color: 'var(--danger)' }}
+              onClick={() => setConfirmClearAudit(true)}>
+              Clear All
+            </button>
+          )}
+        </div>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Track every action performed in the app.
+        </p>
+        {!showAuditLog ? (
+          <button className="btn-outline" onClick={() => { setShowAuditLog(true); fetchAuditLogs(1); }}>
+            View Audit Log
+          </button>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <input type="date" value={auditDateFilter}
+                onChange={e => { setAuditDateFilter(e.target.value); fetchAuditLogs(1, { date: e.target.value }); }}
+                style={{ flex: 1, fontSize: 12, padding: '6px 8px' }} />
+              <select value={auditActionFilter}
+                onChange={e => { setAuditActionFilter(e.target.value); fetchAuditLogs(1, { action: e.target.value }); }}
+                style={{ flex: 1, fontSize: 12, padding: '6px 8px' }}>
+                <option value="">All Types</option>
+                <option value="CREATE">Create</option>
+                <option value="UPDATE">Update</option>
+                <option value="DELETE">Delete</option>
+                <option value="NOTIFY">Notification</option>
+                <option value="ERROR">Error</option>
+              </select>
+              {(auditDateFilter || auditActionFilter) && (
+                <button className="btn-ghost" style={{ fontSize: 11, whiteSpace: 'nowrap' }}
+                  onClick={() => { setAuditDateFilter(''); setAuditActionFilter(''); fetchAuditLogs(1, { date: '', action: '' }); }}>
+                  Clear
+                </button>
+              )}
+            </div>
+          </>
+        )}
+        {showAuditLog && (auditLoading ? (
+          <Spinner />
+        ) : auditLogs.length === 0 ? (
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>No audit logs yet</p>
+        ) : (
+          <>
+            <div style={{ display: 'grid', gap: 0 }}>
+              {(() => {
+                // Group audit logs by date
+                const groups = [];
+                let currentDate = null;
+                let currentGroup = null;
+                const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+                for (const log of auditLogs) {
+                  const d = new Date(new Date(log.timestamp).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+                  const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                  if (dateStr !== currentDate) {
+                    currentDate = dateStr;
+                    let label = dateStr === todayStr ? 'Today' : dateStr === yesterdayStr ? 'Yesterday' : new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+                    currentGroup = { date: dateStr, label, logs: [] };
+                    groups.push(currentGroup);
+                  }
+                  currentGroup.logs.push(log);
+                }
+
+                return groups.map(group => (
+                  <div key={group.date}>
+                    <div style={{
+                      fontSize: 11, fontWeight: 700, color: 'var(--primary)',
+                      padding: '10px 0 6px', borderBottom: '1px solid var(--border)',
+                      position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1,
+                    }}>
+                      {group.label}
+                      <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>
+                        {group.logs.length} entr{group.logs.length !== 1 ? 'ies' : 'y'}
+                      </span>
+                    </div>
+                    {group.logs.map(log => (
+                      <div key={log._id} style={{
+                        padding: '10px 0', borderBottom: '1px solid var(--border)',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                            background: log.action === 'DELETE' ? 'rgba(239,68,68,0.15)' : log.action === 'CREATE' ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.15)',
+                            color: log.action === 'DELETE' ? 'var(--danger)' : log.action === 'CREATE' ? 'var(--success)' : 'var(--primary)',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {log.action}
+                          </span>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                            {formatDateTime(log.timestamp)}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 13, marginTop: 4 }}>{log.details}</div>
+                      </div>
+                    ))}
+                  </div>
+                ));
+              })()}
+            </div>
+            {auditPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 12 }}>
+                <button className="btn-outline" style={{ fontSize: 12 }}
+                  disabled={auditPage <= 1}
+                  onClick={() => fetchAuditLogs(auditPage - 1)}>
+                  Previous
+                </button>
+                <span style={{ fontSize: 12, lineHeight: '32px', color: 'var(--text-muted)' }}>
+                  {auditPage} / {auditPages}
+                </span>
+                <button className="btn-outline" style={{ fontSize: 12 }}
+                  disabled={auditPage >= auditPages}
+                  onClick={() => fetchAuditLogs(auditPage + 1)}>
+                  Next
+                </button>
+              </div>
+            )}
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, textAlign: 'center' }}>
+              {auditTotal} total entries
+            </p>
+          </>
+        ))}
+      </div>
+
+      <ConfirmModal open={confirmClearAudit} onClose={() => setConfirmClearAudit(false)}
+        onConfirm={handleClearAuditLogs}
+        title="Clear audit logs?"
+        message="This will permanently delete all audit log entries. This action cannot be undone."
+        confirmText="Clear All" />
+
       {/* Theme Toggle */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="form-group">
@@ -1180,145 +1319,6 @@ export default function Settings() {
         </p>
       </div>
 
-      {/* Audit Log */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600 }}>Audit Log</h3>
-          {showAuditLog && auditLogs.length > 0 && (
-            <button className="btn-ghost" style={{ fontSize: 12, color: 'var(--danger)' }}
-              onClick={() => setConfirmClearAudit(true)}>
-              Clear All
-            </button>
-          )}
-        </div>
-        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
-          Track every action performed in the app.
-        </p>
-        {!showAuditLog ? (
-          <button className="btn-outline" onClick={() => { setShowAuditLog(true); fetchAuditLogs(1); }}>
-            View Audit Log
-          </button>
-        ) : (
-          <>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              <input type="date" value={auditDateFilter}
-                onChange={e => { setAuditDateFilter(e.target.value); fetchAuditLogs(1, { date: e.target.value }); }}
-                style={{ flex: 1, fontSize: 12, padding: '6px 8px' }} />
-              <select value={auditActionFilter}
-                onChange={e => { setAuditActionFilter(e.target.value); fetchAuditLogs(1, { action: e.target.value }); }}
-                style={{ flex: 1, fontSize: 12, padding: '6px 8px' }}>
-                <option value="">All Types</option>
-                <option value="CREATE">Create</option>
-                <option value="UPDATE">Update</option>
-                <option value="DELETE">Delete</option>
-                <option value="NOTIFY">Notification</option>
-                <option value="ERROR">Error</option>
-              </select>
-              {(auditDateFilter || auditActionFilter) && (
-                <button className="btn-ghost" style={{ fontSize: 11, whiteSpace: 'nowrap' }}
-                  onClick={() => { setAuditDateFilter(''); setAuditActionFilter(''); fetchAuditLogs(1, { date: '', action: '' }); }}>
-                  Clear
-                </button>
-              )}
-            </div>
-          </>
-        )}
-        {showAuditLog && (auditLoading ? (
-          <Spinner />
-        ) : auditLogs.length === 0 ? (
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>No audit logs yet</p>
-        ) : (
-          <>
-            <div style={{ display: 'grid', gap: 0 }}>
-              {(() => {
-                // Group audit logs by date
-                const groups = [];
-                let currentDate = null;
-                let currentGroup = null;
-                const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
-                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-                const yesterday = new Date(now);
-                yesterday.setDate(yesterday.getDate() - 1);
-                const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-
-                for (const log of auditLogs) {
-                  const d = new Date(new Date(log.timestamp).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
-                  const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                  if (dateStr !== currentDate) {
-                    currentDate = dateStr;
-                    let label = dateStr === todayStr ? 'Today' : dateStr === yesterdayStr ? 'Yesterday' : new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-                    currentGroup = { date: dateStr, label, logs: [] };
-                    groups.push(currentGroup);
-                  }
-                  currentGroup.logs.push(log);
-                }
-
-                return groups.map(group => (
-                  <div key={group.date}>
-                    <div style={{
-                      fontSize: 11, fontWeight: 700, color: 'var(--primary)',
-                      padding: '10px 0 6px', borderBottom: '1px solid var(--border)',
-                      position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1,
-                    }}>
-                      {group.label}
-                      <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>
-                        {group.logs.length} entr{group.logs.length !== 1 ? 'ies' : 'y'}
-                      </span>
-                    </div>
-                    {group.logs.map(log => (
-                      <div key={log._id} style={{
-                        padding: '10px 0', borderBottom: '1px solid var(--border)',
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                          <span style={{
-                            fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-                            background: log.action === 'DELETE' ? 'rgba(239,68,68,0.15)' : log.action === 'CREATE' ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.15)',
-                            color: log.action === 'DELETE' ? 'var(--danger)' : log.action === 'CREATE' ? 'var(--success)' : 'var(--primary)',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            {log.action}
-                          </span>
-                          <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                            {formatDateTime(log.timestamp)}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 13, marginTop: 4 }}>{log.details}</div>
-                      </div>
-                    ))}
-                  </div>
-                ));
-              })()}
-            </div>
-            {auditPages > 1 && (
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 12 }}>
-                <button className="btn-outline" style={{ fontSize: 12 }}
-                  disabled={auditPage <= 1}
-                  onClick={() => fetchAuditLogs(auditPage - 1)}>
-                  Previous
-                </button>
-                <span style={{ fontSize: 12, lineHeight: '32px', color: 'var(--text-muted)' }}>
-                  {auditPage} / {auditPages}
-                </span>
-                <button className="btn-outline" style={{ fontSize: 12 }}
-                  disabled={auditPage >= auditPages}
-                  onClick={() => fetchAuditLogs(auditPage + 1)}>
-                  Next
-                </button>
-              </div>
-            )}
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, textAlign: 'center' }}>
-              {auditTotal} total entries
-            </p>
-          </>
-        ))}
-      </div>
-
-      <ConfirmModal open={confirmClearAudit} onClose={() => setConfirmClearAudit(false)}
-        onConfirm={handleClearAuditLogs}
-        title="Clear audit logs?"
-        message="This will permanently delete all audit log entries. This action cannot be undone."
-        confirmText="Clear All" />
-
       {/* Trail Quick Phrases */}
       <div className="card" style={{ marginBottom: 16 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Trail Quick Phrases</h3>
@@ -1356,7 +1356,7 @@ export default function Settings() {
           catch (err) { toast.error(err.message); }
         }} style={{ display: 'flex', gap: 8 }}>
           <input type="text" placeholder="New phrase..." value={newPhrase}
-            onChange={(e) => setNewPhrase(e.target.value)} style={{ flex: 1 }} />
+            onChange={(e) => setNewPhrase(e.target.value)} style={{ flex: 1, minHeight: 40, padding: '8px 12px', fontSize: 14 }} />
           <button type="submit" className="btn-primary" style={{ padding: '8px 16px', fontSize: 12 }}>Add</button>
         </form>
       </div>
@@ -1418,7 +1418,7 @@ export default function Settings() {
           catch (err) { toast.error(err.message); }
         }} style={{ display: 'flex', gap: 8 }}>
           <input type="text" placeholder="New type name..." value={newEventType}
-            onChange={(e) => setNewEventType(e.target.value)} style={{ flex: 1 }} />
+            onChange={(e) => setNewEventType(e.target.value)} style={{ flex: 1, minHeight: 40, padding: '8px 12px', fontSize: 14 }} />
           <button type="submit" className="btn-primary" style={{ padding: '8px 16px', fontSize: 12 }}>Add</button>
         </form>
       </div>
