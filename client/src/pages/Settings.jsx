@@ -392,7 +392,7 @@ export default function Settings() {
       setTrailDetailEnabled(settings.trailDetailEnabled ?? true);
       setTrailDetailTaps(settings.trailDetailTaps ?? 3);
       setEventTypes(settings.eventTransactionTypes?.length ? settings.eventTransactionTypes : ['Given', 'Received']);
-      setQuickPhrases((settings.trailQuickPhrases || []).map(p => typeof p === 'string' ? { text: p, count: 0, pinned: false } : p));
+      setQuickPhrases((settings.trailQuickPhrases || []).map(p => typeof p === 'string' ? { text: p, count: 0, pinned: false } : p).filter(p => p && p.text && p.text.trim()));
       setFlashMinutes(settings.trailFlashMinutes ?? 10);
       setInitialized(true);
     }
@@ -1338,7 +1338,7 @@ export default function Settings() {
                 onClick={async () => {
                   const updated = quickPhrases.filter((_, j) => j !== i);
                   setQuickPhrases(updated);
-                  try { await updateSettings({ trailQuickPhrases: updated }); await refetchSettings(); setInitialized(false); }
+                  try { await updateSettings({ trailQuickPhrases: updated }); refetchSettings(); toast.success('Deleted'); }
                   catch (err) { toast.error(err.message); }
                 }}>
                 <IoTrash size={11} color="var(--danger)" />
@@ -1354,7 +1354,7 @@ export default function Settings() {
           const updated = [...quickPhrases, { text: newPhrase.trim(), count: 0, pinned: false }];
           setQuickPhrases(updated);
           setNewPhrase('');
-          try { await updateSettings({ trailQuickPhrases: updated }); await refetchSettings(); setInitialized(false); toast.success('Phrase added'); }
+          try { await updateSettings({ trailQuickPhrases: updated }); refetchSettings(); toast.success('Phrase added'); }
           catch (err) { toast.error(err.message); }
         }}>
           <input type="text" placeholder="New phrase..." value={newPhrase}

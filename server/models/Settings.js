@@ -45,7 +45,7 @@ const settingsSchema = new mongoose.Schema({
     count: { type: Number, default: 0 },
     pinned: { type: Boolean, default: false },
   }],
-  trailFlashMinutes: { type: Number, default: 10, min: 1, max: 60 },
+  trailFlashMinutes: { type: Number, default: 10, min: 0, max: 60 },
 }, { timestamps: true });
 
 export default mongoose.model('Settings', settingsSchema);

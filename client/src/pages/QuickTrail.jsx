@@ -75,7 +75,7 @@ export default function QuickTrail() {
   const reorderTapsNeeded = settings?.trailReorderTaps || 2;
   const detailEnabled = settings?.trailDetailEnabled !== false;
   const detailTapsNeeded = settings?.trailDetailTaps || 3;
-  const rawPhrases = useMemo(() => (settings?.trailQuickPhrases || []).map(p => typeof p === 'string' ? { text: p, count: 0, pinned: false } : p), [settings?.trailQuickPhrases]);
+  const rawPhrases = useMemo(() => (settings?.trailQuickPhrases || []).map(p => typeof p === 'string' ? { text: p, count: 0, pinned: false } : p).filter(p => p && p.text && p.text.trim()), [settings?.trailQuickPhrases]);
   const quickPhrases = useMemo(() => [...rawPhrases].sort((a, b) => {
     if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
     return (b.count || 0) - (a.count || 0);

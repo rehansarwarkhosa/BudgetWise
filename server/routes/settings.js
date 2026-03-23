@@ -46,10 +46,15 @@ router.get('/', async (req, res, next) => {
         currentPeriod: period,
       });
     }
-    // Migrate old string phrases to objects
-    if (settings.trailQuickPhrases?.length && typeof settings.trailQuickPhrases[0] === 'string') {
-      settings.trailQuickPhrases = settings.trailQuickPhrases.map(p => ({ text: p, count: 0, pinned: false }));
-      await settings.save();
+    // Migrate old string phrases to objects + clean up empty entries
+    if (settings.trailQuickPhrases?.length) {
+      const cleaned = settings.trailQuickPhrases
+        .map(p => typeof p === 'string' ? { text: p, count: 0, pinned: false } : p)
+        .filter(p => p && p.text && p.text.trim());
+      if (cleaned.length !== settings.trailQuickPhrases.length || (settings.trailQuickPhrases.length && typeof settings.trailQuickPhrases[0] === 'string')) {
+        settings.trailQuickPhrases = cleaned;
+        await settings.save();
+      }
     }
     success(res, settings);
   } catch (err) { next(err); }
@@ -110,8 +115,9 @@ router.put('/', async (req, res, next) => {
       changes.push(`eventTransactionTypes updated (${req.body.eventTransactionTypes.length} types)`);
     }
     if (req.body.trailQuickPhrases !== undefined) {
-      settings.trailQuickPhrases = req.body.trailQuickPhrases;
-      changes.push(`trailQuickPhrases updated (${req.body.trailQuickPhrases.length} phrases)`);
+      const cleaned = (req.body.trailQuickPhrases || []).filter(p => p && p.text && p.text.trim());
+      settings.trailQuickPhrases = cleaned;
+      changes.push(`trailQuickPhrases updated (${cleaned.length} phrases)`);
     }
     if (req.body.trailFlashMinutes !== undefined) {
       settings.trailFlashMinutes = req.body.trailFlashMinutes;
