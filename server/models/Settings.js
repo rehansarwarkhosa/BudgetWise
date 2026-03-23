@@ -40,7 +40,11 @@ const settingsSchema = new mongoose.Schema({
   budgetLocked: { type: Boolean, default: false },
   settingsLocked: { type: Boolean, default: false },
   eventTransactionTypes: [{ type: String, trim: true }],
-  trailQuickPhrases: [{ type: String, trim: true }],
+  trailQuickPhrases: [{
+    text: { type: String, required: true, trim: true },
+    count: { type: Number, default: 0 },
+    pinned: { type: Boolean, default: false },
+  }],
   trailFlashMinutes: { type: Number, default: 10, min: 1, max: 60 },
 }, { timestamps: true });
 

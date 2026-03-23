@@ -392,7 +392,7 @@ export default function Settings() {
       setTrailDetailEnabled(settings.trailDetailEnabled ?? true);
       setTrailDetailTaps(settings.trailDetailTaps ?? 3);
       setEventTypes(settings.eventTransactionTypes?.length ? settings.eventTransactionTypes : ['Given', 'Received']);
-      setQuickPhrases(settings.trailQuickPhrases || []);
+      setQuickPhrases((settings.trailQuickPhrases || []).map(p => typeof p === 'string' ? { text: p, count: 0, pinned: false } : p));
       setFlashMinutes(settings.trailFlashMinutes ?? 10);
       setInitialized(true);
     }
@@ -1331,7 +1331,9 @@ export default function Settings() {
               display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px',
               background: 'var(--bg-input)', borderRadius: 16, fontSize: 12, fontWeight: 600,
             }}>
-              <span>{p}</span>
+              <span>{p.text}</span>
+              {p.count > 0 && <span style={{ fontSize: 9, color: 'var(--text-muted)', opacity: 0.6 }}>{p.count}</span>}
+              {p.pinned && <span style={{ fontSize: 9, color: 'var(--primary)' }}>pin</span>}
               <button className="btn-ghost" style={{ padding: 2 }}
                 onClick={async () => {
                   const updated = quickPhrases.filter((_, j) => j !== i);
@@ -1348,8 +1350,8 @@ export default function Settings() {
         <form onSubmit={async (e) => {
           e.preventDefault();
           if (!newPhrase.trim()) return;
-          if (quickPhrases.includes(newPhrase.trim())) { toast.error('Phrase already exists'); return; }
-          const updated = [...quickPhrases, newPhrase.trim()];
+          if (quickPhrases.some(p => p.text === newPhrase.trim())) { toast.error('Phrase already exists'); return; }
+          const updated = [...quickPhrases, { text: newPhrase.trim(), count: 0, pinned: false }];
           setQuickPhrases(updated);
           setNewPhrase('');
           try { await updateSettings({ trailQuickPhrases: updated }); await refetchSettings(); setInitialized(false); toast.success('Phrase added'); }

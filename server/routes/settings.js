@@ -46,6 +46,11 @@ router.get('/', async (req, res, next) => {
         currentPeriod: period,
       });
     }
+    // Migrate old string phrases to objects
+    if (settings.trailQuickPhrases?.length && typeof settings.trailQuickPhrases[0] === 'string') {
+      settings.trailQuickPhrases = settings.trailQuickPhrases.map(p => ({ text: p, count: 0, pinned: false }));
+      await settings.save();
+    }
     success(res, settings);
   } catch (err) { next(err); }
 });
@@ -351,7 +356,7 @@ router.post('/import', async (req, res, next) => {
           budgetLocked: data.settings.budgetLocked ?? false,
           settingsLocked: data.settings.settingsLocked ?? false,
           eventTransactionTypes: data.settings.eventTransactionTypes || [],
-          trailQuickPhrases: data.settings.trailQuickPhrases || [],
+          trailQuickPhrases: (data.settings.trailQuickPhrases || []).map(p => typeof p === 'string' ? { text: p, count: 0, pinned: false } : p),
           trailFlashMinutes: data.settings.trailFlashMinutes ?? 10,
         }, { upsert: true });
       }

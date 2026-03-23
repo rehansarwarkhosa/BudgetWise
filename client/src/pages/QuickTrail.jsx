@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoChevronDown, IoChevronForward, IoTime, IoCreate, IoCheckmark, IoStar, IoStarOutline, IoFlash } from 'react-icons/io5';
+import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoChevronDown, IoChevronForward, IoTime, IoCreate, IoCheckmark, IoStar, IoStarOutline, IoFlash, IoPin, IoPinOutline } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
@@ -10,7 +10,7 @@ import useSwipeTabs from '../hooks/useSwipeTabs';
 import useBackClose from '../hooks/useBackClose';
 
 import { IoReorderThree } from 'react-icons/io5';
-import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote, reorderTrails } from '../api';
+import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote, reorderTrails, updateSettings } from '../api';
 import { formatDateTime, formatDate, formatTime } from '../utils/format';
 import KanbanBoard from './KanbanBoard';
 import Reminders from './Reminders';
@@ -67,7 +67,7 @@ function getEntryHighlight(text, highlights) {
 }
 
 export default function QuickTrail() {
-  const { settings } = useSettings();
+  const { settings, refetchSettings } = useSettings();
   const trailBold = settings?.trailBoldText || false;
   const trailShowDate = settings?.trailShowDate !== false;
   const trailHighlights = useMemo(() => settings?.trailHighlights || [], [settings?.trailHighlights]);
@@ -75,7 +75,11 @@ export default function QuickTrail() {
   const reorderTapsNeeded = settings?.trailReorderTaps || 2;
   const detailEnabled = settings?.trailDetailEnabled !== false;
   const detailTapsNeeded = settings?.trailDetailTaps || 3;
-  const quickPhrases = useMemo(() => settings?.trailQuickPhrases || [], [settings?.trailQuickPhrases]);
+  const rawPhrases = useMemo(() => (settings?.trailQuickPhrases || []).map(p => typeof p === 'string' ? { text: p, count: 0, pinned: false } : p), [settings?.trailQuickPhrases]);
+  const quickPhrases = useMemo(() => [...rawPhrases].sort((a, b) => {
+    if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
+    return (b.count || 0) - (a.count || 0);
+  }), [rawPhrases]);
   const flashMinutes = settings?.trailFlashMinutes ?? 10;
   const [entries, setEntries] = useState([]);
   const [text, setText] = useState('');
@@ -133,16 +137,33 @@ export default function QuickTrail() {
     setTimeout(() => setShowQuickPhrases(true), 50);
   }, [quickPhrases]);
 
-  const handleQuickPhraseSend = async (phrase) => {
+  const incrementPhraseCount = useCallback(async (phraseText) => {
+    const updated = rawPhrases.map(p => p.text === phraseText ? { ...p, count: (p.count || 0) + 1 } : p);
+    try { await updateSettings({ trailQuickPhrases: updated }); refetchSettings(); } catch { /* silent */ }
+  }, [rawPhrases, refetchSettings]);
+
+  const handleQuickPhraseSend = async (phraseText) => {
     setShowQuickPhrases(false);
     if (sending) return;
     setSending(true);
     try {
-      const res = await createTrail({ text: phrase, quickPhrase: true });
+      const res = await createTrail({ text: phraseText, quickPhrase: true });
       setEntries(prev => [res.data, ...prev]);
       toast.success('Added');
+      incrementPhraseCount(phraseText);
     } catch (err) { toast.error(err.message); }
     finally { setSending(false); }
+  };
+
+  const handleQuickPhraseFill = (phraseText) => {
+    setShowQuickPhrases(false);
+    setText(prev => prev ? prev + ' ' + phraseText : phraseText);
+    setTimeout(() => inputRef.current?.focus(), 100);
+  };
+
+  const handleTogglePin = async (phraseText) => {
+    const updated = rawPhrases.map(p => p.text === phraseText ? { ...p, pinned: !p.pinned } : p);
+    try { await updateSettings({ trailQuickPhrases: updated }); refetchSettings(); } catch (err) { toast.error(err.message); }
   };
 
   // Flash timer - force re-render every 30s to update flash state
@@ -531,20 +552,29 @@ export default function QuickTrail() {
               </div>
               <div style={{ display: 'grid', gap: 6 }}>
                 {quickPhrases.map((phrase, i) => (
-                  <button key={i} onClick={() => handleQuickPhraseSend(phrase)}
-                    style={{
-                      padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border)',
-                      background: 'var(--bg-input)', cursor: 'pointer', textAlign: 'left',
-                      color: 'var(--text)', fontSize: 14, fontWeight: 500,
-                      transition: 'all 0.15s',
-                    }}
-                    onTouchStart={e => e.currentTarget.style.background = 'var(--primary)20'}
-                    onTouchEnd={e => e.currentTarget.style.background = 'var(--bg-input)'}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--primary)20'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-input)'}>
-                    <IoSend size={12} style={{ marginRight: 8, color: 'var(--primary)', verticalAlign: -1 }} />
-                    {phrase}
-                  </button>
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', gap: 0, borderRadius: 10,
+                    border: phrase.pinned ? '1px solid var(--primary)' : '1px solid var(--border)',
+                    background: 'var(--bg-input)', overflow: 'hidden',
+                  }}>
+                    <button onClick={() => handleTogglePin(phrase.text)}
+                      style={{ padding: '12px 8px 12px 12px', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
+                      {phrase.pinned ? <IoPin size={14} color="var(--primary)" /> : <IoPinOutline size={14} color="var(--text-muted)" />}
+                    </button>
+                    <button onClick={() => handleQuickPhraseSend(phrase.text)}
+                      style={{
+                        flex: 1, padding: '12px 4px', background: 'none', border: 'none', cursor: 'pointer',
+                        textAlign: 'left', color: 'var(--text)', fontSize: 14, fontWeight: 500,
+                      }}>
+                      {phrase.text}
+                      {phrase.count > 0 && <span style={{ fontSize: 10, color: 'var(--text-muted)', opacity: 0.45, marginLeft: 6 }}>{phrase.count}</span>}
+                    </button>
+                    <button onClick={() => handleQuickPhraseFill(phrase.text)}
+                      title="Fill into text box"
+                      style={{ padding: '12px 12px 12px 8px', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
+                      <IoCreate size={16} color="var(--text-muted)" />
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
