@@ -863,27 +863,62 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const progress = Math.round((completedCount / targetEntries) * 100);
   const isExpired = routine?.isExpired;
   const maxDailyEntries = routine?.maxDailyEntries || 1;
-  // Account for today's missed entries (auto-incomplete only runs for yesterday)
-  const todayMissed = isExpired ? 0 : Math.max(0, maxDailyEntries - (routine?.todayCompleteCount || 0));
-  const totalMissed = incompleteCount + todayMissed;
-  const effectiveTotal = completedCount + incompleteCount + todayMissed;
-  const completionRate = effectiveTotal > 0 ? Math.round((completedCount / effectiveTotal) * 100) : 0;
 
-  // Streak: consecutive complete entries from most recent
-  let currentStreak = 0;
+  // Group entries by PKT date to compute day-level stats
+  const toPKTDateStr = (d) => {
+    const dt = new Date(d);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(dt);
+  };
+  const nowPKT = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+  const todayStr = `${nowPKT.getFullYear()}-${String(nowPKT.getMonth() + 1).padStart(2, '0')}-${String(nowPKT.getDate()).padStart(2, '0')}`;
+
+  // Build map of date → { complete, incomplete }
+  const dayMap = {};
+  for (const e of entries) {
+    const dateKey = toPKTDateStr(e.date);
+    if (!dayMap[dateKey]) dayMap[dateKey] = { complete: 0, incomplete: 0 };
+    dayMap[dateKey][e.status]++;
+  }
+
+  // Sort unique dates ascending for streak calculation
+  const sortedDates = Object.keys(dayMap).sort();
+
+  // Missed = total incomplete entries (not counting today since day isn't over)
+  const totalMissed = entries.filter(e => e.status === 'incomplete' && toPKTDateStr(e.date) !== todayStr).length;
+
+  // Completion rate: exclude today (day not over yet)
+  const pastCompleted = entries.filter(e => e.status === 'complete' && toPKTDateStr(e.date) !== todayStr).length;
+  const pastIncomplete = entries.filter(e => e.status === 'incomplete' && toPKTDateStr(e.date) !== todayStr).length;
+  const pastTotal = pastCompleted + pastIncomplete;
+  const completionRate = pastTotal > 0 ? Math.round((pastCompleted / pastTotal) * 100) : (completedCount > 0 ? 100 : 0);
+
+  // Streak by unique calendar days (a day counts as "complete" if it has ≥1 complete and 0 incomplete)
   let longestStreak = 0;
   let tempStreak = 0;
-  for (const entry of entries) {
-    if (entry.status === 'complete') {
+  for (const dateKey of sortedDates) {
+    const day = dayMap[dateKey];
+    if (day.complete > 0 && day.incomplete === 0) {
       tempStreak++;
       if (tempStreak > longestStreak) longestStreak = tempStreak;
     } else {
       tempStreak = 0;
     }
   }
-  for (const entry of entries) {
-    if (entry.status === 'complete') currentStreak++;
-    else break;
+
+  // Current streak: count backward from the most recent date
+  let currentStreak = 0;
+  for (let i = sortedDates.length - 1; i >= 0; i--) {
+    const day = dayMap[sortedDates[i]];
+    // Skip today since it's in progress — don't break streak for unfinished today
+    if (sortedDates[i] === todayStr) {
+      if (day.complete > 0) currentStreak++;
+      continue;
+    }
+    if (day.complete > 0 && day.incomplete === 0) {
+      currentStreak++;
+    } else {
+      break;
+    }
   }
 
   return (

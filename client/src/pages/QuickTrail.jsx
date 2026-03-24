@@ -568,8 +568,8 @@ export default function QuickTrail() {
                     background: 'var(--bg-input)', overflow: 'hidden',
                   }}>
                     <button onClick={() => handleTogglePin(phrase.text)}
-                      style={{ padding: '12px 8px 12px 12px', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
-                      {phrase.pinned ? <IoPin size={14} color="var(--primary)" /> : <IoPinOutline size={14} color="var(--text-muted)" />}
+                      style={{ padding: '12px 10px 12px 12px', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
+                      {phrase.pinned ? <IoPin size={20} color="var(--primary)" /> : <IoPinOutline size={20} color="var(--text-muted)" />}
                     </button>
                     <button onClick={() => handleQuickPhraseSend(phrase.text)}
                       style={{
