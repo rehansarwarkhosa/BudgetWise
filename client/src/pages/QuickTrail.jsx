@@ -10,7 +10,7 @@ import useSwipeTabs from '../hooks/useSwipeTabs';
 import useBackClose from '../hooks/useBackClose';
 
 import { IoReorderThree } from 'react-icons/io5';
-import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote, reorderTrails, updateSettings } from '../api';
+import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote, reorderTrails, updateSettings, aiTrailSummarize } from '../api';
 import { formatDateTime, formatDate, formatTime } from '../utils/format';
 import KanbanBoard from './KanbanBoard';
 import Reminders from './Reminders';
@@ -110,6 +110,12 @@ export default function QuickTrail() {
   const inputDoubleTapRef = useRef({ last: 0, count: 0 });
   useBackClose(showQuickPhrases, () => setShowQuickPhrases(false));
 
+  // AI summarize state
+  const aiEnabled = settings?.aiEnabled || false;
+  const [aiSummary, setAiSummary] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  useBackClose(!!aiSummary, () => setAiSummary(null));
+
   // Touch-only double-tap (onTouchStart fires once per tap on Android)
   const handleInputTouchStart = useCallback((e) => {
     if (quickPhrases.length === 0) return;
@@ -174,6 +180,19 @@ export default function QuickTrail() {
   const handleTogglePin = async (phraseText) => {
     const updated = rawPhrases.map(p => p.text === phraseText ? { ...p, pinned: !p.pinned } : p);
     try { await updateSettings({ trailQuickPhrases: updated }); refetchSettings(); } catch (err) { toast.error(err.message); }
+  };
+
+  const handleAiSummarize = async () => {
+    if (aiLoading) return;
+    // Collect all visible entries (flattened from grouped)
+    const allEntries = entries.map(e => ({ text: e.text, createdAt: e.createdAt }));
+    if (allEntries.length === 0) { toast.error('No entries to summarize'); return; }
+    setAiLoading(true);
+    try {
+      const res = await aiTrailSummarize(allEntries.slice(0, 100));
+      setAiSummary(res.data.summary);
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
+    finally { setAiLoading(false); }
   };
 
   // Flash timer - force re-render every 30s to update flash state
@@ -485,6 +504,13 @@ export default function QuickTrail() {
                 </div>
               )}
             </div>
+            {aiEnabled && (
+              <button className="btn-ghost" onClick={handleAiSummarize} disabled={aiLoading}
+                title="AI Summarize"
+                style={{ padding: 6, borderRadius: 8, background: aiLoading ? 'var(--bg-input)' : 'transparent', opacity: aiLoading ? 0.6 : 1 }}>
+                {aiLoading ? <Spinner size={18} /> : <IoFlash size={20} color="var(--warning)" />}
+              </button>
+            )}
             <button className="btn-ghost" onClick={toggleSearch}
               style={{ padding: 6, borderRadius: 8, background: searchMode ? 'var(--bg-input)' : 'transparent' }}>
               {searchMode ? <IoClose size={20} /> : <IoSearch size={20} />}
@@ -586,6 +612,32 @@ export default function QuickTrail() {
                     </button>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* AI Summary Popup */}
+        {aiSummary && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            paddingTop: 60, paddingLeft: 16, paddingRight: 16,
+          }} onClick={() => setAiSummary(null)}>
+            <div style={{
+              background: 'var(--bg-card)', borderRadius: 16, padding: 20,
+              width: '100%', maxWidth: 400, maxHeight: '70vh', overflowY: 'auto',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
+                <IoFlash size={18} color="var(--warning)" style={{ marginRight: 8 }} />
+                <h3 style={{ fontSize: 15, fontWeight: 700, flex: 1, margin: 0 }}>AI Summary</h3>
+                <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setAiSummary(null)}>
+                  <IoClose size={20} />
+                </button>
+              </div>
+              <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
+                {aiSummary}
               </div>
             </div>
           </div>

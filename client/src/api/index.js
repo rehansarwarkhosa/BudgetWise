@@ -189,6 +189,11 @@ export const deleteEventEntry = (id) => api.delete(`/events/entries/${id}`);
 // Event Transaction Types (via settings)
 export const getEventTransactionTypes = () => api.get('/settings').then(r => ({ data: r.data.eventTransactionTypes || ['Given', 'Received'] }));
 
+// AI
+export const aiTrailSummarize = (entries) => api.post('/ai/trail-summarize', { entries });
+export const aiBudgetInsights = (data) => api.post('/ai/budget-insights', data);
+export const aiNotesSearch = (query, notes) => api.post('/ai/notes-search', { query, notes });
+
 // Audit Logs
 export const getAuditLogs = (page = 1, { date, action } = {}) => api.get('/audit-logs', { params: { page, limit: 50, ...(date ? { date } : {}), ...(action ? { action } : {}) } });
 export const clearAuditLogs = () => api.delete('/audit-logs');

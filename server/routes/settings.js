@@ -27,6 +27,7 @@ import StockNote from '../models/StockNote.js';
 import Reminder from '../models/Reminder.js';
 import ReminderNote from '../models/ReminderNote.js';
 import Event from '../models/Event.js';
+import EventFolder from '../models/EventFolder.js';
 import EventContainer from '../models/EventContainer.js';
 import EventEntry from '../models/EventEntry.js';
 import { success, error } from '../utils/response.js';
@@ -123,6 +124,10 @@ router.put('/', async (req, res, next) => {
       settings.trailFlashMinutes = req.body.trailFlashMinutes;
       changes.push(`trailFlashMinutes: ${req.body.trailFlashMinutes}`);
     }
+    if (req.body.aiEnabled !== undefined && req.body.aiEnabled !== settings.aiEnabled) {
+      changes.push(`aiEnabled: ${settings.aiEnabled} -> ${req.body.aiEnabled}`);
+      settings.aiEnabled = req.body.aiEnabled;
+    }
     await settings.save();
 
     if (changes.length) {
@@ -216,7 +221,7 @@ router.post('/test-push', async (req, res, next) => {
 // Export all data
 router.get('/export', async (req, res, next) => {
   try {
-    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders, reminderNotes, events, eventContainers, eventEntries] = await Promise.all([
+    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders, reminderNotes, eventFolders, events, eventContainers, eventEntries] = await Promise.all([
       Settings.findOne(),
       Income.find(),
       Budget.find(),
@@ -243,6 +248,7 @@ router.get('/export', async (req, res, next) => {
       StockNote.find(),
       Reminder.find(),
       ReminderNote.find(),
+      EventFolder.find(),
       Event.find(),
       EventContainer.find(),
       EventEntry.find(),
@@ -250,7 +256,7 @@ router.get('/export', async (req, res, next) => {
     success(res, {
       exportDate: new Date().toISOString(),
       version: 1,
-      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders, reminderNotes, events, eventContainers, eventEntries,
+      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders, reminderNotes, eventFolders, events, eventContainers, eventEntries,
     });
   } catch (err) { next(err); }
 });
@@ -288,6 +294,7 @@ router.post('/import', async (req, res, next) => {
       stockNotes: await StockNote.find().lean(),
       reminders: await Reminder.find().lean(),
       reminderNotes: await ReminderNote.find().lean(),
+      eventFolders: await EventFolder.find().lean(),
       events: await Event.find().lean(),
       eventContainers: await EventContainer.find().lean(),
       eventEntries: await EventEntry.find().lean(),
@@ -305,7 +312,7 @@ router.post('/import', async (req, res, next) => {
         PriceItem.deleteMany({}), PriceEntry.deleteMany({}),
         RoutineNote.deleteMany({}), StockItem.deleteMany({}), StockNote.deleteMany({}),
         Reminder.deleteMany({}), ReminderNote.deleteMany({}),
-        Event.deleteMany({}), EventContainer.deleteMany({}), EventEntry.deleteMany({}),
+        EventFolder.deleteMany({}), Event.deleteMany({}), EventContainer.deleteMany({}), EventEntry.deleteMany({}),
       ]);
 
       // Restore from import file — sequential to catch failures early
@@ -334,6 +341,7 @@ router.post('/import', async (req, res, next) => {
       if (data.stockNotes?.length) await StockNote.insertMany(data.stockNotes);
       if (data.reminders?.length) await Reminder.insertMany(data.reminders);
       if (data.reminderNotes?.length) await ReminderNote.insertMany(data.reminderNotes);
+      if (data.eventFolders?.length) await EventFolder.insertMany(data.eventFolders);
       if (data.events?.length) await Event.insertMany(data.events);
       if (data.eventContainers?.length) await EventContainer.insertMany(data.eventContainers);
       if (data.eventEntries?.length) await EventEntry.insertMany(data.eventEntries);
@@ -364,6 +372,7 @@ router.post('/import', async (req, res, next) => {
           eventTransactionTypes: data.settings.eventTransactionTypes || [],
           trailQuickPhrases: (data.settings.trailQuickPhrases || []).map(p => typeof p === 'string' ? { text: p, count: 0, pinned: false } : p),
           trailFlashMinutes: data.settings.trailFlashMinutes ?? 10,
+          aiEnabled: data.settings.aiEnabled ?? false,
         }, { upsert: true });
       }
 
@@ -379,7 +388,7 @@ router.post('/import', async (req, res, next) => {
         PriceItem.deleteMany({}), PriceEntry.deleteMany({}),
         RoutineNote.deleteMany({}), StockItem.deleteMany({}), StockNote.deleteMany({}),
         Reminder.deleteMany({}), ReminderNote.deleteMany({}),
-        Event.deleteMany({}), EventContainer.deleteMany({}), EventEntry.deleteMany({}),
+        EventFolder.deleteMany({}), Event.deleteMany({}), EventContainer.deleteMany({}), EventEntry.deleteMany({}),
       ]);
       if (snapshot.incomes.length) await Income.insertMany(snapshot.incomes);
       if (snapshot.budgets.length) await Budget.insertMany(snapshot.budgets);
@@ -406,6 +415,7 @@ router.post('/import', async (req, res, next) => {
       if (snapshot.stockNotes.length) await StockNote.insertMany(snapshot.stockNotes);
       if (snapshot.reminders.length) await Reminder.insertMany(snapshot.reminders);
       if (snapshot.reminderNotes.length) await ReminderNote.insertMany(snapshot.reminderNotes);
+      if (snapshot.eventFolders?.length) await EventFolder.insertMany(snapshot.eventFolders);
       if (snapshot.events.length) await Event.insertMany(snapshot.events);
       if (snapshot.eventContainers.length) await EventContainer.insertMany(snapshot.eventContainers);
       if (snapshot.eventEntries.length) await EventEntry.insertMany(snapshot.eventEntries);
@@ -445,7 +455,7 @@ router.delete('/all-data', async (req, res, next) => {
       StockItem.deleteMany({}),
       StockNote.deleteMany({}),
       Reminder.deleteMany({}), ReminderNote.deleteMany({}),
-      Event.deleteMany({}), EventContainer.deleteMany({}), EventEntry.deleteMany({}),
+      EventFolder.deleteMany({}), Event.deleteMany({}), EventContainer.deleteMany({}), EventEntry.deleteMany({}),
     ]);
     const period = getCurrentPeriod();
     const settings = await Settings.findOneAndUpdate(

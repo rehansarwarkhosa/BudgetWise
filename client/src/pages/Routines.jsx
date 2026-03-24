@@ -858,13 +858,12 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 
   // Compute stats
   const completedCount = entries.filter(e => e.status === 'complete').length;
-  const incompleteCount = entries.filter(e => e.status === 'incomplete').length;
   const targetEntries = routine?.targetEntries || entries.length || 1;
   const progress = Math.round((completedCount / targetEntries) * 100);
   const isExpired = routine?.isExpired;
   const maxDailyEntries = routine?.maxDailyEntries || 1;
 
-  // Group entries by PKT date to compute day-level stats
+  // Convert a date to PKT date string (YYYY-MM-DD)
   const toPKTDateStr = (d) => {
     const dt = new Date(d);
     return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(dt);
@@ -872,7 +871,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const nowPKT = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
   const todayStr = `${nowPKT.getFullYear()}-${String(nowPKT.getMonth() + 1).padStart(2, '0')}-${String(nowPKT.getDate()).padStart(2, '0')}`;
 
-  // Build map of date → { complete, incomplete }
+  // Build map of date → { complete, incomplete } from actual entries
   const dayMap = {};
   for (const e of entries) {
     const dateKey = toPKTDateStr(e.date);
@@ -880,24 +879,91 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
     dayMap[dateKey][e.status]++;
   }
 
-  // Sort unique dates ascending for streak calculation
-  const sortedDates = Object.keys(dayMap).sort();
+  // Client-side reminderMatchesDay (mirrors server logic)
+  const reminderMatchesDay = (rem, dateStr, weekday) => {
+    if (!rem.enabled) return false;
+    if (rem.type === 'once' && rem.fired) return false;
+    switch (rem.type) {
+      case 'once': return true;
+      case 'daily': return true;
+      case 'weekdays': return weekday >= 1 && weekday <= 5;
+      case 'custom_days': return (rem.days || []).includes(weekday);
+      case 'custom_dates':
+        return (rem.dates || []).some(d => new Date(d).toISOString().split('T')[0] === dateStr);
+      case 'interval': {
+        if (!rem.intervalStartDate || !rem.intervalDays || rem.intervalDays < 1) return false;
+        const startStr = new Date(rem.intervalStartDate).toISOString().split('T')[0];
+        if (dateStr < startStr) return false;
+        if (rem.intervalEndDate) {
+          const endStr = new Date(rem.intervalEndDate).toISOString().split('T')[0];
+          if (dateStr > endStr) return false;
+        }
+        const startMs = new Date(startStr + 'T00:00:00Z').getTime();
+        const dateMs = new Date(dateStr + 'T00:00:00Z').getTime();
+        const diffDays = Math.round((dateMs - startMs) / 86400000);
+        if (diffDays === 0 && rem.intervalIncludeStart === false) return false;
+        return diffDays % rem.intervalDays === 0;
+      }
+      default: return false;
+    }
+  };
 
-  // Missed = total incomplete entries (not counting today since day isn't over)
-  const totalMissed = entries.filter(e => e.status === 'incomplete' && toPKTDateStr(e.date) !== todayStr).length;
+  // Check if a given date was an active day for this routine
+  const isActiveDayForDate = (dateStr) => {
+    const reminders = routine?.reminders || [];
+    const enabled = reminders.filter(r => r.enabled && !(r.type === 'once' && r.fired));
+    if (enabled.length === 0) return true; // no reminders = daily by default
+    const dow = new Date(dateStr + 'T12:00:00+05:00').getDay();
+    return enabled.some(r => reminderMatchesDay(r, dateStr, dow));
+  };
 
-  // Completion rate: exclude today (day not over yet)
-  const pastCompleted = entries.filter(e => e.status === 'complete' && toPKTDateStr(e.date) !== todayStr).length;
-  const pastIncomplete = entries.filter(e => e.status === 'incomplete' && toPKTDateStr(e.date) !== todayStr).length;
-  const pastTotal = pastCompleted + pastIncomplete;
-  const completionRate = pastTotal > 0 ? Math.round((pastCompleted / pastTotal) * 100) : (completedCount > 0 ? 100 : 0);
+  // Build list of ALL active days from routine creation to yesterday
+  const routineCreatedStr = routine?.createdAt ? toPKTDateStr(routine.createdAt) : null;
+  const dueDateStr = routine?.dueDate ? toPKTDateStr(routine.dueDate) : null;
 
-  // Streak by unique calendar days (a day counts as "complete" if it has ≥1 complete and 0 incomplete)
+  // Helper to add N days to a YYYY-MM-DD string
+  const addDays = (dateStr, n) => {
+    const d = new Date(dateStr + 'T12:00:00+05:00');
+    d.setDate(d.getDate() + n);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  };
+
+  // Iterate every day from creation to yesterday, build full picture
+  let totalMissed = 0;
+  let totalExpected = 0;
+  let totalActualComplete = 0;
+  const allActiveDays = []; // ordered list of active date strings (excluding today)
+
+  if (routineCreatedStr) {
+    const endStr = todayStr; // stop before today (today not over)
+    // Also respect dueDate — don't count days after due date
+    let cursor = routineCreatedStr;
+    while (cursor < endStr && (!dueDateStr || cursor <= dueDateStr)) {
+      if (isActiveDayForDate(cursor)) {
+        allActiveDays.push(cursor);
+        const actual = dayMap[cursor] || { complete: 0, incomplete: 0 };
+        const expected = maxDailyEntries;
+        totalExpected += expected;
+        totalActualComplete += actual.complete;
+        const missed = Math.max(0, expected - actual.complete);
+        totalMissed += missed;
+      }
+      cursor = addDays(cursor, 1);
+    }
+  }
+
+  // Completion rate: based on expected entries across all active past days
+  const completionRate = totalExpected > 0
+    ? Math.round((totalActualComplete / totalExpected) * 100)
+    : (completedCount > 0 ? 100 : 0);
+
+  // Streaks: iterate ALL active days in order
+  // A day is "fulfilled" if complete entries >= maxDailyEntries
   let longestStreak = 0;
   let tempStreak = 0;
-  for (const dateKey of sortedDates) {
-    const day = dayMap[dateKey];
-    if (day.complete > 0 && day.incomplete === 0) {
+  for (const dateStr of allActiveDays) {
+    const actual = dayMap[dateStr] || { complete: 0 };
+    if (actual.complete >= maxDailyEntries) {
       tempStreak++;
       if (tempStreak > longestStreak) longestStreak = tempStreak;
     } else {
@@ -905,16 +971,17 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
     }
   }
 
-  // Current streak: count backward from the most recent date
+  // Current streak: count backward from most recent active day
+  // Include today if it has entries (but don't penalize if not fulfilled yet)
   let currentStreak = 0;
-  for (let i = sortedDates.length - 1; i >= 0; i--) {
-    const day = dayMap[sortedDates[i]];
-    // Skip today since it's in progress — don't break streak for unfinished today
-    if (sortedDates[i] === todayStr) {
-      if (day.complete > 0) currentStreak++;
-      continue;
-    }
-    if (day.complete > 0 && day.incomplete === 0) {
+  // Check today first — if today is active and has completions, count it
+  if (isActiveDayForDate(todayStr) && dayMap[todayStr]?.complete > 0) {
+    currentStreak++;
+  }
+  for (let i = allActiveDays.length - 1; i >= 0; i--) {
+    const dateStr = allActiveDays[i];
+    const actual = dayMap[dateStr] || { complete: 0 };
+    if (actual.complete >= maxDailyEntries) {
       currentStreak++;
     } else {
       break;

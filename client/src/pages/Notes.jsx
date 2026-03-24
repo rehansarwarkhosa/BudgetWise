@@ -4,7 +4,7 @@ import {
   IoAdd, IoTrash, IoChevronForward, IoChevronDown, IoSearch, IoArrowBack,
   IoClose, IoPricetag, IoCreate, IoColorPalette, IoTime,
   IoLockClosed, IoLockOpen, IoCalendar, IoNotifications, IoNotificationsOff,
-  IoChevronUp, IoFolder, IoFolderOpen,
+  IoChevronUp, IoFolder, IoFolderOpen, IoFlash,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -20,7 +20,7 @@ import {
   getEvents, createEvent, updateEvent, deleteEvent,
   getEventContainers, createEventContainer, updateEventContainer, deleteEventContainer,
   getEventEntries, createEventEntry, updateEventEntry, deleteEventEntry,
-  getSettings, updateSettings,
+  getSettings, updateSettings, aiNotesSearch,
 } from '../api';
 import { formatDateTime, formatDate, formatPKR } from '../utils/format';
 import useSwipeTabs from '../hooks/useSwipeTabs';
@@ -88,6 +88,10 @@ function NotesSection({ appSettings }) {
   const [allTags, setAllTags] = useState([]);
   const [editItem, setEditItem] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const aiEnabled = appSettings?.aiEnabled || false;
+  const [aiSearchMode, setAiSearchMode] = useState(false);
+  const [aiSearchResults, setAiSearchResults] = useState(null);
+  const [aiSearchLoading, setAiSearchLoading] = useState(false);
   const topicColorRef = useRef(null);
   const [editingTopicColor, setEditingTopicColor] = useState(null);
 
@@ -154,12 +158,38 @@ function NotesSection({ appSettings }) {
     finally { setSearchLoading(false); }
   };
 
+  const doAiSearch = async () => {
+    if (!searchQuery.trim() || aiSearchLoading) return;
+    setAiSearchLoading(true);
+    setAiSearchResults(null);
+    try {
+      // Get all notes for AI to search through
+      const treeRes = await getNotesTree();
+      const allNotes = [];
+      for (const topic of treeRes.data) {
+        for (const sub of topic.subTopics || []) {
+          for (const note of sub.notes || []) {
+            allNotes.push({ _id: note._id, title: note.title, content: note.content || '', topicName: topic.name, subTopicName: sub.name, subTopicId: sub._id });
+          }
+        }
+      }
+      if (allNotes.length === 0) { toast.error('No notes to search'); setAiSearchLoading(false); return; }
+      const res = await aiNotesSearch(searchQuery, allNotes.slice(0, 50));
+      const matched = (res.data.results || []).map(r => {
+        const note = allNotes.find(n => n._id === r.id);
+        return note ? { ...note, reason: r.reason } : null;
+      }).filter(Boolean);
+      setAiSearchResults({ results: matched, summary: res.data.summary });
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
+    finally { setAiSearchLoading(false); }
+  };
+
   useEffect(() => {
-    if (tab === 'search') {
+    if (tab === 'search' && !aiSearchMode) {
       const timer = setTimeout(doSearch, 400);
       return () => clearTimeout(timer);
     }
-  }, [searchQuery, searchTag, tab]);
+  }, [searchQuery, searchTag, tab, aiSearchMode]);
 
   const handleRename = async () => {
     if (!editItem) return;
@@ -228,24 +258,48 @@ function NotesSection({ appSettings }) {
       {/* Search UI */}
       {tab === 'search' && (
         <div style={{ marginBottom: 16 }}>
-          <input type="text" placeholder="Search notes..." value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ marginBottom: 8 }} autoFocus />
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {allTags.map((t) => (
-              <button key={t._id}
-                onClick={() => setSearchTag(searchTag === t._id ? '' : t._id)}
-                style={{
-                  padding: '4px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
-                  border: 'none', cursor: 'pointer',
-                  background: searchTag === t._id ? t.color : 'var(--bg-input)',
-                  color: searchTag === t._id ? '#fff' : 'var(--text-secondary)',
-                }}>
-                {t.name}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+            <input type="text" placeholder={aiSearchMode ? "Describe what you're looking for..." : "Search notes..."} value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); if (aiSearchMode) setAiSearchResults(null); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && aiSearchMode) doAiSearch(); }}
+              style={{ flex: 1 }} autoFocus />
+            {aiSearchMode && (
+              <button className="btn-primary" onClick={doAiSearch} disabled={aiSearchLoading || !searchQuery.trim()}
+                style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontSize: 12 }}>
+                {aiSearchLoading ? 'Searching...' : 'Search'}
               </button>
-            ))}
+            )}
           </div>
-          {searchLoading ? <Spinner /> : searchResults.length > 0 ? (
+          {aiEnabled && (
+            <button onClick={() => { setAiSearchMode(!aiSearchMode); setAiSearchResults(null); setSearchResults([]); }}
+              style={{
+                padding: '4px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                border: 'none', cursor: 'pointer', marginBottom: 8,
+                background: aiSearchMode ? 'var(--warning)' : 'var(--bg-input)',
+                color: aiSearchMode ? '#000' : 'var(--text-secondary)',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+              }}>
+              <IoFlash size={12} /> {aiSearchMode ? 'AI Smart Search' : 'Use AI Search'}
+            </button>
+          )}
+          {!aiSearchMode && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {allTags.map((t) => (
+                <button key={t._id}
+                  onClick={() => setSearchTag(searchTag === t._id ? '' : t._id)}
+                  style={{
+                    padding: '4px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                    border: 'none', cursor: 'pointer',
+                    background: searchTag === t._id ? t.color : 'var(--bg-input)',
+                    color: searchTag === t._id ? '#fff' : 'var(--text-secondary)',
+                  }}>
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Regular search results */}
+          {!aiSearchMode && (searchLoading ? <Spinner /> : searchResults.length > 0 ? (
             <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
               {searchResults.map((note) => {
                 const topicColor = note.subTopicId?.topicId?.color;
@@ -275,7 +329,38 @@ function NotesSection({ appSettings }) {
             </div>
           ) : (searchQuery || searchTag) ? (
             <EmptyState title="No results" subtitle="Try different search terms" />
-          ) : null}
+          ) : null)}
+          {/* AI search results */}
+          {aiSearchMode && (aiSearchLoading ? <Spinner /> : aiSearchResults ? (
+            <div style={{ marginTop: 12 }}>
+              {aiSearchResults.summary && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, padding: '8px 12px', background: 'var(--bg-input)', borderRadius: 8 }}>
+                  <IoFlash size={12} color="var(--warning)" style={{ verticalAlign: -2, marginRight: 4 }} />
+                  {aiSearchResults.summary}
+                </div>
+              )}
+              {aiSearchResults.results.length > 0 ? (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {aiSearchResults.results.map((note) => (
+                    <div key={note._id} className="card" style={{ cursor: 'pointer' }}
+                      onClick={() => setNoteEditorModal({ note: { _id: note._id, title: note.title }, subTopicId: note.subTopicId })}>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+                        {note.topicName || '?'} / {note.subTopicName || '?'}
+                      </div>
+                      <h3 style={{ fontSize: 14, fontWeight: 600 }}>{note.title}</h3>
+                      {note.reason && (
+                        <div style={{ fontSize: 11, color: 'var(--primary)', marginTop: 4, fontStyle: 'italic' }}>
+                          {note.reason}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState title="No matches" subtitle="AI couldn't find notes matching your description" />
+              )}
+            </div>
+          ) : null)}
         </div>
       )}
 

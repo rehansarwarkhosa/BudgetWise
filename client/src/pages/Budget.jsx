@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoRemoveCircle, IoCreate, IoChevronUp, IoChevronDown, IoDocumentText, IoPlayCircle, IoBookmark, IoPricetag, IoCube, IoLockClosed, IoLockOpen } from 'react-icons/io5';
+import { IoAdd, IoTrash, IoWallet, IoCash, IoAddCircle, IoRemoveCircle, IoCreate, IoChevronUp, IoChevronDown, IoDocumentText, IoPlayCircle, IoBookmark, IoPricetag, IoCube, IoLockClosed, IoLockOpen, IoFlash, IoClose } from 'react-icons/io5';
 import PriceList from './PriceList';
 import StockList from './StockList';
 import Spinner from '../components/Spinner';
@@ -20,7 +20,7 @@ import {
   getFundEntries, deleteFundEntry, reorderBudget, getBudgetCategories,
   getBudgetTemplates, createBudgetTemplate, createTemplateFromBudgets,
   useBudgetTemplate, deleteBudgetTemplate, updateSettings,
-  getPriceItems,
+  getPriceItems, aiBudgetInsights,
 } from '../api';
 
 export default function Budget() {
@@ -51,6 +51,12 @@ export default function Budget() {
   useBackClose(!!expenseModal, () => setExpenseModal(null));
   useBackClose(!!fundsModal, () => setFundsModal(null));
   useBackClose(!!incomeListModal, () => setIncomeListModal(false));
+
+  // AI state
+  const aiEnabled = appSettings?.aiEnabled || false;
+  const [aiInsights, setAiInsights] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  useBackClose(!!aiInsights, () => setAiInsights(null));
 
   const refreshAll = () => {
     refetchSummary();
@@ -87,6 +93,31 @@ export default function Budget() {
     } catch (err) { toast.error(err.message); }
   };
 
+  const handleAiInsights = async () => {
+    if (aiLoading || !budgets?.length) return;
+    setAiLoading(true);
+    try {
+      // Fetch expenses for each budget
+      const allExpenses = [];
+      for (const b of budgets.slice(0, 10)) {
+        try {
+          const res = await getExpenses(b._id);
+          allExpenses.push(...(res.data || []).slice(0, 5));
+        } catch { /* skip */ }
+      }
+      const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+      const period = `${now.toLocaleString('en-US', { month: 'long' })} ${now.getFullYear()}`;
+      const res = await aiBudgetInsights({
+        budgets,
+        expenses: allExpenses.slice(0, 30),
+        incomeTotal: summary?.totalIncome || 0,
+        period,
+      });
+      setAiInsights(res.data.insights);
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
+    finally { setAiLoading(false); }
+  };
+
   if ((summaryLoading && !summary) || (budgetsLoading && !budgets)) return <Spinner />;
 
   // Group budgets by category
@@ -102,10 +133,19 @@ export default function Budget() {
     <div className="page" onTouchStart={mainSwipe.onTouchStart} onTouchEnd={mainSwipe.onTouchEnd}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 className="page-title" style={{ marginBottom: 0 }}>Budget</h1>
-        <button className="btn-ghost" onClick={handleToggleBudgetLock}
-          style={{ padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: budgetLocked ? 'var(--warning)' : 'var(--text-muted)' }}>
-          {budgetLocked ? <IoLockClosed size={16} /> : <IoLockOpen size={16} />}
-        </button>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {aiEnabled && (
+            <button className="btn-ghost" onClick={handleAiInsights} disabled={aiLoading}
+              title="AI Insights"
+              style={{ padding: 6, borderRadius: 8, opacity: aiLoading ? 0.6 : 1 }}>
+              <IoFlash size={18} color="var(--warning)" />
+            </button>
+          )}
+          <button className="btn-ghost" onClick={handleToggleBudgetLock}
+            style={{ padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: budgetLocked ? 'var(--warning)' : 'var(--text-muted)' }}>
+            {budgetLocked ? <IoLockClosed size={16} /> : <IoLockOpen size={16} />}
+          </button>
+        </div>
       </div>
 
       {/* View Toggle: Budgets / Templates */}
@@ -248,6 +288,32 @@ export default function Budget() {
         onConfirm={handleConfirmDelete}
         title={`Delete ${confirmDelete?.type}?`}
         message={`Are you sure you want to delete "${confirmDelete?.name}"? This cannot be undone.`} />
+
+      {/* AI Insights Popup */}
+      {aiInsights && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+          paddingTop: 60, paddingLeft: 16, paddingRight: 16,
+        }} onClick={() => setAiInsights(null)}>
+          <div style={{
+            background: 'var(--bg-card)', borderRadius: 16, padding: 20,
+            width: '100%', maxWidth: 400, maxHeight: '70vh', overflowY: 'auto',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
+              <IoFlash size={18} color="var(--warning)" style={{ marginRight: 8 }} />
+              <h3 style={{ fontSize: 15, fontWeight: 700, flex: 1, margin: 0 }}>AI Budget Insights</h3>
+              <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setAiInsights(null)}>
+                <IoClose size={20} />
+              </button>
+            </div>
+            <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
+              {aiInsights}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

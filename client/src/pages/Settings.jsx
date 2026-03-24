@@ -359,6 +359,7 @@ export default function Settings() {
   const [quickPhrases, setQuickPhrases] = useState([]);
   const [newPhrase, setNewPhrase] = useState('');
   const [flashMinutes, setFlashMinutes] = useState(10);
+  const [aiEnabled, setAiEnabled] = useState(false);
 
   useEffect(() => {
     if (settings && !initialized) {
@@ -394,6 +395,7 @@ export default function Settings() {
       setEventTypes(settings.eventTransactionTypes?.length ? settings.eventTransactionTypes : ['Given', 'Received']);
       setQuickPhrases((settings.trailQuickPhrases || []).map(p => typeof p === 'string' ? { text: p, count: 0, pinned: false } : p).filter(p => p && p.text && p.text.trim()));
       setFlashMinutes(settings.trailFlashMinutes ?? 10);
+      setAiEnabled(settings.aiEnabled ?? false);
       setInitialized(true);
     }
   }, [settings, initialized]);
@@ -1317,6 +1319,35 @@ export default function Settings() {
         <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
           Learn how income, budgets, expenses, savings, and rollover work together.
         </p>
+      </div>
+
+      {/* AI Features */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>AI Assistant</h3>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Enable AI-powered features: trail summaries, budget insights, and smart note search.
+            </p>
+          </div>
+          <button type="button" onClick={async () => {
+            const next = !aiEnabled;
+            setAiEnabled(next);
+            try { await updateSettings({ aiEnabled: next }); await refetchSettings(); toast.success(next ? 'AI enabled' : 'AI disabled'); }
+            catch (err) { setAiEnabled(!next); toast.error(err.message); }
+          }}
+            style={{
+              width: 48, height: 26, borderRadius: 13, border: 'none', cursor: 'pointer', flexShrink: 0,
+              background: aiEnabled ? 'var(--primary)' : 'var(--border)',
+              position: 'relative', transition: 'background 0.2s',
+            }}>
+            <span style={{
+              position: 'absolute', top: 3, left: aiEnabled ? 25 : 3,
+              width: 20, height: 20, borderRadius: '50%', background: 'white',
+              transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+            }} />
+          </button>
+        </div>
       </div>
 
       {/* Trail Quick Phrases */}

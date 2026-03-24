@@ -46,6 +46,7 @@ const settingsSchema = new mongoose.Schema({
     pinned: { type: Boolean, default: false },
   }],
   trailFlashMinutes: { type: Number, default: 10, min: 0, max: 60 },
+  aiEnabled: { type: Boolean, default: false },
 }, { timestamps: true });
 
 export default mongoose.model('Settings', settingsSchema);
