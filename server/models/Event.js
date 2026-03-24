@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
 const eventSchema = new mongoose.Schema({
+  folderId: { type: mongoose.Schema.Types.ObjectId, ref: 'EventFolder', default: null },
   name: { type: String, required: true, trim: true },
   date: { type: Date, default: Date.now },
   time: { type: String, default: '' }, // HH:MM format

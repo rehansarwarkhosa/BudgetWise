@@ -157,8 +157,18 @@ export default function QuickTrail() {
 
   const handleQuickPhraseFill = (phraseText) => {
     setShowQuickPhrases(false);
-    setText(prev => prev ? prev + ' ' + phraseText : phraseText);
-    setTimeout(() => inputRef.current?.focus(), 100);
+    setText(prev => {
+      const newText = prev ? prev + ' ' + phraseText + ' ' : phraseText + ' ';
+      // Place cursor at end after React re-renders
+      setTimeout(() => {
+        const el = inputRef.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(newText.length, newText.length);
+        }
+      }, 100);
+      return newText;
+    });
   };
 
   const handleTogglePin = async (phraseText) => {

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import Event from '../models/Event.js';
+import EventFolder from '../models/EventFolder.js';
 import EventContainer from '../models/EventContainer.js';
 import EventEntry from '../models/EventEntry.js';
 import AuditLog from '../models/AuditLog.js';
@@ -7,12 +8,73 @@ import { success, error } from '../utils/response.js';
 
 const router = Router();
 
+// ─── Folders ───
+
+// Get all folders (with event count)
+router.get('/folders', async (req, res, next) => {
+  try {
+    const folders = await EventFolder.find().sort({ createdAt: -1 });
+    const result = await Promise.all(folders.map(async (f) => {
+      const eventCount = await Event.countDocuments({ folderId: f._id });
+      return { ...f.toObject(), eventCount };
+    }));
+    success(res, result);
+  } catch (err) { next(err); }
+});
+
+// Create folder
+router.post('/folders', async (req, res, next) => {
+  try {
+    const { name, description } = req.body;
+    if (!name?.trim()) return error(res, 'Folder name is required');
+    const folder = await EventFolder.create({ name: name.trim(), description: (description || '').trim() });
+    await AuditLog.create({ action: 'CREATE', entity: 'EventFolder', entityId: folder._id, details: `Created event folder "${name.trim()}"` });
+    success(res, folder, 201);
+  } catch (err) { next(err); }
+});
+
+// Update folder
+router.put('/folders/:id', async (req, res, next) => {
+  try {
+    const folder = await EventFolder.findById(req.params.id);
+    if (!folder) return error(res, 'Folder not found', 404);
+    const { name, description } = req.body;
+    const changes = [];
+    if (name !== undefined && name !== folder.name) { changes.push(`name: "${folder.name}" -> "${name}"`); folder.name = name; }
+    if (description !== undefined && description !== folder.description) { changes.push('description updated'); folder.description = description; }
+    await folder.save();
+    if (changes.length) await AuditLog.create({ action: 'UPDATE', entity: 'EventFolder', entityId: folder._id, details: `Updated folder "${folder.name}": ${changes.join(', ')}` });
+    success(res, folder);
+  } catch (err) { next(err); }
+});
+
+// Delete folder (and all events, containers, entries inside)
+router.delete('/folders/:id', async (req, res, next) => {
+  try {
+    const folder = await EventFolder.findById(req.params.id);
+    if (!folder) return error(res, 'Folder not found', 404);
+    const events = await Event.find({ folderId: folder._id });
+    for (const evt of events) {
+      const containers = await EventContainer.find({ eventId: evt._id });
+      const containerIds = containers.map(c => c._id);
+      await EventEntry.deleteMany({ containerId: { $in: containerIds } });
+      await EventContainer.deleteMany({ eventId: evt._id });
+    }
+    await Event.deleteMany({ folderId: folder._id });
+    await EventFolder.findByIdAndDelete(req.params.id);
+    await AuditLog.create({ action: 'DELETE', entity: 'EventFolder', entityId: folder._id, details: `Deleted folder "${folder.name}" and all its events/containers/entries` });
+    success(res, { message: 'Folder deleted' });
+  } catch (err) { next(err); }
+});
+
 // ─── Events ───
 
-// Get all events
+// Get events (optionally filtered by folderId)
 router.get('/', async (req, res, next) => {
   try {
-    const events = await Event.find().sort({ createdAt: -1 });
+    const filter = {};
+    if (req.query.folderId) filter.folderId = req.query.folderId;
+    const events = await Event.find(filter).sort({ createdAt: -1 });
     success(res, events);
   } catch (err) { next(err); }
 });
@@ -20,10 +82,11 @@ router.get('/', async (req, res, next) => {
 // Create event
 router.post('/', async (req, res, next) => {
   try {
-    const { name, date, time, notes, reminderEnabled } = req.body;
+    const { name, date, time, notes, reminderEnabled, folderId } = req.body;
     if (!name?.trim()) return error(res, 'Event name is required');
 
     const eventData = { name: name.trim(), notes: notes || '' };
+    if (folderId) eventData.folderId = folderId;
     if (date) eventData.date = date;
     if (time) eventData.time = time;
 

@@ -4,7 +4,7 @@ import {
   IoAdd, IoTrash, IoChevronForward, IoChevronDown, IoSearch, IoArrowBack,
   IoClose, IoPricetag, IoCreate, IoColorPalette, IoTime,
   IoLockClosed, IoLockOpen, IoCalendar, IoNotifications, IoNotificationsOff,
-  IoChevronUp,
+  IoChevronUp, IoFolder, IoFolderOpen,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -16,6 +16,7 @@ import {
   getNotes, createNote, updateNote, deleteNote,
   getTags, createTag, updateTag, deleteTag,
   searchNotes, getRecentNotes, getNotesTree,
+  getEventFolders, createEventFolder, updateEventFolder, deleteEventFolder,
   getEvents, createEvent, updateEvent, deleteEvent,
   getEventContainers, createEventContainer, updateEventContainer, deleteEventContainer,
   getEventEntries, createEventEntry, updateEventEntry, deleteEventEntry,
@@ -504,28 +505,37 @@ function NotesSection({ appSettings }) {
 // ════════════════════════════════════════════════════════════
 
 function EventsSection() {
-  const [tab, _setTab] = useState(() => sessionStorage.getItem('events_tab') || 'add');
-  const setTab = useCallback((t) => { _setTab(t); sessionStorage.setItem('events_tab', t); }, []);
-
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [transactionTypes, setTransactionTypes] = useState(['Given', 'Received']);
 
-  // Event note editor
-  const [eventNoteEditor, setEventNoteEditor] = useState(null); // { content, onSave }
-  useBackClose(!!eventNoteEditor, () => setEventNoteEditor(null));
-
-  // Event detail view (containers + entries)
+  // Navigation stack: folders → folder detail (events) → event detail
+  const [folders, setFolders] = useState([]);
+  const [foldersLoading, setFoldersLoading] = useState(true);
+  const [selectedFolder, setSelectedFolder] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
-  useBackClose(!!selectedEvent, () => setSelectedEvent(null));
 
-  const fetchEvents = useCallback(async () => {
-    setLoading(true);
+  // Folder creation
+  const [showAddFolder, setShowAddFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderDesc, setNewFolderDesc] = useState('');
+  const [folderSaving, setFolderSaving] = useState(false);
+  const [editingFolder, setEditingFolder] = useState(null);
+  const [confirmDelFolder, setConfirmDelFolder] = useState(null);
+
+  // Event note editor
+  const [eventNoteEditor, setEventNoteEditor] = useState(null);
+
+  // Back button support (innermost first)
+  useBackClose(!!eventNoteEditor, () => setEventNoteEditor(null));
+  useBackClose(!!selectedEvent && !eventNoteEditor, () => setSelectedEvent(null));
+  useBackClose(!!selectedFolder && !selectedEvent && !eventNoteEditor, () => setSelectedFolder(null));
+
+  const fetchFolders = useCallback(async () => {
+    setFoldersLoading(true);
     try {
-      const res = await getEvents();
-      setEvents(res.data);
+      const res = await getEventFolders();
+      setFolders(res.data);
     } catch (err) { toast.error(err.message); }
-    finally { setLoading(false); }
+    finally { setFoldersLoading(false); }
   }, []);
 
   const fetchTypes = useCallback(async () => {
@@ -536,55 +546,220 @@ function EventsSection() {
     } catch { /* use defaults */ }
   }, []);
 
-  useEffect(() => { fetchEvents(); fetchTypes(); }, []);
+  useEffect(() => { fetchFolders(); fetchTypes(); }, []);
+
+  const handleCreateFolder = async (e) => {
+    e.preventDefault();
+    if (!newFolderName.trim()) return;
+    setFolderSaving(true);
+    try {
+      await createEventFolder({ name: newFolderName.trim(), description: newFolderDesc.trim() });
+      toast.success('Folder created');
+      setNewFolderName(''); setNewFolderDesc(''); setShowAddFolder(false);
+      fetchFolders();
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
+    finally { setFolderSaving(false); }
+  };
+
+  const handleUpdateFolder = async (e) => {
+    e.preventDefault();
+    if (!editingFolder || !newFolderName.trim()) return;
+    setFolderSaving(true);
+    try {
+      await updateEventFolder(editingFolder._id, { name: newFolderName.trim(), description: newFolderDesc.trim() });
+      toast.success('Folder updated');
+      setNewFolderName(''); setNewFolderDesc(''); setEditingFolder(null);
+      fetchFolders();
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
+    finally { setFolderSaving(false); }
+  };
+
+  const handleDeleteFolder = async () => {
+    if (!confirmDelFolder) return;
+    try {
+      await deleteEventFolder(confirmDelFolder._id);
+      toast.success('Folder deleted');
+      fetchFolders();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  // ─── Render: Event Detail View ───
+  if (selectedEvent) {
+    return (
+      <EventDetailView
+        event={selectedEvent}
+        onBack={() => { setSelectedEvent(null); }}
+        transactionTypes={transactionTypes}
+      />
+    );
+  }
+
+  // ─── Render: Rich Note Editor ───
+  if (eventNoteEditor) {
+    return (
+      <RichNoteEditor
+        initialContent={eventNoteEditor.content}
+        onSave={(html) => { eventNoteEditor.onSave(html); setEventNoteEditor(null); }}
+        onClose={() => setEventNoteEditor(null)}
+      />
+    );
+  }
+
+  // ─── Render: Folder Detail (events inside a folder) ───
+  if (selectedFolder) {
+    return (
+      <FolderDetailView
+        folder={selectedFolder}
+        onBack={() => { setSelectedFolder(null); fetchFolders(); }}
+        onSelectEvent={setSelectedEvent}
+        onOpenNoteEditor={(content, onSave) => setEventNoteEditor({ content, onSave })}
+        transactionTypes={transactionTypes}
+      />
+    );
+  }
+
+  // ─── Render: Folders List (default view) ───
+  return (
+    <div>
+      {/* Add Folder Button */}
+      <button className="btn-primary" style={{ width: '100%', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+        onClick={() => { setShowAddFolder(true); setNewFolderName(''); setNewFolderDesc(''); }}>
+        <IoAdd size={16} /> New Event Folder
+      </button>
+
+      {/* Add/Edit Folder Form */}
+      {(showAddFolder || editingFolder) && (
+        <div className="card" style={{ padding: '14px 16px', marginBottom: 12, background: 'rgba(118, 210, 219, 0.06)', border: '1px solid rgba(118, 210, 219, 0.2)' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+            {editingFolder ? 'Edit Folder' : 'New Event Folder'}
+          </div>
+          <form onSubmit={editingFolder ? handleUpdateFolder : handleCreateFolder}>
+            <input type="text" placeholder="Folder name *" value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)} autoFocus required
+              style={{ width: '100%', marginBottom: 8 }} />
+            <input type="text" placeholder="Description (optional)" value={newFolderDesc}
+              onChange={(e) => setNewFolderDesc(e.target.value)}
+              style={{ width: '100%', marginBottom: 10 }} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={folderSaving}>
+                {folderSaving ? 'Saving...' : editingFolder ? 'Update' : 'Create Folder'}
+              </button>
+              <button type="button" className="btn-ghost" style={{ padding: '10px 14px' }}
+                onClick={() => { setShowAddFolder(false); setEditingFolder(null); setNewFolderName(''); setNewFolderDesc(''); }}>
+                <IoClose size={18} />
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Folders List */}
+      {foldersLoading ? <Spinner /> : folders.length === 0 ? (
+        <EmptyState icon="folder" title="No event folders yet" subtitle="Create a folder to organize your events" />
+      ) : (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {folders.map((f) => (
+            <div key={f._id} className="card" style={{ padding: '12px 14px', cursor: 'pointer' }}
+              onClick={() => setSelectedFolder(f)}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <IoFolder size={22} color="var(--primary)" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 2 }}>{f.name}</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+                    <span>{f.eventCount || 0} event{f.eventCount !== 1 ? 's' : ''}</span>
+                    {f.description && <span>· {f.description.length > 40 ? f.description.substring(0, 40) + '...' : f.description}</span>}
+                  </div>
+                </div>
+                <button className="btn-ghost" style={{ padding: 4 }}
+                  onClick={(e) => { e.stopPropagation(); setEditingFolder(f); setNewFolderName(f.name); setNewFolderDesc(f.description || ''); }}>
+                  <IoCreate size={14} color="var(--text-muted)" />
+                </button>
+                <button className="btn-ghost" style={{ padding: 4 }}
+                  onClick={(e) => { e.stopPropagation(); setConfirmDelFolder(f); }}>
+                  <IoTrash size={14} color="var(--danger)" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <ConfirmModal open={!!confirmDelFolder} onClose={() => setConfirmDelFolder(null)}
+        onConfirm={handleDeleteFolder}
+        title="Delete folder?"
+        message={`Delete "${confirmDelFolder?.name}" and all its events, occasions, and entries?`} />
+    </div>
+  );
+}
+
+// ─── Folder Detail View (Events inside a folder) ───
+
+function FolderDetailView({ folder, onBack, onSelectEvent, onOpenNoteEditor, transactionTypes }) {
+  const [tab, _setTab] = useState(() => sessionStorage.getItem('events_tab') || 'all');
+  const setTab = useCallback((t) => { _setTab(t); sessionStorage.setItem('events_tab', t); }, []);
+
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchEvents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await getEvents(folder._id);
+      setEvents(res.data);
+    } catch (err) { toast.error(err.message); }
+    finally { setLoading(false); }
+  }, [folder._id]);
+
+  useEffect(() => { fetchEvents(); }, []);
 
   return (
     <div>
-      {selectedEvent ? (
-        <EventDetailView
-          event={selectedEvent}
-          onBack={() => { setSelectedEvent(null); fetchEvents(); }}
-          transactionTypes={transactionTypes}
-        />
-      ) : eventNoteEditor ? (
-        <RichNoteEditor
-          initialContent={eventNoteEditor.content}
-          onSave={(html) => { eventNoteEditor.onSave(html); setEventNoteEditor(null); }}
-          onClose={() => setEventNoteEditor(null)}
-        />
-      ) : (
-        <>
-          {/* Sub-tab bar */}
-          <div style={{ display: 'flex', gap: 0, marginBottom: 14, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
-            {[{ key: 'add', label: 'Add Event' }, { key: 'all', label: 'All Events' }].map(t => (
-              <button key={t.key} onClick={() => setTab(t.key)} style={{
-                flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
-                background: tab === t.key ? 'var(--primary)' : 'transparent',
-                color: tab === t.key ? 'white' : 'var(--text-secondary)',
-                transition: 'all 0.2s',
-              }}>
-                {t.key === 'add' && <IoAdd size={13} style={{ marginRight: 4, verticalAlign: -2 }} />}
-                {t.key === 'all' && <IoCalendar size={13} style={{ marginRight: 4, verticalAlign: -2 }} />}
-                {t.label}
-              </button>
-            ))}
+      {/* Header */}
+      <div className="card" style={{ padding: '14px 16px', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button className="btn-ghost" style={{ padding: 4 }} onClick={onBack}>
+            <IoArrowBack size={20} />
+          </button>
+          <IoFolderOpen size={20} color="var(--primary)" />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, wordBreak: 'break-word' }}>{folder.name}</h2>
+            {folder.description && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{folder.description}</div>
+            )}
           </div>
+        </div>
+      </div>
 
-          {tab === 'add' && (
-            <AddEventForm
-              onCreated={() => { fetchEvents(); setTab('all'); }}
-              onOpenNoteEditor={(content, onSave) => setEventNoteEditor({ content, onSave })}
-            />
-          )}
-          {tab === 'all' && (
-            <AllEventsList
-              events={events}
-              loading={loading}
-              onRefresh={fetchEvents}
-              onSelectEvent={setSelectedEvent}
-            />
-          )}
-        </>
+      {/* Sub-tab bar */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 14, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+        {[{ key: 'all', label: 'Events' }, { key: 'add', label: 'Add Event' }].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)} style={{
+            flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+            background: tab === t.key ? 'var(--primary)' : 'transparent',
+            color: tab === t.key ? 'white' : 'var(--text-secondary)',
+            transition: 'all 0.2s',
+          }}>
+            {t.key === 'all' && <IoCalendar size={13} style={{ marginRight: 4, verticalAlign: -2 }} />}
+            {t.key === 'add' && <IoAdd size={13} style={{ marginRight: 4, verticalAlign: -2 }} />}
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'all' && (
+        <AllEventsList
+          events={events}
+          loading={loading}
+          onRefresh={fetchEvents}
+          onSelectEvent={onSelectEvent}
+        />
+      )}
+      {tab === 'add' && (
+        <AddEventForm
+          folderId={folder._id}
+          onCreated={() => { fetchEvents(); setTab('all'); }}
+          onOpenNoteEditor={onOpenNoteEditor}
+        />
       )}
     </div>
   );
@@ -592,7 +767,7 @@ function EventsSection() {
 
 // ─── Add Event Form ───
 
-function AddEventForm({ onCreated, onOpenNoteEditor }) {
+function AddEventForm({ folderId, onCreated, onOpenNoteEditor }) {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -615,6 +790,7 @@ function AddEventForm({ onCreated, onOpenNoteEditor }) {
         time: time || nowTime,
         notes,
         reminderEnabled: reminder,
+        ...(folderId ? { folderId } : {}),
       });
       toast.success('Event created');
       setName(''); setDate(todayStr); setTime(nowTime); setNotes(''); setReminder(false);

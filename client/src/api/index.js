@@ -166,8 +166,14 @@ export const createStore = (data) => api.post('/stores', data);
 export const updateStore = (id, data) => api.put(`/stores/${id}`, data);
 export const deleteStore = (id) => api.delete(`/stores/${id}`);
 
+// Event Folders
+export const getEventFolders = () => api.get('/events/folders');
+export const createEventFolder = (data) => api.post('/events/folders', data);
+export const updateEventFolder = (id, data) => api.put(`/events/folders/${id}`, data);
+export const deleteEventFolder = (id) => api.delete(`/events/folders/${id}`);
+
 // Events
-export const getEvents = () => api.get('/events');
+export const getEvents = (folderId) => api.get('/events', { params: folderId ? { folderId } : {} });
 export const createEvent = (data) => api.post('/events', data);
 export const updateEvent = (id, data) => api.put(`/events/${id}`, data);
 export const deleteEvent = (id) => api.delete(`/events/${id}`);
