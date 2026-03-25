@@ -1068,9 +1068,15 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
     setRemindersDirty(true);
   };
 
-  const removeReminder = (idx) => {
-    setReminders(prev => prev.filter((_, i) => i !== idx));
-    setRemindersDirty(true);
+  const removeReminder = async (idx) => {
+    const updated = reminders.filter((_, i) => i !== idx);
+    setReminders(updated);
+    try {
+      const res = await updateTrail(entry._id, { reminders: updated });
+      onUpdated(res.data);
+      setRemindersDirty(false);
+      toast.success('Reminder deleted');
+    } catch (err) { toast.error(err.message); }
   };
 
   const saveReminders = async () => {
