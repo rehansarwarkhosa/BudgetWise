@@ -100,6 +100,7 @@ export default function QuickTrail() {
   const [activeTab, _setActiveTab] = useState(() => sessionStorage.getItem('quicktrail_tab') || 'trail');
   const setActiveTab = useCallback((t) => { _setActiveTab(t); sessionStorage.setItem('quicktrail_tab', t); }, []);
   const tabSwipeEnabled = settings?.tabSwipeTrail !== false;
+  const aiEnabled = settings?.aiEnabled || false;
   const tabList = aiEnabled ? ['trail', 'board', 'reminders', 'ai_history'] : ['trail', 'board', 'reminders'];
   const swipe = useSwipeTabs(tabList, activeTab, setActiveTab, undefined, tabSwipeEnabled);
   const inputRef = useRef(null);
@@ -112,7 +113,6 @@ export default function QuickTrail() {
   useBackClose(showQuickPhrases, () => setShowQuickPhrases(false));
 
   // AI state
-  const aiEnabled = settings?.aiEnabled || false;
   const [aiResponses, setAiResponses] = useState([]);
   const [aiResponsesLoading, setAiResponsesLoading] = useState(false);
   const [aiDetailView, setAiDetailView] = useState(null);
