@@ -13,7 +13,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import {
   getTopics, createTopic, updateTopic, deleteTopic,
   getSubTopics, createSubTopic, updateSubTopic, deleteSubTopic,
-  getNotes, createNote, updateNote, deleteNote,
+  getNotes, getNote, createNote, updateNote, deleteNote,
   getTags, createTag, updateTag, deleteTag,
   searchNotes, getRecentNotes, getNotesTree,
   getEventFolders, createEventFolder, updateEventFolder, deleteEventFolder,
@@ -169,7 +169,7 @@ function NotesSection({ appSettings }) {
       for (const topic of treeRes.data) {
         for (const sub of topic.subTopics || []) {
           for (const note of sub.notes || []) {
-            allNotes.push({ _id: note._id, title: note.title, content: note.content || '', topicName: topic.name, subTopicName: sub.name, subTopicId: sub._id });
+            allNotes.push({ _id: note._id, title: note.title, content: note.description || '', topicName: topic.name, subTopicName: sub.name, subTopicId: sub._id });
           }
         }
       }
@@ -1751,8 +1751,20 @@ function NoteEditorModal({ note, subTopicId, allTags, onClose, onDone, onTagsCha
   const savedSelection = useRef(null);
 
   useEffect(() => {
-    if (editorRef.current && note?.description) editorRef.current.innerHTML = note.description;
-    setTimeout(() => editorRef.current?.focus(), 100);
+    const loadNote = async () => {
+      if (note?._id) {
+        try {
+          const res = await getNote(note._id);
+          const full = res.data;
+          if (editorRef.current && full.description) editorRef.current.innerHTML = full.description;
+          setTitle(full.title || title);
+          setSelectedTags(full.tags?.map((t) => t._id || t) || selectedTags);
+          setIsLocked(full.locked || false);
+        } catch { /* fallback to passed note */ }
+      }
+      setTimeout(() => editorRef.current?.focus(), 100);
+    };
+    loadNote();
   }, []);
 
   const saveSelection = () => {
