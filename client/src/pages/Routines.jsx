@@ -1113,6 +1113,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
       <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--border)' }}>
         {[
           { key: 'info', label: 'Info' },
+          ...(hasReminders ? [{ key: 'reminders', label: `Reminders (${routine.reminders.length})` }] : []),
           ...(hasScheduleReminders ? [{ key: 'schedule', label: 'Schedule' }] : []),
           { key: 'notes', label: `Notes${notes.length ? ` (${notes.length})` : ''}` },
         ].map(t => (

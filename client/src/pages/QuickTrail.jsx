@@ -997,7 +997,8 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
   const [reminders, setReminders] = useState(entry.reminders || []);
   const [remindersDirty, setRemindersDirty] = useState(false);
   const [savingReminders, setSavingReminders] = useState(false);
-  const [quickMinutes, setQuickMinutes] = useState(15);
+  const [quickValue, setQuickValue] = useState(1);
+  const [quickIsHours, setQuickIsHours] = useState(true);
   const [savingQuickReminder, setSavingQuickReminder] = useState(false);
 
   // Adjust time
@@ -1087,7 +1088,8 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
     setSavingQuickReminder(true);
     try {
       const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
-      now.setMinutes(now.getMinutes() + quickMinutes);
+      const totalMinutes = quickIsHours ? quickValue * 60 : quickValue;
+      now.setMinutes(now.getMinutes() + totalMinutes);
       const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       const newReminder = { type: 'once', time, days: [], dates: [], enabled: true };
       const updated = [...reminders, newReminder];
@@ -1230,32 +1232,39 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
         <div style={{ display: tab === 'reminders' ? 'block' : 'none' }}>
           {/* Quick Reminder */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px',
-            background: 'var(--bg-input)', borderRadius: 8, marginBottom: 12,
+            padding: '10px 12px', background: 'var(--bg-input)', borderRadius: 8, marginBottom: 12,
           }}>
-            <span style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap' }}>After:</span>
-            <button onClick={() => setQuickMinutes(m => Math.max(5, m - 5))}
-              style={{
-                width: 32, height: 32, borderRadius: 6, background: 'var(--bg-card)',
-                border: '1px solid var(--border)', color: 'var(--text)', fontSize: 18,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>-</button>
-            <input type="text" readOnly value={quickMinutes}
-              style={{
-                width: 44, height: 32, textAlign: 'center', fontSize: 15, fontWeight: 700,
-                padding: 0, borderRadius: 6, flexShrink: 0, pointerEvents: 'none',
-              }} />
-            <button onClick={() => setQuickMinutes(m => m + 5)}
-              style={{
-                width: 32, height: 32, borderRadius: 6, background: 'var(--bg-card)',
-                border: '1px solid var(--border)', color: 'var(--text)', fontSize: 18,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>+</button>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>min</span>
-            <button className="btn-primary" onClick={saveQuickReminder} disabled={savingQuickReminder}
-              style={{ padding: '6px 14px', fontSize: 13, marginLeft: 'auto', flexShrink: 0 }}>
-              {savingQuickReminder ? '...' : 'Done'}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 600 }}>After</span>
+              <button onClick={() => setQuickValue(v => Math.max(quickIsHours ? 1 : 5, v - (quickIsHours ? 1 : 5)))}
+                style={{
+                  width: 30, height: 30, borderRadius: 6, background: 'var(--bg-card)',
+                  border: '1px solid var(--border)', color: 'var(--text)', fontSize: 16,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>-</button>
+              <input type="text" readOnly value={quickValue}
+                style={{
+                  width: 38, height: 30, textAlign: 'center', fontSize: 14, fontWeight: 700,
+                  padding: 0, borderRadius: 6, pointerEvents: 'none',
+                }} />
+              <button onClick={() => setQuickValue(v => v + (quickIsHours ? 1 : 5))}
+                style={{
+                  width: 30, height: 30, borderRadius: 6, background: 'var(--bg-card)',
+                  border: '1px solid var(--border)', color: 'var(--text)', fontSize: 16,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>+</button>
+              <button onClick={() => { setQuickIsHours(h => !h); setQuickValue(h => quickIsHours ? 15 : 1); }}
+                style={{
+                  padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                  background: quickIsHours ? 'var(--primary)' : 'var(--bg-card)',
+                  color: quickIsHours ? '#fff' : 'var(--text-secondary)',
+                  border: quickIsHours ? 'none' : '1px solid var(--border)',
+                }}>{quickIsHours ? 'hr' : 'min'}</button>
+              <button className="btn-primary" onClick={saveQuickReminder} disabled={savingQuickReminder}
+                style={{ padding: '5px 12px', fontSize: 12, marginLeft: 'auto' }}>
+                {savingQuickReminder ? '...' : 'Done'}
+              </button>
+            </div>
           </div>
 
           {reminders.map((r, idx) => (
