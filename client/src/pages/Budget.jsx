@@ -137,8 +137,8 @@ export default function Budget() {
           {aiEnabled && (
             <button className="btn-ghost" onClick={handleAiInsights} disabled={aiLoading}
               title="AI Insights"
-              style={{ padding: 6, borderRadius: 8, opacity: aiLoading ? 0.6 : 1 }}>
-              <IoFlash size={18} color="var(--warning)" />
+              style={{ padding: 6, borderRadius: 8 }}>
+              {aiLoading ? <Spinner size={18} /> : <IoFlash size={18} color="var(--warning)" />}
             </button>
           )}
           <button className="btn-ghost" onClick={handleToggleBudgetLock}

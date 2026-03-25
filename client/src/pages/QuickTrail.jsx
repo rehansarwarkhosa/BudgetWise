@@ -141,7 +141,15 @@ export default function QuickTrail() {
   };
 
   const handleCopyAiResponse = (content) => {
-    navigator.clipboard.writeText(content).then(() => toast.success('Copied')).catch(() => toast.error('Copy failed'));
+    // Format for WhatsApp: bold headers, clean bullets
+    const formatted = content.split('\n').map(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return '';
+      if (/^[A-Z][A-Z\s]{3,}$/.test(trimmed)) return `*${trimmed}*`;
+      if (trimmed.startsWith('**') && trimmed.endsWith('**')) return `*${trimmed.replace(/\*\*/g, '')}*`;
+      return trimmed.replace(/\*\*(.+?)\*\*/g, '*$1*');
+    }).join('\n');
+    navigator.clipboard.writeText(formatted).then(() => toast.success('Copied')).catch(() => toast.error('Copy failed'));
   };
 
   // Touch-only double-tap (onTouchStart fires once per tap on Android)
@@ -882,10 +890,28 @@ export default function QuickTrail() {
               </div>
               <div style={{
                 fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)',
-                whiteSpace: 'pre-wrap', background: 'var(--bg-card)', borderRadius: 12,
-                padding: 16,
+                background: 'var(--bg-card)', borderRadius: 12, padding: 16,
               }}>
-                {aiDetailView.content}
+                {aiDetailView.content.split('\n').map((line, i) => {
+                  const trimmed = line.trim();
+                  if (!trimmed) return <div key={i} style={{ height: 8 }} />;
+                  if (/^[A-Z][A-Z\s]{3,}$/.test(trimmed)) {
+                    return <h4 key={i} style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', marginTop: i > 0 ? 14 : 0, marginBottom: 6 }}>{trimmed}</h4>;
+                  }
+                  if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                    return <div key={i} style={{ paddingLeft: 12, position: 'relative', marginBottom: 4 }}>
+                      <span style={{ position: 'absolute', left: 0, color: 'var(--primary)' }}>-</span>
+                      {trimmed.substring(2).replace(/\*\*/g, '')}
+                    </div>;
+                  }
+                  if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+                    return <h4 key={i} style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', marginTop: i > 0 ? 14 : 0, marginBottom: 6 }}>{trimmed.replace(/\*\*/g, '')}</h4>;
+                  }
+                  if (/^\d+\./.test(trimmed)) {
+                    return <div key={i} style={{ paddingLeft: 4, marginBottom: 4 }}>{trimmed.replace(/\*\*/g, '')}</div>;
+                  }
+                  return <div key={i} style={{ marginBottom: 2 }}>{trimmed.replace(/\*\*/g, '')}</div>;
+                })}
               </div>
             </div>
           ) : (
@@ -895,31 +921,30 @@ export default function QuickTrail() {
               ) : (
                 <div style={{ display: 'grid', gap: 8 }}>
                   {aiResponses.map(r => (
-                    <div key={r._id} className="card" style={{ cursor: 'pointer', padding: '12px 14px' }}
+                    <div key={r._id} className="card" style={{ cursor: 'pointer', padding: '12px 14px', overflow: 'hidden', minWidth: 0 }}
                       onClick={() => setAiDetailView(r)}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                         <span style={{
-                          padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600, flexShrink: 0,
+                          padding: '2px 6px', borderRadius: 8, fontSize: 9, fontWeight: 600, flexShrink: 0,
                           background: r.source === 'budget' ? 'var(--primary)' : r.source === 'routines' ? 'var(--success)' : 'var(--warning)',
-                          color: 'white',
+                          color: 'white', textTransform: 'uppercase', letterSpacing: 0.3,
                         }}>{r.source}</span>
-                        <span style={{ fontSize: 13, fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {r.title}
                         </span>
-                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                          {new Date(r.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Karachi', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
                           <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); handleCopyAiResponse(r.content); }}>
-                            <IoCopy size={14} color="var(--text-muted)" />
+                            <IoCopy size={13} color="var(--text-muted)" />
                           </button>
                           <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); handleDeleteAiResponse(r._id); }}>
-                            <IoTrash size={14} color="var(--danger)" />
+                            <IoTrash size={13} color="var(--danger)" />
                           </button>
                         </div>
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                        {new Date(r.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Karachi', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {r.content.substring(0, 100)}...
                       </div>
                     </div>
                   ))}
