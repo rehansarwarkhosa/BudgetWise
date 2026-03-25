@@ -301,7 +301,7 @@ function NotesSection({ appSettings }) {
           )}
           {/* Regular search results */}
           {!aiSearchMode && (searchLoading ? <Spinner /> : searchResults.length > 0 ? (
-            <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+            <div className="desktop-grid-2" style={{ display: 'grid', gap: 8, marginTop: 12 }}>
               {searchResults.map((note) => {
                 const topicColor = note.subTopicId?.topicId?.color;
                 return (
@@ -341,7 +341,7 @@ function NotesSection({ appSettings }) {
                 </div>
               )}
               {aiSearchResults.results.length > 0 ? (
-                <div style={{ display: 'grid', gap: 8 }}>
+                <div className="desktop-grid-2" style={{ display: 'grid', gap: 8 }}>
                   {aiSearchResults.results.map((note) => (
                     <div key={note._id} className="card" style={{ cursor: 'pointer' }}
                       onClick={() => setNoteEditorModal({ note: { _id: note._id, title: note.title }, subTopicId: note.subTopicId })}>
@@ -370,7 +370,7 @@ function NotesSection({ appSettings }) {
           {recentLoading ? <Spinner /> : recentNotes.length === 0 ? (
             <EmptyState icon="clock" title="No recent notes" subtitle="Notes you edit will appear here" />
           ) : (
-            <div style={{ display: 'grid', gap: 8 }}>
+            <div className="desktop-grid-2" style={{ display: 'grid', gap: 8 }}>
               {recentNotes.map((note) => {
                 const topicColor = note.subTopicId?.topicId?.color;
                 return (
@@ -743,7 +743,7 @@ function EventsSection() {
       {foldersLoading ? <Spinner /> : folders.length === 0 ? (
         <EmptyState icon="folder" title="No event folders yet" subtitle="Create a folder to organize your events" />
       ) : (
-        <div style={{ display: 'grid', gap: 8 }}>
+        <div className="desktop-grid-2" style={{ display: 'grid', gap: 8 }}>
           {folders.map((f) => (
             <div key={f._id} className="card" style={{ padding: '12px 14px', cursor: 'pointer' }}
               onClick={() => setSelectedFolder(f)}>
@@ -948,7 +948,7 @@ function AllEventsList({ events, loading, onRefresh, onSelectEvent }) {
   if (events.length === 0) return <EmptyState icon="calendar" title="No events yet" subtitle="Create your first event from the Add Event tab" />;
 
   return (
-    <div style={{ display: 'grid', gap: 8 }}>
+    <div className="desktop-grid-2" style={{ display: 'grid', gap: 8 }}>
       {events.map((evt) => (
         <div key={evt._id} className="card" style={{ padding: '12px 14px', cursor: 'pointer' }}
           onClick={() => onSelectEvent(evt)}>
@@ -1194,7 +1194,7 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
       {loading ? <Spinner /> : containers.length === 0 ? (
         <EmptyState icon="folder" title="No occasions yet" subtitle="Create an occasion to start tracking entries" />
       ) : (
-        <div style={{ display: 'grid', gap: 8 }}>
+        <div className="desktop-grid-2" style={{ display: 'grid', gap: 8 }}>
           {containers.map((c) => {
             const isExpanded = expandedContainer === c._id;
             const cEntries = entries[c._id] || [];

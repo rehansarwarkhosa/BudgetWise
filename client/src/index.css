@@ -317,3 +317,179 @@ button {
   animation: trailFlash 2s ease-in-out infinite;
   border: 1.5px solid var(--border);
 }
+
+/* ═══════════════════════════════════════════════════════
+   DESKTOP LAYOUT (≥768px)
+   ═══════════════════════════════════════════════════════ */
+
+@media (min-width: 768px) {
+  :root, [data-theme="dark"], [data-theme="light"] {
+    --nav-height: 0px;
+    --max-width: 100%;
+    --sidebar-width: 72px;
+  }
+
+  #root {
+    max-width: 100%;
+    margin: 0;
+    margin-left: var(--sidebar-width);
+  }
+
+  .page {
+    padding: 24px 32px 32px;
+    max-width: 900px;
+    margin: 0 auto;
+    min-height: 100vh;
+  }
+
+  .page-title {
+    font-size: 26px;
+  }
+
+  /* Bottom nav becomes sidebar */
+  .bottom-nav {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    right: auto !important;
+    width: var(--sidebar-width) !important;
+    max-width: var(--sidebar-width) !important;
+    height: 100vh !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    padding: 16px 0 !important;
+    gap: 4px !important;
+    border-top: none !important;
+    border-right: 1px solid var(--border) !important;
+    transform: none !important;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .bottom-nav a {
+    min-width: auto !important;
+    width: 100%;
+    padding: 12px 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .bottom-nav a:hover {
+    background: var(--bg-input);
+  }
+
+  .bottom-nav a.active {
+    background: var(--bg-input);
+    border-left: 3px solid var(--primary);
+  }
+
+  /* FAB repositioned */
+  .fab {
+    bottom: 24px !important;
+    right: max(24px, calc((100vw - var(--sidebar-width) - 900px) / 2 + 24px)) !important;
+  }
+
+  /* Cards grid for desktop */
+  .desktop-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .desktop-grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+  }
+
+  /* Wider modals */
+  .modal-overlay > div {
+    max-width: 520px;
+  }
+
+  /* Buttons not full width on desktop */
+  .btn-primary, .btn-danger {
+    width: auto;
+  }
+
+  /* Better form layouts */
+  .form-group input, .form-group textarea, .form-group select {
+    max-width: 500px;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  /* Card hover effect on desktop */
+  .card {
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .card:hover {
+    border-color: var(--primary);
+    box-shadow: 0 2px 12px rgba(118, 210, 219, 0.08);
+  }
+
+  /* Fixed popups/overlays wider on desktop */
+  .ai-popup-content {
+    max-width: 560px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   LARGE DESKTOP (≥1200px) — multi-column pages
+   ═══════════════════════════════════════════════════════ */
+
+@media (min-width: 1200px) {
+  :root, [data-theme="dark"], [data-theme="light"] {
+    --sidebar-width: 180px;
+  }
+
+  /* Wider sidebar shows labels better */
+  .bottom-nav {
+    padding: 20px 0 !important;
+    gap: 2px !important;
+  }
+
+  .bottom-nav a {
+    padding: 14px 0 !important;
+    flex-direction: row !important;
+    gap: 10px !important;
+    justify-content: flex-start !important;
+    padding-left: 24px !important;
+  }
+
+  .bottom-nav a span {
+    font-size: 13px !important;
+  }
+
+  .page {
+    max-width: 1100px;
+  }
+
+  /* History periods: 4 columns on large desktop */
+  .history-periods-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+
+  /* 3-column grids for larger screens */
+  .desktop-grid-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   EXTRA LARGE DESKTOP (≥1600px) — 4K / ultrawide
+   ═══════════════════════════════════════════════════════ */
+
+@media (min-width: 1600px) {
+  .page {
+    max-width: 1300px;
+  }
+
+  /* History periods: 6 columns on ultrawide */
+  .history-periods-grid {
+    grid-template-columns: repeat(6, 1fr) !important;
+  }
+}

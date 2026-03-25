@@ -182,7 +182,7 @@ export default function Routines() {
             : undefined}
         />
       ) : (
-        <div style={{ display: 'grid', gap: 10 }}>
+        <div className="desktop-grid-2" style={{ display: 'grid', gap: 10 }}>
           {currentList.map((r) => {
             const hlColor = getRoutineHighlight(r.name, routineHighlights);
             return (

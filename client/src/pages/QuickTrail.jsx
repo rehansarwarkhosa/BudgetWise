@@ -686,7 +686,7 @@ export default function QuickTrail() {
                   </span>
                 </div>
                 {!isCollapsed && (
-                <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
+                <div className="desktop-grid-2" style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
                   {group.entries.map((entry, entryIdx) => {
                     const hlColor = getEntryHighlight(entry.text, trailHighlights);
                     const hasReminders = entry.reminders?.length > 0;
@@ -919,7 +919,7 @@ export default function QuickTrail() {
               {aiResponsesLoading ? <Spinner /> : aiResponses.length === 0 ? (
                 <EmptyState icon={<IoFlash />} title="No AI responses yet" subtitle="Generate insights from Budget, Routines, or Notes to see them here" />
               ) : (
-                <div style={{ display: 'grid', gap: 8 }}>
+                <div className="desktop-grid-2" style={{ display: 'grid', gap: 8 }}>
                   {aiResponses.map(r => (
                     <div key={r._id} className="card" style={{ cursor: 'pointer', padding: '12px 14px', overflow: 'hidden', minWidth: 0 }}
                       onClick={() => setAiDetailView(r)}>

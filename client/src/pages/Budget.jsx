@@ -245,7 +245,7 @@ export default function Budget() {
                       {cat}
                     </h3>
                   </div>
-                  <div style={{ display: 'grid', gap: 12 }}>
+                  <div className="desktop-grid-2" style={{ display: 'grid', gap: 12 }}>
                     {grouped[cat].map((b) => {
                       const globalIdx = budgets.findIndex(gb => gb._id === b._id);
                       return (

@@ -33,6 +33,7 @@ export default function Savings() {
                 </span>
               </div>
 
+              <div className="desktop-grid-2">
               {months.map((month) => {
                 const entries = grouped[year][month];
                 const monthTotal = entries.reduce((sum, e) => sum + e.amount, 0);
@@ -62,6 +63,7 @@ export default function Savings() {
                   </div>
                 );
               })}
+              </div>
             </div>
           );
         })

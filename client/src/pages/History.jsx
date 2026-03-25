@@ -612,7 +612,7 @@ export default function History() {
       <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, color: 'var(--text-secondary)' }}>
         Past Periods
       </h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 }}>
+      <div className="history-periods-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 }}>
         {periods.map((p) => (
           <button key={`${p.month}-${p.year}`} className="btn-outline"
             style={{
@@ -635,7 +635,7 @@ export default function History() {
           {loading ? <Spinner /> : budgets.length === 0 ? (
             <EmptyState title="No budgets for this period" />
           ) : (
-            <div style={{ display: 'grid', gap: 8 }}>
+            <div className="desktop-grid-2" style={{ display: 'grid', gap: 8 }}>
               {budgets.map((b) => (
                 <div key={b._id} className="card" style={{ cursor: 'pointer' }}
                   onClick={() => loadExpenses(b)}>

@@ -50,6 +50,7 @@ export default function BottomNav() {
 
   return (
     <nav
+      className="bottom-nav"
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
       style={{
@@ -74,7 +75,7 @@ export default function BottomNav() {
           })}
         >
           <Icon size={22} />
-          <span style={{ fontSize: 10, fontWeight: 600 }}>{label}</span>
+          <span className="nav-label" style={{ fontSize: 10, fontWeight: 600 }}>{label}</span>
         </NavLink>
       ))}
     </nav>
