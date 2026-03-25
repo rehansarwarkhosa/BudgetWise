@@ -76,12 +76,45 @@ export default function Routines() {
     try {
       const nonExpired = routines.filter(r => !r.isExpired);
       if (nonExpired.length === 0) { toast.error('No active routines to analyze'); setAiLoading(false); return; }
-      const res = await aiRoutineInsights(nonExpired.map(r => ({
-        name: r.name, isDoneForToday: r.isDoneForToday, isActiveToday: r.isActiveToday,
-        completedEntries: r.completedEntries, targetEntries: r.targetEntries, progress: r.progress,
-        todayCompleteCount: r.todayCompleteCount, maxDailyEntries: r.maxDailyEntries,
-        dueDate: r.dueDate, reminderDays: r.reminderDays,
-      })));
+      const res = await aiRoutineInsights(nonExpired.map(r => {
+        // Determine schedule frequency from reminders
+        const reminders = r.reminders || [];
+        const enabledRems = reminders.filter(rem => rem.enabled);
+        let scheduleType = 'daily';
+        if (enabledRems.length > 0) {
+          const types = enabledRems.map(rem => rem.type);
+          if (types.includes('interval')) {
+            const intRem = enabledRems.find(rem => rem.type === 'interval');
+            scheduleType = `every ${intRem.intervalDays} days`;
+          } else if (types.includes('custom_days')) {
+            const days = enabledRems.find(rem => rem.type === 'custom_days')?.days || [];
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            scheduleType = `${days.length} days/week (${days.map(d => dayNames[d]).join(', ')})`;
+          } else if (types.includes('custom_dates')) {
+            scheduleType = 'specific dates (monthly/custom)';
+          } else if (types.includes('weekdays')) {
+            scheduleType = 'weekdays only (Mon-Fri)';
+          } else if (types.includes('once')) {
+            scheduleType = 'one-time';
+          } else {
+            scheduleType = 'daily';
+          }
+        }
+        // Calculate days elapsed and remaining
+        const created = new Date(r.createdAt);
+        const due = new Date(r.dueDate);
+        const now = new Date();
+        const daysElapsed = Math.max(1, Math.floor((now - created) / 86400000));
+        const daysRemaining = Math.max(0, Math.ceil((due - now) / 86400000));
+        const avgEntriesPerDay = r.completedEntries > 0 ? (r.completedEntries / daysElapsed).toFixed(1) : '0';
+
+        return {
+          name: r.name, isDoneForToday: r.isDoneForToday, isActiveToday: r.isActiveToday,
+          completedEntries: r.completedEntries, targetEntries: r.targetEntries, progress: r.progress,
+          todayCompleteCount: r.todayCompleteCount, maxDailyEntries: r.maxDailyEntries,
+          dueDate: r.dueDate, scheduleType, daysElapsed, daysRemaining, avgEntriesPerDay,
+        };
+      }));
       setAiInsights(res.data.insights);
     } catch (err) { toast.error(err.response?.data?.error || err.message); }
     finally { setAiLoading(false); }

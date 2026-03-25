@@ -26,7 +26,7 @@ router.post('/budget-insights', async (req, res, next) => {
     const err = await checkAI();
     if (err) return error(res, err);
 
-    const { budgets, expenses, incomeTotal, period } = req.body;
+    const { budgets, expenses, incomeTotal, period, dayOfMonth, daysInMonth, daysRemaining, totalAllocated, totalSpent, totalRemaining } = req.body;
     if (!budgets?.length) return error(res, 'No budget data to analyze');
 
     const budgetLines = budgets.map(b => {
@@ -39,10 +39,19 @@ router.post('/budget-insights', async (req, res, next) => {
       `- PKR ${e.amount}: ${e.description} (${new Date(e.date).toLocaleDateString('en-US', { timeZone: 'Asia/Karachi', day: 'numeric', month: 'short' })})`
     ).join('\n');
 
+    const monthProgress = daysInMonth ? Math.round((dayOfMonth / daysInMonth) * 100) : '?';
+    const spendingPace = totalAllocated > 0 ? Math.round((totalSpent / totalAllocated) * 100) : '?';
+
     const prompt = `You are a personal budget advisor. Analyze this monthly budget data and give actionable insights. Currency is PKR (Pakistani Rupee). Timezone is Asia/Karachi.
 
 Period: ${period || 'Current month'}
+Day ${dayOfMonth || '?'} of ${daysInMonth || '?'} (${monthProgress}% of month elapsed, ${daysRemaining || '?'} days remaining)
 Total Income: PKR ${incomeTotal || 'N/A'}
+Total Allocated: PKR ${totalAllocated || 'N/A'}
+Total Spent: PKR ${totalSpent || 0} (${spendingPace}% of allocated budget used)
+Total Remaining: PKR ${totalRemaining || 0}
+
+IMPORTANT: Compare spending pace (${spendingPace}% spent) vs month progress (${monthProgress}% elapsed). If spending % is higher than month %, the user is overspending. If lower, they're under budget.
 
 Budgets:
 ${budgetLines}
@@ -52,13 +61,13 @@ ${expenseLines ? `Recent Expenses:\n${expenseLines}` : ''}
 Provide a well-structured analysis with these sections:
 
 SPENDING ALERTS
-List any budgets nearing or over limit with percentage used.
+List any budgets nearing or over limit. Compare each budget's usage % to month progress %.
 
-PATTERNS
-Categories where spending seems high/low relative to allocation.
+PACE CHECK
+Is overall spending on track? At current pace, will the user run out before month end?
 
 SUGGESTIONS
-2-3 specific, actionable tips to optimize spending.
+2-3 specific, actionable tips to optimize spending for the remaining ${daysRemaining || '?'} days.
 
 Keep it under 250 words. Be direct and practical. Use plain text, no markdown formatting like ** or ##. Use simple dashes for bullet points.`;
 
@@ -100,11 +109,17 @@ router.post('/routine-insights', async (req, res, next) => {
     if (!routines?.length) return error(res, 'No routine data to analyze');
 
     const routineLines = routines.map(r => {
-      const status = r.isDoneForToday ? 'Done today' : r.isActiveToday === false ? 'Scheduled' : 'Pending';
-      return `- ${r.name}: ${status}, ${r.completedEntries}/${r.targetEntries} entries (${r.progress}%), today ${r.todayCompleteCount}/${r.maxDailyEntries} daily${r.dueDate ? `, due ${r.dueDate}` : ''}${r.reminderDays?.length ? `, days: ${r.reminderDays.join(',')}` : ''}`;
+      const status = r.isDoneForToday ? 'Done today' : r.isActiveToday === false ? 'Scheduled (not active today)' : 'Pending';
+      return `- ${r.name}: ${status}, schedule: ${r.scheduleType || 'daily'}, ${r.completedEntries}/${r.targetEntries} total entries (${r.progress}%), today ${r.todayCompleteCount}/${r.maxDailyEntries} daily, ${r.daysElapsed || '?'} days elapsed, ${r.daysRemaining || '?'} days remaining, avg ${r.avgEntriesPerDay || '?'} entries/day${r.dueDate ? `, due ${new Date(r.dueDate).toLocaleDateString('en-US', { timeZone: 'Asia/Karachi', day: 'numeric', month: 'short', year: 'numeric' })}` : ''}`;
     }).join('\n');
 
     const prompt = `You are a personal productivity advisor. Analyze this routine/habit tracking data and give actionable insights. Timezone is Asia/Karachi.
+
+IMPORTANT CONTEXT:
+- Each routine has a SCHEDULE TYPE (daily, weekdays, specific days/week, every N days, monthly, one-time). Do NOT treat all routines as daily.
+- For non-daily routines (e.g. "every 14 days", "2 days/week", "monthly"), the entry count will naturally be lower. Judge them by whether they're on track relative to THEIR schedule, not by raw entry count.
+- "Scheduled (not active today)" means the routine is not supposed to be done today per its schedule - this is NORMAL, not a problem.
+- Compare completedEntries vs targetEntries and consider daysElapsed vs daysRemaining to judge if they're on pace.
 
 Routines (excluding expired):
 ${routineLines}
@@ -112,10 +127,10 @@ ${routineLines}
 Provide a well-structured analysis with these sections:
 
 PROGRESS OVERVIEW
-Summarize overall routine completion and highlight strong/weak areas.
+Summarize overall routine completion. Judge each routine by its own schedule frequency.
 
 CONSISTENCY PATTERNS
-Identify which routines are being maintained well and which need attention.
+Which routines are on track vs behind pace? Consider schedule type when judging.
 
 RECOMMENDATIONS
 2-3 specific tips to improve routine adherence and productivity.

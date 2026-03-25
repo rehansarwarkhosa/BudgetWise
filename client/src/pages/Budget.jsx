@@ -107,11 +107,19 @@ export default function Budget() {
       }
       const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
       const period = `${now.toLocaleString('en-US', { month: 'long' })} ${now.getFullYear()}`;
+      const dayOfMonth = now.getDate();
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const daysRemaining = daysInMonth - dayOfMonth;
+      const totalAllocated = budgets.reduce((s, b) => s + (b.allocatedAmount || 0), 0);
+      const totalSpent = budgets.reduce((s, b) => s + ((b.allocatedAmount || 0) - (b.remainingAmount || 0)), 0);
+      const totalRemaining = budgets.reduce((s, b) => s + (b.remainingAmount || 0), 0);
       const res = await aiBudgetInsights({
         budgets,
         expenses: allExpenses.slice(0, 30),
         incomeTotal: summary?.totalIncome || 0,
         period,
+        dayOfMonth, daysInMonth, daysRemaining,
+        totalAllocated, totalSpent, totalRemaining,
       });
       setAiInsights(res.data.insights);
     } catch (err) { toast.error(err.response?.data?.error || err.message); }
