@@ -30,6 +30,7 @@ import Event from '../models/Event.js';
 import EventFolder from '../models/EventFolder.js';
 import EventContainer from '../models/EventContainer.js';
 import EventEntry from '../models/EventEntry.js';
+import AiResponse from '../models/AiResponse.js';
 import { success, error } from '../utils/response.js';
 import { getCurrentPeriod } from '../utils/monthEnd.js';
 
@@ -221,7 +222,7 @@ router.post('/test-push', async (req, res, next) => {
 // Export all data
 router.get('/export', async (req, res, next) => {
   try {
-    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders, reminderNotes, eventFolders, events, eventContainers, eventEntries] = await Promise.all([
+    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders, reminderNotes, eventFolders, events, eventContainers, eventEntries, aiResponses] = await Promise.all([
       Settings.findOne(),
       Income.find(),
       Budget.find(),
@@ -252,11 +253,12 @@ router.get('/export', async (req, res, next) => {
       Event.find(),
       EventContainer.find(),
       EventEntry.find(),
+      AiResponse.find(),
     ]);
     success(res, {
       exportDate: new Date().toISOString(),
       version: 1,
-      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders, reminderNotes, eventFolders, events, eventContainers, eventEntries,
+      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders, reminderNotes, eventFolders, events, eventContainers, eventEntries, aiResponses,
     });
   } catch (err) { next(err); }
 });
@@ -298,6 +300,7 @@ router.post('/import', async (req, res, next) => {
       events: await Event.find().lean(),
       eventContainers: await EventContainer.find().lean(),
       eventEntries: await EventEntry.find().lean(),
+      aiResponses: await AiResponse.find().lean(),
       settings: await Settings.findOne().lean(),
     };
 
@@ -313,6 +316,7 @@ router.post('/import', async (req, res, next) => {
         RoutineNote.deleteMany({}), StockItem.deleteMany({}), StockNote.deleteMany({}),
         Reminder.deleteMany({}), ReminderNote.deleteMany({}),
         EventFolder.deleteMany({}), Event.deleteMany({}), EventContainer.deleteMany({}), EventEntry.deleteMany({}),
+        AiResponse.deleteMany({}),
       ]);
 
       // Restore from import file — sequential to catch failures early
@@ -345,6 +349,7 @@ router.post('/import', async (req, res, next) => {
       if (data.events?.length) await Event.insertMany(data.events);
       if (data.eventContainers?.length) await EventContainer.insertMany(data.eventContainers);
       if (data.eventEntries?.length) await EventEntry.insertMany(data.eventEntries);
+      if (data.aiResponses?.length) await AiResponse.insertMany(data.aiResponses);
 
       if (data.settings) {
         await Settings.findOneAndUpdate({}, {
@@ -389,6 +394,7 @@ router.post('/import', async (req, res, next) => {
         RoutineNote.deleteMany({}), StockItem.deleteMany({}), StockNote.deleteMany({}),
         Reminder.deleteMany({}), ReminderNote.deleteMany({}),
         EventFolder.deleteMany({}), Event.deleteMany({}), EventContainer.deleteMany({}), EventEntry.deleteMany({}),
+        AiResponse.deleteMany({}),
       ]);
       if (snapshot.incomes.length) await Income.insertMany(snapshot.incomes);
       if (snapshot.budgets.length) await Budget.insertMany(snapshot.budgets);
@@ -419,6 +425,7 @@ router.post('/import', async (req, res, next) => {
       if (snapshot.events.length) await Event.insertMany(snapshot.events);
       if (snapshot.eventContainers.length) await EventContainer.insertMany(snapshot.eventContainers);
       if (snapshot.eventEntries.length) await EventEntry.insertMany(snapshot.eventEntries);
+      if (snapshot.aiResponses?.length) await AiResponse.insertMany(snapshot.aiResponses);
       if (snapshot.settings) {
         await Settings.findOneAndUpdate({}, snapshot.settings, { upsert: true });
       }
@@ -456,6 +463,7 @@ router.delete('/all-data', async (req, res, next) => {
       StockNote.deleteMany({}),
       Reminder.deleteMany({}), ReminderNote.deleteMany({}),
       EventFolder.deleteMany({}), Event.deleteMany({}), EventContainer.deleteMany({}), EventEntry.deleteMany({}),
+      AiResponse.deleteMany({}),
     ]);
     const period = getCurrentPeriod();
     const settings = await Settings.findOneAndUpdate(

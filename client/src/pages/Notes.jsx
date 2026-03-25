@@ -4,7 +4,7 @@ import {
   IoAdd, IoTrash, IoChevronForward, IoChevronDown, IoSearch, IoArrowBack,
   IoClose, IoPricetag, IoCreate, IoColorPalette, IoTime,
   IoLockClosed, IoLockOpen, IoCalendar, IoNotifications, IoNotificationsOff,
-  IoChevronUp, IoFolder, IoFolderOpen, IoFlash,
+  IoChevronUp, IoFolder, IoFolderOpen, IoFlash, IoDocumentText,
 } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -609,10 +609,10 @@ function EventsSection() {
   // Event note editor
   const [eventNoteEditor, setEventNoteEditor] = useState(null);
 
-  // Back button support (innermost first)
+  // Back button support - each level independently tracks its own history entry
+  useBackClose(!!selectedFolder, () => { setSelectedFolder(null); setSelectedEvent(null); setEventNoteEditor(null); });
+  useBackClose(!!selectedEvent, () => { setSelectedEvent(null); setEventNoteEditor(null); });
   useBackClose(!!eventNoteEditor, () => setEventNoteEditor(null));
-  useBackClose(!!selectedEvent && !eventNoteEditor, () => setSelectedEvent(null));
-  useBackClose(!!selectedFolder && !selectedEvent && !eventNoteEditor, () => setSelectedFolder(null));
 
   const fetchFolders = useCallback(async () => {
     setFoldersLoading(true);
@@ -668,17 +668,6 @@ function EventsSection() {
     } catch (err) { toast.error(err.message); }
   };
 
-  // ─── Render: Event Detail View ───
-  if (selectedEvent) {
-    return (
-      <EventDetailView
-        event={selectedEvent}
-        onBack={() => { setSelectedEvent(null); }}
-        transactionTypes={transactionTypes}
-      />
-    );
-  }
-
   // ─── Render: Rich Note Editor ───
   if (eventNoteEditor) {
     return (
@@ -690,6 +679,18 @@ function EventsSection() {
     );
   }
 
+  // ─── Render: Event Detail View ───
+  if (selectedEvent) {
+    return (
+      <EventDetailView
+        event={selectedEvent}
+        onBack={() => { setSelectedEvent(null); }}
+        onOpenNoteEditor={(content, onSave) => setEventNoteEditor({ content, onSave })}
+        transactionTypes={transactionTypes}
+      />
+    );
+  }
+
   // ─── Render: Folder Detail (events inside a folder) ───
   if (selectedFolder) {
     return (
@@ -697,7 +698,6 @@ function EventsSection() {
         folder={selectedFolder}
         onBack={() => { setSelectedFolder(null); fetchFolders(); }}
         onSelectEvent={setSelectedEvent}
-        onOpenNoteEditor={(content, onSave) => setEventNoteEditor({ content, onSave })}
         transactionTypes={transactionTypes}
       />
     );
@@ -779,7 +779,7 @@ function EventsSection() {
 
 // ─── Folder Detail View (Events inside a folder) ───
 
-function FolderDetailView({ folder, onBack, onSelectEvent, onOpenNoteEditor, transactionTypes }) {
+function FolderDetailView({ folder, onBack, onSelectEvent, transactionTypes }) {
   const [tab, _setTab] = useState(() => sessionStorage.getItem('events_tab') || 'all');
   const setTab = useCallback((t) => { _setTab(t); sessionStorage.setItem('events_tab', t); }, []);
 
@@ -843,7 +843,6 @@ function FolderDetailView({ folder, onBack, onSelectEvent, onOpenNoteEditor, tra
         <AddEventForm
           folderId={folder._id}
           onCreated={() => { fetchEvents(); setTab('all'); }}
-          onOpenNoteEditor={onOpenNoteEditor}
         />
       )}
     </div>
@@ -852,7 +851,7 @@ function FolderDetailView({ folder, onBack, onSelectEvent, onOpenNoteEditor, tra
 
 // ─── Add Event Form ───
 
-function AddEventForm({ folderId, onCreated, onOpenNoteEditor }) {
+function AddEventForm({ folderId, onCreated }) {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -860,7 +859,6 @@ function AddEventForm({ folderId, onCreated, onOpenNoteEditor }) {
   const [name, setName] = useState('');
   const [date, setDate] = useState(todayStr);
   const [time, setTime] = useState(nowTime);
-  const [notes, setNotes] = useState('');
   const [reminder, setReminder] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -873,21 +871,15 @@ function AddEventForm({ folderId, onCreated, onOpenNoteEditor }) {
         name: name.trim(),
         date: date || todayStr,
         time: time || nowTime,
-        notes,
         reminderEnabled: reminder,
         ...(folderId ? { folderId } : {}),
       });
       toast.success('Event created');
-      setName(''); setDate(todayStr); setTime(nowTime); setNotes(''); setReminder(false);
+      setName(''); setDate(todayStr); setTime(nowTime); setReminder(false);
       onCreated();
     } catch (err) { toast.error(err.response?.data?.error || err.message); }
     finally { setSaving(false); }
   };
-
-  const notesPreview = notes ? (
-    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}
-      dangerouslySetInnerHTML={{ __html: notes.length > 100 ? notes.substring(0, 100) + '...' : notes }} />
-  ) : null;
 
   return (
     <form onSubmit={handleSubmit}>
@@ -905,18 +897,6 @@ function AddEventForm({ folderId, onCreated, onOpenNoteEditor }) {
           <label>Time</label>
           <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
         </div>
-      </div>
-      <div className="form-group">
-        <label>Notes</label>
-        <button type="button" onClick={() => onOpenNoteEditor(notes, (html) => setNotes(html))}
-          style={{
-            width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)',
-            background: 'var(--bg-card)', cursor: 'pointer', textAlign: 'left',
-            color: notes ? 'var(--text)' : 'var(--text-muted)', fontSize: 13,
-          }}>
-          {notes ? 'Edit notes...' : 'Tap to add notes...'}
-        </button>
-        {notesPreview}
       </div>
       <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <label style={{ flex: 1, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1001,7 +981,7 @@ function AllEventsList({ events, loading, onRefresh, onSelectEvent }) {
 
 // ─── Event Detail View (Occasions + Entries) ───
 
-function EventDetailView({ event, onBack, transactionTypes }) {
+function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) {
   const [containers, setContainers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [askContainerName, setAskContainerName] = useState(false);
@@ -1012,6 +992,8 @@ function EventDetailView({ event, onBack, transactionTypes }) {
   const [entries, setEntries] = useState({});
   const [editingEvent, setEditingEvent] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [eventNotes, setEventNotes] = useState(event.notes || '');
+  const [showNotes, setShowNotes] = useState(false);
 
   // Helper to get current PKT date/time strings
   const getNowPKT = () => {
@@ -1146,11 +1128,43 @@ function EventDetailView({ event, onBack, transactionTypes }) {
             <IoCreate size={18} color="var(--text-muted)" />
           </button>
         </div>
-        <button className="btn-primary" style={{ width: '100%', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-          onClick={() => { const n = getNowPKT(); setContainerDate(n.date); setContainerTime(n.time); setAskContainerName(true); }}>
-          <IoAdd size={16} /> New Occasion
-        </button>
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+            onClick={() => { const n = getNowPKT(); setContainerDate(n.date); setContainerTime(n.time); setAskContainerName(true); }}>
+            <IoAdd size={16} /> New Occasion
+          </button>
+          <button className="btn-ghost" style={{ padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600 }}
+            onClick={() => setShowNotes(!showNotes)}>
+            <IoDocumentText size={14} color="var(--primary)" /> Notes {eventNotes ? '(1)' : ''}
+          </button>
+        </div>
       </div>
+
+      {/* Event Notes */}
+      {showNotes && (
+        <div className="card" style={{ padding: '14px 16px', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Event Notes</span>
+            <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, color: 'var(--primary)' }}
+              onClick={() => onOpenNoteEditor(eventNotes, async (html) => {
+                setEventNotes(html);
+                try {
+                  await updateEvent(event._id, { notes: html });
+                } catch (err) { toast.error(err.message); }
+              })}>
+              {eventNotes ? 'Edit' : 'Add Note'}
+            </button>
+          </div>
+          {eventNotes ? (
+            <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text-secondary)', wordBreak: 'break-word' }}
+              dangerouslySetInnerHTML={{ __html: eventNotes }} />
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: 10 }}>
+              No notes yet. Tap "Add Note" to write.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Occasion Name Prompt */}
       {askContainerName && (
