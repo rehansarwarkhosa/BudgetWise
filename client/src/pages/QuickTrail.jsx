@@ -10,7 +10,7 @@ import useSwipeTabs from '../hooks/useSwipeTabs';
 import useBackClose from '../hooks/useBackClose';
 
 import { IoReorderThree } from 'react-icons/io5';
-import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote, reorderTrails, updateSettings, aiTrailSummarize } from '../api';
+import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote, reorderTrails, updateSettings, getAiResponses, deleteAiResponse } from '../api';
 import { formatDateTime, formatDate, formatTime } from '../utils/format';
 import KanbanBoard from './KanbanBoard';
 import Reminders from './Reminders';
@@ -100,7 +100,8 @@ export default function QuickTrail() {
   const [activeTab, _setActiveTab] = useState(() => sessionStorage.getItem('quicktrail_tab') || 'trail');
   const setActiveTab = useCallback((t) => { _setActiveTab(t); sessionStorage.setItem('quicktrail_tab', t); }, []);
   const tabSwipeEnabled = settings?.tabSwipeTrail !== false;
-  const swipe = useSwipeTabs(['trail', 'board', 'reminders'], activeTab, setActiveTab, undefined, tabSwipeEnabled);
+  const tabList = aiEnabled ? ['trail', 'board', 'reminders', 'ai_history'] : ['trail', 'board', 'reminders'];
+  const swipe = useSwipeTabs(tabList, activeTab, setActiveTab, undefined, tabSwipeEnabled);
   const inputRef = useRef(null);
   const searchRef = useRef(null);
   const searchTimeout = useRef(null);
@@ -110,11 +111,38 @@ export default function QuickTrail() {
   const inputDoubleTapRef = useRef({ last: 0, count: 0 });
   useBackClose(showQuickPhrases, () => setShowQuickPhrases(false));
 
-  // AI summarize state
+  // AI state
   const aiEnabled = settings?.aiEnabled || false;
-  const [aiSummary, setAiSummary] = useState(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  useBackClose(!!aiSummary, () => setAiSummary(null));
+  const [aiResponses, setAiResponses] = useState([]);
+  const [aiResponsesLoading, setAiResponsesLoading] = useState(false);
+  const [aiDetailView, setAiDetailView] = useState(null);
+  useBackClose(!!aiDetailView, () => setAiDetailView(null));
+
+  const fetchAiResponses = useCallback(async () => {
+    setAiResponsesLoading(true);
+    try {
+      const res = await getAiResponses();
+      setAiResponses(res.data);
+    } catch { /* silent */ }
+    finally { setAiResponsesLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (aiEnabled && activeTab === 'ai_history') fetchAiResponses();
+  }, [aiEnabled, activeTab]);
+
+  const handleDeleteAiResponse = async (id) => {
+    try {
+      await deleteAiResponse(id);
+      setAiResponses(prev => prev.filter(r => r._id !== id));
+      if (aiDetailView?._id === id) setAiDetailView(null);
+      toast.success('Deleted');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleCopyAiResponse = (content) => {
+    navigator.clipboard.writeText(content).then(() => toast.success('Copied')).catch(() => toast.error('Copy failed'));
+  };
 
   // Touch-only double-tap (onTouchStart fires once per tap on Android)
   const handleInputTouchStart = useCallback((e) => {
@@ -182,18 +210,6 @@ export default function QuickTrail() {
     try { await updateSettings({ trailQuickPhrases: updated }); refetchSettings(); } catch (err) { toast.error(err.message); }
   };
 
-  const handleAiSummarize = async () => {
-    if (aiLoading) return;
-    // Collect all visible entries (flattened from grouped)
-    const allEntries = entries.map(e => ({ text: e.text, createdAt: e.createdAt }));
-    if (allEntries.length === 0) { toast.error('No entries to summarize'); return; }
-    setAiLoading(true);
-    try {
-      const res = await aiTrailSummarize(allEntries.slice(0, 100));
-      setAiSummary(res.data.summary);
-    } catch (err) { toast.error(err.response?.data?.error || err.message); }
-    finally { setAiLoading(false); }
-  };
 
   // Flash timer - force re-render every 30s to update flash state
   const [, setFlashTick] = useState(0);
@@ -504,13 +520,6 @@ export default function QuickTrail() {
                 </div>
               )}
             </div>
-            {aiEnabled && (
-              <button className="btn-ghost" onClick={handleAiSummarize} disabled={aiLoading}
-                title="AI Summarize"
-                style={{ padding: 6, borderRadius: 8, background: aiLoading ? 'var(--bg-input)' : 'transparent', opacity: aiLoading ? 0.6 : 1 }}>
-                {aiLoading ? <Spinner size={18} /> : <IoFlash size={20} color="var(--warning)" />}
-              </button>
-            )}
             <button className="btn-ghost" onClick={toggleSearch}
               style={{ padding: 6, borderRadius: 8, background: searchMode ? 'var(--bg-input)' : 'transparent' }}>
               {searchMode ? <IoClose size={20} /> : <IoSearch size={20} />}
@@ -521,7 +530,7 @@ export default function QuickTrail() {
 
       {/* Tab Switcher */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '1px solid var(--border)' }}>
-        {[{ key: 'trail', label: 'Trail' }, { key: 'board', label: 'Board' }, { key: 'reminders', label: 'Reminders' }].map(t => (
+        {[{ key: 'trail', label: 'Trail' }, { key: 'board', label: 'Board' }, { key: 'reminders', label: 'Reminders' }, ...(aiEnabled ? [{ key: 'ai_history', label: 'AI Log' }] : [])].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
             style={{
               flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600,
@@ -617,31 +626,6 @@ export default function QuickTrail() {
           </div>
         )}
 
-        {/* AI Summary Popup */}
-        {aiSummary && (
-          <div style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-            paddingTop: 60, paddingLeft: 16, paddingRight: 16,
-          }} onClick={() => setAiSummary(null)}>
-            <div style={{
-              background: 'var(--bg-card)', borderRadius: 16, padding: 20,
-              width: '100%', maxWidth: 400, maxHeight: '70vh', overflowY: 'auto',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-            }} onClick={e => e.stopPropagation()}>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
-                <IoFlash size={18} color="var(--warning)" style={{ marginRight: 8 }} />
-                <h3 style={{ fontSize: 15, fontWeight: 700, flex: 1, margin: 0 }}>AI Summary</h3>
-                <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setAiSummary(null)}>
-                  <IoClose size={20} />
-                </button>
-              </div>
-              <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
-                {aiSummary}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Active filter badges */}
         {(filterMode !== 'all' || dateFilter) && (
@@ -870,6 +854,81 @@ export default function QuickTrail() {
       <div style={{ display: activeTab === 'reminders' ? 'block' : 'none' }}>
         <Reminders />
       </div>
+
+      {/* AI History Tab */}
+      {aiEnabled && (
+        <div style={{ display: activeTab === 'ai_history' ? 'block' : 'none' }}>
+          {aiDetailView ? (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setAiDetailView(null)}>
+                  <IoClose size={20} />
+                </button>
+                <h3 style={{ fontSize: 14, fontWeight: 700, flex: 1, margin: 0 }}>{aiDetailView.title}</h3>
+                <button className="btn-ghost" style={{ padding: 4 }} onClick={() => handleCopyAiResponse(aiDetailView.content)}>
+                  <IoCopy size={16} color="var(--text-muted)" />
+                </button>
+                <button className="btn-ghost" style={{ padding: 4 }} onClick={() => handleDeleteAiResponse(aiDetailView._id)}>
+                  <IoTrash size={16} color="var(--danger)" />
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
+                <span style={{
+                  padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600, marginRight: 8,
+                  background: aiDetailView.source === 'budget' ? 'var(--primary)' : aiDetailView.source === 'routines' ? 'var(--success)' : 'var(--warning)',
+                  color: 'white',
+                }}>{aiDetailView.source}</span>
+                {new Date(aiDetailView.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Karachi', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </div>
+              <div style={{
+                fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)',
+                whiteSpace: 'pre-wrap', background: 'var(--bg-card)', borderRadius: 12,
+                padding: 16,
+              }}>
+                {aiDetailView.content}
+              </div>
+            </div>
+          ) : (
+            <>
+              {aiResponsesLoading ? <Spinner /> : aiResponses.length === 0 ? (
+                <EmptyState icon={<IoFlash />} title="No AI responses yet" subtitle="Generate insights from Budget, Routines, or Notes to see them here" />
+              ) : (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {aiResponses.map(r => (
+                    <div key={r._id} className="card" style={{ cursor: 'pointer', padding: '12px 14px' }}
+                      onClick={() => setAiDetailView(r)}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600, flexShrink: 0,
+                          background: r.source === 'budget' ? 'var(--primary)' : r.source === 'routines' ? 'var(--success)' : 'var(--warning)',
+                          color: 'white',
+                        }}>{r.source}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {r.title}
+                        </span>
+                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                          <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); handleCopyAiResponse(r.content); }}>
+                            <IoCopy size={14} color="var(--text-muted)" />
+                          </button>
+                          <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); handleDeleteAiResponse(r._id); }}>
+                            <IoTrash size={14} color="var(--danger)" />
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                        {new Date(r.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Karachi', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {r.content.substring(0, 100)}...
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {detailEntry && (
         <TrailDetailModal

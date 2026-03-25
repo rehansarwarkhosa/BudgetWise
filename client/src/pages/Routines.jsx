@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { IoAdd, IoTrash, IoCheckmarkCircle, IoCloseCircle, IoChevronForward, IoCreate, IoCopy, IoFlash, IoCheckmarkDone, IoCalendar } from 'react-icons/io5';
+import { IoAdd, IoTrash, IoCheckmarkCircle, IoCloseCircle, IoChevronForward, IoCreate, IoCopy, IoFlash, IoCheckmarkDone, IoCalendar, IoClose } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
@@ -15,6 +15,7 @@ import {
   getRoutines, createRoutine, deleteRoutine, updateRoutine,
   getRoutineEntries, logRoutineEntry, deleteRoutineEntry, batchLogRoutineEntries,
   getRoutineNotes, addRoutineNote, updateRoutineNote, deleteRoutineNote,
+  aiRoutineInsights,
 } from '../api';
 import { useSettings } from '../context/SettingsContext';
 
@@ -63,6 +64,29 @@ export default function Routines() {
   const setActiveTab = useCallback((t) => { _setActiveTab(t); sessionStorage.setItem('routines_tab', t); }, []);
   const swipe = useSwipeTabs(['pending', 'done_today', 'scheduled', 'expired'], activeTab, setActiveTab, undefined, tabSwipeEnabled);
 
+  // AI state
+  const aiEnabled = settings?.aiEnabled || false;
+  const [aiInsights, setAiInsights] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  useBackClose(!!aiInsights, () => setAiInsights(null));
+
+  const handleAiInsights = async () => {
+    if (aiLoading || !routines?.length) return;
+    setAiLoading(true);
+    try {
+      const nonExpired = routines.filter(r => !r.isExpired);
+      if (nonExpired.length === 0) { toast.error('No active routines to analyze'); setAiLoading(false); return; }
+      const res = await aiRoutineInsights(nonExpired.map(r => ({
+        name: r.name, isDoneForToday: r.isDoneForToday, isActiveToday: r.isActiveToday,
+        completedEntries: r.completedEntries, targetEntries: r.targetEntries, progress: r.progress,
+        todayCompleteCount: r.todayCompleteCount, maxDailyEntries: r.maxDailyEntries,
+        dueDate: r.dueDate, reminderDays: r.reminderDays,
+      })));
+      setAiInsights(res.data.insights);
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
+    finally { setAiLoading(false); }
+  };
+
   if (loading && !routines) return <Spinner />;
 
   // Segregate routines
@@ -86,7 +110,16 @@ export default function Routines() {
 
   return (
     <div className="page" onTouchStart={swipe.onTouchStart} onTouchEnd={swipe.onTouchEnd}>
-      <h1 className="page-title">Routines</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 className="page-title" style={{ marginBottom: 0 }}>Routines</h1>
+        {aiEnabled && (
+          <button className="btn-ghost" onClick={handleAiInsights} disabled={aiLoading}
+            title="AI Insights"
+            style={{ padding: 6, borderRadius: 8, opacity: aiLoading ? 0.6 : 1 }}>
+            <IoFlash size={18} color="var(--warning)" />
+          </button>
+        )}
+      </div>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid var(--border)' }}>
@@ -198,6 +231,52 @@ export default function Routines() {
       <RoutineDetailModal open={!!detailRoutine} routine={detailRoutine}
         onClose={() => setDetailRoutine(null)} onDone={refetch}
         onClone={(r) => { setCloneSource(r); setDetailRoutine(null); setCreateModal(true); }} />
+
+      {/* AI Insights Popup */}
+      {aiInsights && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+          paddingTop: 60, paddingLeft: 16, paddingRight: 16,
+        }} onClick={() => setAiInsights(null)}>
+          <div style={{
+            background: 'var(--bg-card)', borderRadius: 16, padding: 20,
+            width: '100%', maxWidth: 400, maxHeight: '70vh', overflowY: 'auto',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
+              <IoFlash size={18} color="var(--warning)" style={{ marginRight: 8 }} />
+              <h3 style={{ fontSize: 15, fontWeight: 700, flex: 1, margin: 0 }}>AI Routine Insights</h3>
+              <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setAiInsights(null)}>
+                <IoClose size={20} />
+              </button>
+            </div>
+            <div style={{ fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)' }}>
+              {aiInsights.split('\n').map((line, i) => {
+                const trimmed = line.trim();
+                if (!trimmed) return <div key={i} style={{ height: 8 }} />;
+                if (/^[A-Z][A-Z\s]{3,}$/.test(trimmed)) {
+                  return <h4 key={i} style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)', marginTop: i > 0 ? 14 : 0, marginBottom: 6 }}>{trimmed}</h4>;
+                }
+                if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                  const text = trimmed.replace(/\*\*/g, '');
+                  return <div key={i} style={{ paddingLeft: 12, position: 'relative', marginBottom: 4 }}>
+                    <span style={{ position: 'absolute', left: 0, color: 'var(--success)' }}>-</span>
+                    {text.substring(2)}
+                  </div>;
+                }
+                if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+                  return <h4 key={i} style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)', marginTop: i > 0 ? 14 : 0, marginBottom: 6 }}>{trimmed.replace(/\*\*/g, '')}</h4>;
+                }
+                if (/^\d+\./.test(trimmed)) {
+                  return <div key={i} style={{ paddingLeft: 4, marginBottom: 4 }}>{trimmed.replace(/\*\*/g, '')}</div>;
+                }
+                return <div key={i} style={{ marginBottom: 2 }}>{trimmed.replace(/\*\*/g, '')}</div>;
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

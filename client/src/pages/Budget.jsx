@@ -308,8 +308,34 @@ export default function Budget() {
                 <IoClose size={20} />
               </button>
             </div>
-            <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
-              {aiInsights}
+            <div style={{ fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)' }}>
+              {aiInsights.split('\n').map((line, i) => {
+                const trimmed = line.trim();
+                if (!trimmed) return <div key={i} style={{ height: 8 }} />;
+                // Section headers (all caps lines)
+                if (/^[A-Z][A-Z\s]{3,}$/.test(trimmed)) {
+                  return <h4 key={i} style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', marginTop: i > 0 ? 14 : 0, marginBottom: 6 }}>{trimmed}</h4>;
+                }
+                // Bullet points
+                if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                  const text = trimmed.replace(/^\*\*(.+?)\*\*/, '$1').replace(/\*\*/g, '');
+                  return <div key={i} style={{ paddingLeft: 12, position: 'relative', marginBottom: 4 }}>
+                    <span style={{ position: 'absolute', left: 0, color: 'var(--primary)' }}>-</span>
+                    {text.substring(2)}
+                  </div>;
+                }
+                // Bold headers like **text**
+                if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+                  return <h4 key={i} style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', marginTop: i > 0 ? 14 : 0, marginBottom: 6 }}>{trimmed.replace(/\*\*/g, '')}</h4>;
+                }
+                // Numbered items
+                if (/^\d+\./.test(trimmed)) {
+                  const text = trimmed.replace(/\*\*/g, '');
+                  return <div key={i} style={{ paddingLeft: 4, marginBottom: 4 }}>{text}</div>;
+                }
+                // Regular text - strip markdown
+                return <div key={i} style={{ marginBottom: 2 }}>{trimmed.replace(/\*\*/g, '')}</div>;
+              })}
             </div>
           </div>
         </div>

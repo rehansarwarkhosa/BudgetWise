@@ -1327,7 +1327,7 @@ export default function Settings() {
           <div>
             <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>AI Assistant</h3>
             <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Enable AI-powered features: trail summaries, budget insights, and smart note search.
+              Enable AI-powered features: budget insights, routine insights, and smart note search.
             </p>
           </div>
           <button type="button" onClick={async () => {

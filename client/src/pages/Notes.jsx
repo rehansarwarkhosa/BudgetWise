@@ -262,7 +262,7 @@ function NotesSection({ appSettings }) {
             <input type="text" placeholder={aiSearchMode ? "Describe what you're looking for..." : "Search notes..."} value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); if (aiSearchMode) setAiSearchResults(null); }}
               onKeyDown={(e) => { if (e.key === 'Enter' && aiSearchMode) doAiSearch(); }}
-              style={{ flex: 1 }} autoFocus />
+              style={{ flex: 1, minHeight: 44, fontSize: 14, padding: '10px 14px' }} autoFocus />
             {aiSearchMode && (
               <button className="btn-primary" onClick={doAiSearch} disabled={aiSearchLoading || !searchQuery.trim()}
                 style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontSize: 12 }}>

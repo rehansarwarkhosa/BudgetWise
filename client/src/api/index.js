@@ -190,9 +190,14 @@ export const deleteEventEntry = (id) => api.delete(`/events/entries/${id}`);
 export const getEventTransactionTypes = () => api.get('/settings').then(r => ({ data: r.data.eventTransactionTypes || ['Given', 'Received'] }));
 
 // AI
-export const aiTrailSummarize = (entries) => api.post('/ai/trail-summarize', { entries });
 export const aiBudgetInsights = (data) => api.post('/ai/budget-insights', data);
+export const aiRoutineInsights = (routines) => api.post('/ai/routine-insights', { routines });
 export const aiNotesSearch = (query, notes) => api.post('/ai/notes-search', { query, notes });
+
+// AI Responses
+export const getAiResponses = () => api.get('/ai-responses');
+export const deleteAiResponse = (id) => api.delete(`/ai-responses/${id}`);
+export const deleteAllAiResponses = () => api.delete('/ai-responses');
 
 // Audit Logs
 export const getAuditLogs = (page = 1, { date, action } = {}) => api.get('/audit-logs', { params: { page, limit: 50, ...(date ? { date } : {}), ...(action ? { action } : {}) } });
