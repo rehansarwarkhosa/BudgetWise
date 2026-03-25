@@ -258,14 +258,14 @@ function NotesSection({ appSettings }) {
       {/* Search UI */}
       {tab === 'search' && (
         <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'stretch' }}>
+          <div style={{ marginBottom: 8 }}>
             <input type="text" placeholder={aiSearchMode ? "Describe what you're looking for..." : "Search notes..."} value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); if (aiSearchMode) setAiSearchResults(null); }}
               onKeyDown={(e) => { if (e.key === 'Enter' && aiSearchMode) doAiSearch(); }}
-              style={{ flex: 1, minWidth: 0, width: 'auto', height: 46, fontSize: 15, padding: '12px 14px', boxSizing: 'border-box' }} autoFocus />
+              style={{ display: 'block', width: '100%', height: 46, fontSize: 15, padding: '12px 14px', boxSizing: 'border-box' }} autoFocus />
             {aiSearchMode && (
               <button className="btn-primary" onClick={doAiSearch} disabled={aiSearchLoading || !searchQuery.trim()}
-                style={{ padding: '12px 14px', whiteSpace: 'nowrap', fontSize: 13, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                style={{ marginTop: 8, padding: '10px 16px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
                 {aiSearchLoading && <Spinner size={14} />}
                 {aiSearchLoading ? 'Searching...' : 'Search'}
               </button>
