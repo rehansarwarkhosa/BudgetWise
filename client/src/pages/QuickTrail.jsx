@@ -997,6 +997,8 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
   const [reminders, setReminders] = useState(entry.reminders || []);
   const [remindersDirty, setRemindersDirty] = useState(false);
   const [savingReminders, setSavingReminders] = useState(false);
+  const [quickMinutes, setQuickMinutes] = useState(15);
+  const [savingQuickReminder, setSavingQuickReminder] = useState(false);
 
   // Adjust time
   const [adjustTime, setAdjustTime] = useState('');
@@ -1079,6 +1081,23 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
       toast.success('Reminders saved');
     } catch (err) { toast.error(err.message); }
     finally { setSavingReminders(false); }
+  };
+
+  const saveQuickReminder = async () => {
+    setSavingQuickReminder(true);
+    try {
+      const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+      now.setMinutes(now.getMinutes() + quickMinutes);
+      const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const newReminder = { type: 'once', time, days: [], dates: [], enabled: true };
+      const updated = [...reminders, newReminder];
+      const res = await updateTrail(entry._id, { reminders: updated });
+      onUpdated(res.data);
+      setReminders(updated);
+      setRemindersDirty(false);
+      toast.success(`Reminder set for ${time}`);
+    } catch (err) { toast.error(err.message); }
+    finally { setSavingQuickReminder(false); }
   };
 
   const handleAdjustTime = async () => {
@@ -1209,6 +1228,36 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
 
         {/* Reminders Tab */}
         <div style={{ display: tab === 'reminders' ? 'block' : 'none' }}>
+          {/* Quick Reminder */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px',
+            background: 'var(--bg-input)', borderRadius: 8, marginBottom: 12,
+          }}>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap' }}>After:</span>
+            <button onClick={() => setQuickMinutes(m => Math.max(5, m - 5))}
+              style={{
+                width: 32, height: 32, borderRadius: 6, background: 'var(--bg-card)',
+                border: '1px solid var(--border)', color: 'var(--text)', fontSize: 18,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>-</button>
+            <input type="text" readOnly value={quickMinutes}
+              style={{
+                width: 44, height: 32, textAlign: 'center', fontSize: 15, fontWeight: 700,
+                padding: 0, borderRadius: 6, flexShrink: 0, pointerEvents: 'none',
+              }} />
+            <button onClick={() => setQuickMinutes(m => m + 5)}
+              style={{
+                width: 32, height: 32, borderRadius: 6, background: 'var(--bg-card)',
+                border: '1px solid var(--border)', color: 'var(--text)', fontSize: 18,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>+</button>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>min</span>
+            <button className="btn-primary" onClick={saveQuickReminder} disabled={savingQuickReminder}
+              style={{ padding: '6px 14px', fontSize: 13, marginLeft: 'auto', flexShrink: 0 }}>
+              {savingQuickReminder ? '...' : 'Done'}
+            </button>
+          </div>
+
           {reminders.map((r, idx) => (
             <ReminderRow key={idx} reminder={r} idx={idx}
               onUpdate={updateReminder} onRemove={removeReminder} />

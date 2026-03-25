@@ -842,7 +842,13 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);
   // Check if routine has schedule-based reminders
   const hasScheduleReminders = routine?.reminders?.some(r => r.enabled && ['interval', 'custom_days', 'custom_dates'].includes(r.type));
-  const detailTabs = hasScheduleReminders ? ['info', 'schedule', 'notes'] : ['info', 'notes'];
+  const hasReminders = routine?.reminders?.length > 0;
+  const detailTabs = [
+    'info',
+    ...(hasReminders ? ['reminders'] : []),
+    ...(hasScheduleReminders ? ['schedule'] : []),
+    'notes',
+  ];
   const detailSwipe = useSwipeTabs(detailTabs, detailTab, setDetailTab, undefined, detailSettings?.tabSwipeRoutines !== false);
 
   const editAutoCalc = calcEntriesFromReminders(editDueDate, editReminders);
@@ -1207,8 +1213,8 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Missed</div>
           </div>
           <div style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{entries.length}</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Total</div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>{totalExpected}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Expected</div>
           </div>
         </div>
       )}
@@ -1364,6 +1370,43 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
         );
       })()}
       </>)}
+
+      {detailTab === 'reminders' && hasReminders && (
+        <div>
+          {routine.reminders.map((r, idx) => {
+            const typeLabels = {
+              once: 'Once', daily: 'Daily', weekdays: 'Weekdays',
+              custom_days: 'Custom Days', custom_dates: 'Custom Dates', interval: 'Interval',
+            };
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            let detail = '';
+            if (r.type === 'custom_days') detail = (r.days || []).map(d => dayNames[d]).join(', ');
+            if (r.type === 'interval') detail = `Every ${r.intervalDays} day${r.intervalDays > 1 ? 's' : ''}`;
+            if (r.type === 'custom_dates') detail = `${(r.dates || []).length} date${(r.dates || []).length !== 1 ? 's' : ''}`;
+            return (
+              <div key={idx} style={{
+                padding: '10px 12px', background: 'var(--bg-input)', borderRadius: 8,
+                marginBottom: 8, opacity: r.enabled ? 1 : 0.4,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>{r.time || '--:--'}</span>
+                    <span style={{
+                      fontSize: 11, marginLeft: 8, padding: '2px 8px', borderRadius: 10,
+                      background: r.enabled ? 'rgba(118,210,219,0.15)' : 'rgba(110,112,128,0.15)',
+                      color: r.enabled ? 'var(--primary)' : 'var(--text-muted)',
+                      fontWeight: 600,
+                    }}>{typeLabels[r.type] || r.type}</span>
+                  </div>
+                  {!r.enabled && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Disabled</span>}
+                  {r.type === 'once' && r.fired && <span style={{ fontSize: 11, color: 'var(--success)' }}>Fired</span>}
+                </div>
+                {detail && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{detail}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {detailTab === 'schedule' && hasScheduleReminders && (() => {
         const dueDateStr = routine?.dueDate ? (routine.dueDate.includes('T') ? routine.dueDate.split('T')[0] : routine.dueDate) : '';
