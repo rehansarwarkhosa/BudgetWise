@@ -1093,10 +1093,11 @@ function TrailDetailModal({ entry, onClose, onUpdated }) {
   const saveQuickReminder = async () => {
     setSavingQuickReminder(true);
     try {
-      const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+      // Count from the entry's createdAt time, not current time
+      const itemTime = new Date(new Date(entry.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
       const totalMinutes = quickIsHours ? quickValue * 60 : quickValue;
-      now.setMinutes(now.getMinutes() + totalMinutes);
-      const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      itemTime.setMinutes(itemTime.getMinutes() + totalMinutes);
+      const time = `${String(itemTime.getHours()).padStart(2, '0')}:${String(itemTime.getMinutes()).padStart(2, '0')}`;
       const newReminder = { type: 'once', time, days: [], dates: [], enabled: true };
       const updated = [...reminders, newReminder];
       const res = await updateTrail(entry._id, { reminders: updated });

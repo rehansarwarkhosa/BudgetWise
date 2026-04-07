@@ -83,7 +83,10 @@ export default function Routines() {
         let scheduleType = 'daily';
         if (enabledRems.length > 0) {
           const types = enabledRems.map(rem => rem.type);
-          if (types.includes('interval')) {
+          if (types.includes('monthly_date')) {
+            const mdRem = enabledRems.find(rem => rem.type === 'monthly_date');
+            scheduleType = `monthly (${mdRem.monthlyDateDay}${mdRem.monthlyDateDay === 1 ? 'st' : mdRem.monthlyDateDay === 2 ? 'nd' : mdRem.monthlyDateDay === 3 ? 'rd' : 'th'} of each month)`;
+          } else if (types.includes('interval')) {
             const intRem = enabledRems.find(rem => rem.type === 'interval');
             scheduleType = `every ${intRem.intervalDays} days`;
           } else if (types.includes('custom_days')) {
@@ -178,7 +181,7 @@ export default function Routines() {
             : activeTab === 'scheduled' ? 'No scheduled routines'
             : 'No expired routines'}
           subtitle={activeTab === 'pending' ? 'All caught up! Create a routine to track tasks'
-            : activeTab === 'scheduled' ? 'Routines with interval or specific date reminders will appear here on non-active days'
+            : activeTab === 'scheduled' ? 'Routines with interval, monthly, or specific date reminders will appear here on non-active days'
             : undefined}
         />
       ) : (
@@ -316,7 +319,7 @@ export default function Routines() {
 
 function ReminderEditor({ reminders, setReminders }) {
   const addReminder = () => {
-    setReminders([...reminders, { type: 'daily', time: '09:00', days: [], dates: [], enabled: true, intervalDays: '', intervalStartDate: '', intervalEndDate: '', intervalIncludeStart: true }]);
+    setReminders([...reminders, { type: 'daily', time: '09:00', days: [], dates: [], enabled: true, intervalDays: '', intervalStartDate: '', intervalEndDate: '', intervalIncludeStart: true, monthlyDateDay: '' }]);
   };
 
   const updateReminder = (idx, key, val) => {
@@ -364,6 +367,7 @@ function ReminderEditor({ reminders, setReminders }) {
               <option value="custom_days">Custom Days</option>
               <option value="custom_dates">Custom Dates</option>
               <option value="interval">Every N Days</option>
+              <option value="monthly_date">Every Nth of Month</option>
             </select>
             <input type="time" value={rem.time} onChange={(e) => updateReminder(idx, 'time', e.target.value)}
               style={{ flex: '0 0 120px' }} />
@@ -415,6 +419,25 @@ function ReminderEditor({ reminders, setReminders }) {
                   <IoCalendar size={10} style={{ verticalAlign: -1, marginRight: 4 }} />
                   {rem.intervalIncludeStart !== false ? 'First entry on start day, then' : 'First entry'} every {rem.intervalDays} day{rem.intervalDays > 1 ? 's' : ''}{rem.intervalIncludeStart === false ? ` after ${typeof rem.intervalStartDate === 'string' && rem.intervalStartDate.includes('T') ? rem.intervalStartDate.split('T')[0] : rem.intervalStartDate}` : ` from ${typeof rem.intervalStartDate === 'string' && rem.intervalStartDate.includes('T') ? rem.intervalStartDate.split('T')[0] : rem.intervalStartDate}`}
                   {rem.intervalEndDate && <> until {typeof rem.intervalEndDate === 'string' && rem.intervalEndDate.includes('T') ? rem.intervalEndDate.split('T')[0] : rem.intervalEndDate}</>}
+                </p>
+              )}
+            </div>
+          )}
+
+          {rem.type === 'monthly_date' && (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <label style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Every</label>
+                <input type="number" min="1" max="31" placeholder="Day" value={rem.monthlyDateDay || ''}
+                  onChange={(e) => updateReminder(idx, 'monthlyDateDay', Number(e.target.value) || '')}
+                  style={{ width: 70 }} />
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>of each month</span>
+              </div>
+              {rem.monthlyDateDay > 0 && rem.monthlyDateDay <= 31 && (
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
+                  <IoCalendar size={10} style={{ verticalAlign: -1, marginRight: 4 }} />
+                  Fires on the {rem.monthlyDateDay}{rem.monthlyDateDay === 1 ? 'st' : rem.monthlyDateDay === 2 ? 'nd' : rem.monthlyDateDay === 3 ? 'rd' : 'th'} of every month
+                  {rem.monthlyDateDay > 28 && <span style={{ color: 'var(--warning)' }}> (falls back to last day in shorter months)</span>}
                 </p>
               )}
             </div>
@@ -480,7 +503,7 @@ function getScheduleDates(dueDate, reminders, maxDates = 60) {
   due.setHours(23, 59, 59, 999);
   if (due < today) return [];
 
-  const enabled = reminders.filter(r => r.enabled && ['interval', 'custom_days', 'custom_dates'].includes(r.type));
+  const enabled = reminders.filter(r => r.enabled && ['interval', 'custom_days', 'custom_dates', 'monthly_date'].includes(r.type));
   if (enabled.length === 0) return [];
 
   const dates = [];
@@ -514,6 +537,11 @@ function getScheduleDates(dueDate, reminders, maxDates = 60) {
         const diffDays = Math.round((d - startD) / 86400000);
         if (diffDays === 0 && rem.intervalIncludeStart === false) continue;
         if (diffDays % rem.intervalDays === 0) { match = true; break; }
+      } else if (rem.type === 'monthly_date') {
+        if (!rem.monthlyDateDay || rem.monthlyDateDay < 1 || rem.monthlyDateDay > 31) continue;
+        const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        const targetDay = Math.min(rem.monthlyDateDay, lastDay);
+        if (d.getDate() === targetDay) { match = true; break; }
       }
     }
     if (match) dates.push(dateStr);
@@ -592,6 +620,15 @@ function calcEntriesFromReminders(dueDate, reminders) {
         if (isMatch) total++;
         d.setDate(d.getDate() + 1);
       }
+    } else if (rem.type === 'monthly_date') {
+      if (!rem.monthlyDateDay || rem.monthlyDateDay < 1 || rem.monthlyDateDay > 31) continue;
+      let d = new Date(today);
+      while (d <= due) {
+        const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        const targetDay = Math.min(rem.monthlyDateDay, lastDay);
+        if (d.getDate() === targetDay) total++;
+        d.setDate(d.getDate() + 1);
+      }
     }
   }
   return total;
@@ -611,7 +648,7 @@ function calcMaxDailyEntries(targetEntries, dueDate, reminders) {
     const enabled = reminders.filter(r => r.enabled);
     if (enabled.length > 0) {
       // Schedule-based types (interval, custom_dates, once) always allow 1 entry per active day
-      const scheduleOnly = enabled.every(r => ['interval', 'custom_dates', 'once'].includes(r.type));
+      const scheduleOnly = enabled.every(r => ['interval', 'custom_dates', 'once', 'monthly_date'].includes(r.type));
       if (scheduleOnly) return 1;
       // For daily/weekdays/custom_days, max daily = count of enabled reminders
       return enabled.length;
@@ -638,7 +675,7 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
   const autoDaily = calcMaxDailyEntries(Number(targetEntries) || 0, dueDate, reminders);
 
   // Auto-fill target entries when dueDate or reminders change
-  const remindersKey = JSON.stringify(reminders.map(r => ({ type: r.type, time: r.time, days: r.days, dates: r.dates, enabled: r.enabled, intervalDays: r.intervalDays, intervalStartDate: r.intervalStartDate, intervalEndDate: r.intervalEndDate, intervalIncludeStart: r.intervalIncludeStart })));
+  const remindersKey = JSON.stringify(reminders.map(r => ({ type: r.type, time: r.time, days: r.days, dates: r.dates, enabled: r.enabled, intervalDays: r.intervalDays, intervalStartDate: r.intervalStartDate, intervalEndDate: r.intervalEndDate, intervalIncludeStart: r.intervalIncludeStart, monthlyDateDay: r.monthlyDateDay })));
   useEffect(() => {
     if (!initialized || skipAutoCalcRef.current) return;
     if (reminders.length > 0 && dueDate) {
@@ -669,6 +706,7 @@ function CreateRoutineModal({ open, onClose, onDone, cloneSource, onCloneUsed })
       intervalStartDate: r.intervalStartDate ? (typeof r.intervalStartDate === 'string' && r.intervalStartDate.includes('T') ? r.intervalStartDate.split('T')[0] : r.intervalStartDate) : '',
       intervalEndDate: r.intervalEndDate ? (typeof r.intervalEndDate === 'string' && r.intervalEndDate.includes('T') ? r.intervalEndDate.split('T')[0] : r.intervalEndDate) : '',
       intervalIncludeStart: r.intervalIncludeStart ?? true,
+      monthlyDateDay: r.monthlyDateDay || '',
     })) || []);
     setInitialized(true);
     skipAutoCalcRef.current = true;
@@ -841,7 +879,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const [richEditorSaving, setRichEditorSaving] = useState(false);
   const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);
   // Check if routine has schedule-based reminders
-  const hasScheduleReminders = routine?.reminders?.some(r => r.enabled && ['interval', 'custom_days', 'custom_dates'].includes(r.type));
+  const hasScheduleReminders = routine?.reminders?.some(r => r.enabled && ['interval', 'custom_days', 'custom_dates', 'monthly_date'].includes(r.type));
   const hasReminders = routine?.reminders?.length > 0;
   const detailTabs = [
     'info',
@@ -853,7 +891,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
 
   const editAutoCalc = calcEntriesFromReminders(editDueDate, editReminders);
   const editAutoDaily = calcMaxDailyEntries(Number(editTargetEntries) || 0, editDueDate, editReminders);
-  const editRemindersKey = JSON.stringify(editReminders.map(r => ({ type: r.type, time: r.time, days: r.days, dates: r.dates, enabled: r.enabled, intervalDays: r.intervalDays, intervalStartDate: r.intervalStartDate, intervalEndDate: r.intervalEndDate, intervalIncludeStart: r.intervalIncludeStart })));
+  const editRemindersKey = JSON.stringify(editReminders.map(r => ({ type: r.type, time: r.time, days: r.days, dates: r.dates, enabled: r.enabled, intervalDays: r.intervalDays, intervalStartDate: r.intervalStartDate, intervalEndDate: r.intervalEndDate, intervalIncludeStart: r.intervalIncludeStart, monthlyDateDay: r.monthlyDateDay })));
 
   useEffect(() => {
     if (!editing || !editReadyRef.current || skipEditAutoCalcRef.current) return;
@@ -1021,6 +1059,13 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
         const diffDays = Math.round((dateMs - startMs) / 86400000);
         if (diffDays === 0 && rem.intervalIncludeStart === false) return false;
         return diffDays % rem.intervalDays === 0;
+      }
+      case 'monthly_date': {
+        if (!rem.monthlyDateDay || rem.monthlyDateDay < 1 || rem.monthlyDateDay > 31) return false;
+        const [yr, mo, dy] = dateStr.split('-').map(Number);
+        const lastDay = new Date(yr, mo, 0).getDate();
+        const targetDay = Math.min(rem.monthlyDateDay, lastDay);
+        return dy === targetDay;
       }
       default: return false;
     }
@@ -1251,6 +1296,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
               intervalStartDate: r.intervalStartDate ? (typeof r.intervalStartDate === 'string' && r.intervalStartDate.includes('T') ? r.intervalStartDate.split('T')[0] : r.intervalStartDate) : '',
               intervalEndDate: r.intervalEndDate ? (typeof r.intervalEndDate === 'string' && r.intervalEndDate.includes('T') ? r.intervalEndDate.split('T')[0] : r.intervalEndDate) : '',
               intervalIncludeStart: r.intervalIncludeStart ?? true,
+              monthlyDateDay: r.monthlyDateDay || '',
             })) || []);
             requestAnimationFrame(() => { editReadyRef.current = true; });
           }}>
@@ -1378,12 +1424,14 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
             const typeLabels = {
               once: 'Once', daily: 'Daily', weekdays: 'Weekdays',
               custom_days: 'Custom Days', custom_dates: 'Custom Dates', interval: 'Interval',
+              monthly_date: 'Monthly',
             };
             const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
             let detail = '';
             if (r.type === 'custom_days') detail = (r.days || []).map(d => dayNames[d]).join(', ');
             if (r.type === 'interval') detail = `Every ${r.intervalDays} day${r.intervalDays > 1 ? 's' : ''}`;
             if (r.type === 'custom_dates') detail = `${(r.dates || []).length} date${(r.dates || []).length !== 1 ? 's' : ''}`;
+            if (r.type === 'monthly_date') detail = `${r.monthlyDateDay}${r.monthlyDateDay === 1 ? 'st' : r.monthlyDateDay === 2 ? 'nd' : r.monthlyDateDay === 3 ? 'rd' : 'th'} of each month`;
             return (
               <div key={idx} style={{
                 padding: '10px 12px', background: 'var(--bg-input)', borderRadius: 8,
@@ -1580,7 +1628,7 @@ function LogEntryModal({ open, routine, onClose, onDone }) {
     try {
       await logRoutineEntry(routine._id, {
         manualDate,
-        date: manualDate ? date : undefined,
+        date: manualDate && date ? new Date(`${date}:00+05:00`).toISOString() : undefined,
         fieldValues: Object.values(fieldValues),
       });
       toast.success('Entry logged');

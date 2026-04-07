@@ -7,7 +7,7 @@ const fieldSchema = new mongoose.Schema({
 }, { _id: true });
 
 const reminderSchema = new mongoose.Schema({
-  type: { type: String, enum: ['once', 'daily', 'weekdays', 'custom_days', 'custom_dates', 'interval'], required: true },
+  type: { type: String, enum: ['once', 'daily', 'weekdays', 'custom_days', 'custom_dates', 'interval', 'monthly_date'], required: true },
   time: { type: String, required: true },
   days: [{ type: Number }],
   dates: [{ type: Date }],
@@ -17,6 +17,7 @@ const reminderSchema = new mongoose.Schema({
   intervalStartDate: { type: Date, default: null },
   intervalEndDate: { type: Date, default: null },
   intervalIncludeStart: { type: Boolean, default: true },
+  monthlyDateDay: { type: Number, default: 0 },
   lastNotifiedDate: { type: String, default: '' },
 }, { _id: true });
 

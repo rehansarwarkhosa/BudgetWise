@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const scheduleSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['once', 'daily', 'weekdays', 'custom_days', 'custom_dates', 'interval'],
+    enum: ['once', 'daily', 'weekdays', 'custom_days', 'custom_dates', 'interval', 'monthly_date'],
     required: true,
   },
   time: { type: String, required: true }, // HH:MM
@@ -11,6 +11,7 @@ const scheduleSchema = new mongoose.Schema({
   dates: [Date], // for custom_dates
   intervalDays: { type: Number }, // for interval type
   intervalStartDate: { type: Date },
+  monthlyDateDay: { type: Number }, // for monthly_date type (1-31)
   enabled: { type: Boolean, default: true },
   fired: { type: Boolean, default: false }, // for 'once' type
   lastNotifiedDate: { type: String, default: '' },

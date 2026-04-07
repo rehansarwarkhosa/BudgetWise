@@ -23,6 +23,7 @@ const SCHEDULE_TYPES = [
   { value: 'custom_days', label: 'Custom Days' },
   { value: 'custom_dates', label: 'Custom Dates' },
   { value: 'interval', label: 'Every N Days' },
+  { value: 'monthly_date', label: 'Every Nth of Month' },
 ];
 const PRIORITY_OPTIONS = [
   { value: 'low', label: 'Low', color: '#6BCB77' },
@@ -57,6 +58,12 @@ function getActiveRemindersForDate(reminders, date) {
         const start = new Date(s.intervalStartDate); start.setHours(0, 0, 0, 0);
         const diff = Math.round((target - start) / 86400000);
         return diff >= 0 && diff % s.intervalDays === 0;
+      }
+      case 'monthly_date': {
+        if (!s.monthlyDateDay || s.monthlyDateDay < 1 || s.monthlyDateDay > 31) return false;
+        const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+        const targetDay = Math.min(s.monthlyDateDay, lastDay);
+        return date.getDate() === targetDay;
       }
       case 'once': {
         if (s.fired) return false;
@@ -138,6 +145,7 @@ export default function Reminders() {
   const [formDates, setFormDates] = useState([]);
   const [formIntervalDays, setFormIntervalDays] = useState(7);
   const [formIntervalStart, setFormIntervalStart] = useState('');
+  const [formMonthlyDateDay, setFormMonthlyDateDay] = useState(1);
   const [saving, setSaving] = useState(false);
 
   // Calendar state
@@ -218,7 +226,7 @@ export default function Reminders() {
     setFormTitle(''); setFormPriority('medium');
     setFormType('once'); setFormTime('09:00'); setFormDays([]);
     setFormDates([]); setFormIntervalDays(7); setFormIntervalStart('');
-    setEditingId(null);
+    setFormMonthlyDateDay(1); setEditingId(null);
   };
 
   const openForm = (reminder = null) => {
@@ -232,6 +240,7 @@ export default function Reminders() {
       setFormDates((reminder.schedule.dates || []).map(d => new Date(d).toISOString().split('T')[0]));
       setFormIntervalDays(reminder.schedule.intervalDays || 7);
       setFormIntervalStart(reminder.schedule.intervalStartDate ? new Date(reminder.schedule.intervalStartDate).toISOString().split('T')[0] : '');
+      setFormMonthlyDateDay(reminder.schedule.monthlyDateDay || 1);
     } else {
       resetForm();
     }
@@ -255,6 +264,7 @@ export default function Reminders() {
     if (formType === 'custom_days' && formDays.length === 0) return toast.error('Select at least one day');
     if (formType === 'custom_dates' && formDates.length === 0) return toast.error('Add at least one date');
     if (formType === 'interval' && (!formIntervalDays || formIntervalDays < 1)) return toast.error('Interval must be at least 1 day');
+    if (formType === 'monthly_date' && (!formMonthlyDateDay || formMonthlyDateDay < 1 || formMonthlyDateDay > 31)) return toast.error('Day must be between 1 and 31');
 
     setSaving(true);
     try {
@@ -268,6 +278,9 @@ export default function Reminders() {
       if (formType === 'interval') {
         schedule.intervalDays = formIntervalDays;
         schedule.intervalStartDate = formIntervalStart ? new Date(formIntervalStart) : new Date();
+      }
+      if (formType === 'monthly_date') {
+        schedule.monthlyDateDay = formMonthlyDateDay;
       }
 
       const payload = {
@@ -402,6 +415,7 @@ export default function Reminders() {
       case 'custom_days': return `${(s.days || []).map(d => DAY_LABELS[d]).join(', ')} at ${s.time}`;
       case 'custom_dates': return `${(s.dates || []).length} date(s) at ${s.time}`;
       case 'interval': return `Every ${s.intervalDays}d at ${s.time}`;
+      case 'monthly_date': return `${s.monthlyDateDay}${s.monthlyDateDay === 1 ? 'st' : s.monthlyDateDay === 2 ? 'nd' : s.monthlyDateDay === 3 ? 'rd' : 'th'} of month at ${s.time}`;
       default: return s.type;
     }
   };
@@ -1115,6 +1129,26 @@ export default function Reminders() {
                     onChange={e => setFormIntervalStart(e.target.value)}
                     style={{ width: '100%' }} />
                 </div>
+              </div>
+            )}
+
+            {/* Monthly Date */}
+            {formType === 'monthly_date' && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 6, fontWeight: 600 }}>
+                  Day of month
+                </label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input type="number" min="1" max="31" value={formMonthlyDateDay}
+                    onChange={e => setFormMonthlyDateDay(parseInt(e.target.value) || 1)}
+                    style={{ width: 70, textAlign: 'center' }} />
+                  <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>of each month</span>
+                </div>
+                {formMonthlyDateDay > 28 && (
+                  <p style={{ fontSize: 11, color: 'var(--warning)', margin: '6px 0 0' }}>
+                    Falls back to last available day in shorter months
+                  </p>
+                )}
               </div>
             )}
 

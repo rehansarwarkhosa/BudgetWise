@@ -121,6 +121,15 @@ const reminderMatchesDay = (reminder, todayStr, weekday) => {
       if (diffDays === 0 && reminder.intervalIncludeStart === false) return false;
       return diffDays % reminder.intervalDays === 0;
     }
+    case 'monthly_date': {
+      if (!reminder.monthlyDateDay || reminder.monthlyDateDay < 1 || reminder.monthlyDateDay > 31) return false;
+      const [year, month, day] = todayStr.split('-').map(Number);
+      // Get last day of this month
+      const lastDay = new Date(year, month, 0).getDate();
+      // Target day: requested day or last day of month, whichever is smaller
+      const targetDay = Math.min(reminder.monthlyDateDay, lastDay);
+      return day === targetDay;
+    }
     default: return false;
   }
 };
@@ -131,7 +140,7 @@ const getNextLogDate = (reminders, startStr, dueDateStr, includeStart = true) =>
   const enabledReminders = (reminders || []).filter(r => r.enabled && !(r.type === 'once' && r.fired));
   // Only compute for schedule-based types (interval, custom_days, custom_dates)
   const scheduledReminders = enabledReminders.filter(r =>
-    ['interval', 'custom_days', 'custom_dates'].includes(r.type)
+    ['interval', 'custom_days', 'custom_dates', 'monthly_date'].includes(r.type)
   );
   if (scheduledReminders.length === 0) return null;
 
