@@ -4,8 +4,10 @@ import {
   IoAdd, IoTrash, IoChevronForward, IoChevronDown, IoSearch, IoArrowBack,
   IoClose, IoPricetag, IoCreate, IoColorPalette, IoTime,
   IoLockClosed, IoLockOpen, IoCalendar, IoNotifications, IoNotificationsOff,
-  IoChevronUp, IoFolder, IoFolderOpen, IoFlash, IoDocumentText,
+  IoChevronUp, IoFolder, IoFolderOpen, IoFlash, IoDocumentText, IoDownload,
 } from 'react-icons/io5';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
@@ -1133,6 +1135,159 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
     setEntryForm({ name: entry.name, type: entry.type || '', amount: String(entry.amount || ''), textValue: entry.textValue || '' });
   };
 
+  const exportOccasionPDF = async (container) => {
+    const cEntries = entries[container._id];
+    if (!cEntries || cEntries.length === 0) { toast.error('No entries to export'); return; }
+
+    const lt = container.logType || 'currency';
+    const cur = container.currency || 'PKR';
+    const showTx = container.showTransactionType !== false;
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 14;
+    let y = margin;
+
+    const primary = [26, 83, 92];
+    const accent = [58, 175, 185];
+    const darkText = [30, 30, 30];
+    const mutedText = [100, 100, 100];
+
+    // Title
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...primary);
+    doc.text(event.name, margin, y + 6);
+    y += 12;
+
+    // Occasion name
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...darkText);
+    doc.text(container.name, margin, y + 4);
+    y += 10;
+
+    // Date/time line
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...mutedText);
+    const dateParts = [];
+    if (container.date) dateParts.push(new Date(container.date).toLocaleDateString('en-PK', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Karachi' }));
+    if (container.time) dateParts.push(container.time);
+    dateParts.push(`${cEntries.length} entries`);
+    if (lt === 'currency') dateParts.push(`Currency: ${cur}`);
+    else if (lt === 'time') dateParts.push('Type: Time (Hours)');
+    else dateParts.push('Type: Other');
+    doc.text(dateParts.join('  |  '), margin, y);
+    y += 4;
+
+    // Separator
+    doc.setDrawColor(...accent);
+    doc.setLineWidth(0.6);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 6;
+
+    // Table
+    const head = [['#', 'Name']];
+    if (showTx) head[0].push('Type');
+    if (lt === 'currency') head[0].push(`Amount (${cur})`);
+    else if (lt === 'time') head[0].push('Hours');
+    else head[0].push('Value');
+
+    const body = cEntries.map((e, i) => {
+      const row = [String(i + 1), e.name];
+      if (showTx) row.push(e.type || '');
+      if (lt === 'currency') row.push(Number(e.amount || 0).toLocaleString());
+      else if (lt === 'time') row.push(String(e.amount || 0));
+      else row.push(e.textValue || '');
+      return row;
+    });
+
+    autoTable(doc, {
+      startY: y,
+      head,
+      body,
+      margin: { left: margin, right: margin },
+      styles: { fontSize: 10, cellPadding: 3, textColor: darkText, lineColor: [200, 200, 200], lineWidth: 0.2 },
+      headStyles: { fillColor: primary, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 },
+      alternateRowStyles: { fillColor: [245, 248, 250] },
+      columnStyles: lt !== 'other' && head[0].length > 0 ? { [head[0].length - 1]: { halign: 'right', fontStyle: 'bold' } } : {},
+    });
+
+    y = doc.lastAutoTable.finalY + 6;
+
+    // Totals (only for currency and time)
+    if (lt !== 'other') {
+      const summary = {};
+      cEntries.forEach(e => {
+        const key = showTx ? (e.type || 'Other') : 'Total';
+        if (!summary[key]) summary[key] = 0;
+        summary[key] += Number(e.amount || 0);
+      });
+
+      if (y + 10 + Object.keys(summary).length * 7 > pageHeight - 20) {
+        doc.addPage();
+        y = margin;
+      }
+
+      doc.setDrawColor(...accent);
+      doc.setLineWidth(0.4);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 6;
+
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...primary);
+      doc.text('Summary', margin, y);
+      y += 7;
+
+      doc.setFontSize(11);
+      let grandTotal = 0;
+      Object.entries(summary).forEach(([type, total]) => {
+        grandTotal += total;
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...darkText);
+        const label = `${type}:`;
+        const val = lt === 'time' ? `${total}h` : `${cur} ${Number(total).toLocaleString()}`;
+        doc.text(label, margin, y);
+        doc.setFont('helvetica', 'bold');
+        doc.text(val, pageWidth - margin, y, { align: 'right' });
+        y += 6;
+      });
+
+      if (Object.keys(summary).length > 1) {
+        doc.setDrawColor(...mutedText);
+        doc.setLineWidth(0.2);
+        doc.line(margin, y - 1, pageWidth - margin, y - 1);
+        y += 4;
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...primary);
+        doc.text('Grand Total:', margin, y);
+        const grandVal = lt === 'time' ? `${grandTotal}h` : `${cur} ${Number(grandTotal).toLocaleString()}`;
+        doc.text(grandVal, pageWidth - margin, y, { align: 'right' });
+        y += 6;
+      }
+    }
+
+    // Footer
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(...mutedText);
+      doc.text(`${event.name} - ${container.name}  |  Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+      doc.setDrawColor(...accent);
+      doc.setLineWidth(0.3);
+      doc.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
+    }
+
+    const safeName = container.name.replace(/[^a-zA-Z0-9-_ ]/g, '').trim();
+    doc.save(`${safeName}-${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' })}.pdf`);
+    toast.success('PDF downloaded');
+  };
+
   return (
     <div>
       {/* Header */}
@@ -1295,13 +1450,22 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
                         {c.date && c.time ? ' · ' : ''}{c.time || ''}
                       </div>
                     )}
-                    {c.summary && Object.keys(c.summary).length > 0 && (
-                      <div style={{ display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
-                        {Object.entries(c.summary).map(([type, total]) => (
-                          <span key={type} style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                            {type === '_total' ? 'Total' : type}: {(c.logType || 'currency') === 'time' ? `${total}h` : (c.currency || 'PKR') === 'PKR' ? formatPKR(total) : `${c.currency || 'PKR'} ${Number(total).toLocaleString()}`}
-                          </span>
-                        ))}
+                    {c.summary && Object.keys(c.summary).length > 0 && (c.logType || 'currency') !== 'other' && (
+                      <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
+                        {Object.entries(c.summary).map(([type, total]) => {
+                          const lt = c.logType || 'currency';
+                          const cur = c.currency || 'PKR';
+                          const formatted = lt === 'time' ? `${total}h` : cur === 'PKR' ? formatPKR(total) : `${cur} ${Number(total).toLocaleString()}`;
+                          return (
+                            <span key={type} style={{
+                              fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                              background: type.toLowerCase() === 'received' || type === '_total' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.1)',
+                              color: type.toLowerCase() === 'received' || type === '_total' ? '#22c55e' : '#ef4444',
+                            }}>
+                              {type === '_total' ? '' : `${type}: `}{formatted}
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1369,6 +1533,17 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
                         )}
                       </div>
                     </form>
+
+                    {/* Export PDF */}
+                    {cEntries.length > 0 && (
+                      <div style={{ marginBottom: 10, textAlign: 'right' }}>
+                        <button type="button" className="btn-ghost"
+                          style={{ fontSize: 11, fontWeight: 600, color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6 }}
+                          onClick={() => exportOccasionPDF(c)}>
+                          <IoDownload size={13} /> Export PDF
+                        </button>
+                      </div>
+                    )}
 
                     {/* Entries List */}
                     {cEntries.length === 0 ? (
