@@ -160,8 +160,10 @@ router.get('/:eventId/containers', async (req, res, next) => {
       const entries = await EventEntry.find({ containerId: c._id });
       const summary = {};
       entries.forEach(e => {
-        if (!summary[e.type]) summary[e.type] = 0;
-        summary[e.type] += e.amount;
+        if (c.logType === 'other') return; // no numeric summary for 'other' type
+        const key = e.type || '_total';
+        if (!summary[key]) summary[key] = 0;
+        summary[key] += e.amount;
       });
       return { ...c.toObject(), entryCount: entries.length, summary };
     }));
@@ -172,7 +174,7 @@ router.get('/:eventId/containers', async (req, res, next) => {
 // Create container
 router.post('/:eventId/containers', async (req, res, next) => {
   try {
-    const { name, date, time } = req.body;
+    const { name, date, time, logType, currency, showTransactionType, defaultTransactionType } = req.body;
     if (!name?.trim()) return error(res, 'Container name is required');
     const event = await Event.findById(req.params.eventId);
     if (!event) return error(res, 'Event not found', 404);
@@ -180,22 +182,30 @@ router.post('/:eventId/containers', async (req, res, next) => {
     const containerData = { eventId: req.params.eventId, name: name.trim() };
     if (date) containerData.date = date;
     if (time) containerData.time = time;
+    if (logType) containerData.logType = logType;
+    if (currency) containerData.currency = currency;
+    if (showTransactionType !== undefined) containerData.showTransactionType = showTransactionType;
+    if (defaultTransactionType !== undefined) containerData.defaultTransactionType = defaultTransactionType;
     const container = await EventContainer.create(containerData);
     await AuditLog.create({ action: 'CREATE', entity: 'EventContainer', entityId: container._id, details: `Created container "${name.trim()}" in event "${event.name}"` });
     success(res, container, 201);
   } catch (err) { next(err); }
 });
 
-// Rename container
+// Update container
 router.put('/containers/:id', async (req, res, next) => {
   try {
     const container = await EventContainer.findById(req.params.id);
     if (!container) return error(res, 'Container not found', 404);
-    const { name } = req.body;
-    const oldName = container.name;
-    if (name) container.name = name;
+    const { name, logType, currency, showTransactionType, defaultTransactionType } = req.body;
+    const changes = [];
+    if (name && name !== container.name) { changes.push(`name: "${container.name}" -> "${name}"`); container.name = name; }
+    if (logType !== undefined && logType !== container.logType) { changes.push(`logType: "${container.logType}" -> "${logType}"`); container.logType = logType; }
+    if (currency !== undefined && currency !== container.currency) { changes.push(`currency: "${container.currency}" -> "${currency}"`); container.currency = currency; }
+    if (showTransactionType !== undefined && showTransactionType !== container.showTransactionType) { container.showTransactionType = showTransactionType; changes.push(`showTransactionType: ${showTransactionType}`); }
+    if (defaultTransactionType !== undefined && defaultTransactionType !== container.defaultTransactionType) { container.defaultTransactionType = defaultTransactionType; changes.push(`defaultTransactionType: "${defaultTransactionType}"`); }
     await container.save();
-    if (name && name !== oldName) await AuditLog.create({ action: 'UPDATE', entity: 'EventContainer', entityId: container._id, details: `Renamed container "${oldName}" -> "${name}"` });
+    if (changes.length) await AuditLog.create({ action: 'UPDATE', entity: 'EventContainer', entityId: container._id, details: `Updated container: ${changes.join(', ')}` });
     success(res, container);
   } catch (err) { next(err); }
 });
@@ -225,16 +235,20 @@ router.get('/containers/:containerId/entries', async (req, res, next) => {
 // Create entry
 router.post('/containers/:containerId/entries', async (req, res, next) => {
   try {
-    const { name, type, amount } = req.body;
+    const { name, type, amount, textValue } = req.body;
     if (!name?.trim()) return error(res, 'Name is required');
-    if (!type?.trim()) return error(res, 'Type is required');
-    if (amount === undefined || amount === null) return error(res, 'Amount is required');
 
     const container = await EventContainer.findById(req.params.containerId);
     if (!container) return error(res, 'Container not found', 404);
 
-    const entry = await EventEntry.create({ containerId: req.params.containerId, name: name.trim(), type: type.trim(), amount: Number(amount) });
-    await AuditLog.create({ action: 'CREATE', entity: 'EventEntry', entityId: entry._id, details: `Entry in "${container.name}": ${name.trim()} ${type.trim()} ${amount} PKR` });
+    const entryData = { containerId: req.params.containerId, name: name.trim() };
+    if (type) entryData.type = type.trim();
+    if (amount !== undefined && amount !== null && amount !== '') entryData.amount = Number(amount);
+    if (textValue !== undefined) entryData.textValue = textValue;
+
+    const entry = await EventEntry.create(entryData);
+    const detail = container.logType === 'other' ? `"${textValue || ''}"` : `${amount || 0}`;
+    await AuditLog.create({ action: 'CREATE', entity: 'EventEntry', entityId: entry._id, details: `Entry in "${container.name}": ${name.trim()} ${type || ''} ${detail}` });
     success(res, entry, 201);
   } catch (err) { next(err); }
 });
@@ -244,11 +258,12 @@ router.put('/entries/:id', async (req, res, next) => {
   try {
     const entry = await EventEntry.findById(req.params.id);
     if (!entry) return error(res, 'Entry not found', 404);
-    const { name, type, amount } = req.body;
+    const { name, type, amount, textValue } = req.body;
     const changes = [];
     if (name !== undefined && name !== entry.name) { changes.push(`name: "${entry.name}" -> "${name}"`); entry.name = name; }
     if (type !== undefined && type !== entry.type) { changes.push(`type: "${entry.type}" -> "${type}"`); entry.type = type; }
     if (amount !== undefined && amount !== entry.amount) { changes.push(`amount: ${entry.amount} -> ${amount}`); entry.amount = amount; }
+    if (textValue !== undefined && textValue !== entry.textValue) { changes.push(`textValue: "${entry.textValue}" -> "${textValue}"`); entry.textValue = textValue; }
     await entry.save();
     if (changes.length) await AuditLog.create({ action: 'UPDATE', entity: 'EventEntry', entityId: entry._id, details: `Updated entry: ${changes.join(', ')}` });
     success(res, entry);

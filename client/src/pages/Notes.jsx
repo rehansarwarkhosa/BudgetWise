@@ -989,6 +989,10 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
   const [containerName, setContainerName] = useState('');
   const [containerDate, setContainerDate] = useState('');
   const [containerTime, setContainerTime] = useState('');
+  const [containerLogType, setContainerLogType] = useState('currency');
+  const [containerCurrency, setContainerCurrency] = useState('PKR');
+  const [containerShowTxType, setContainerShowTxType] = useState(true);
+  const [containerDefaultTxType, setContainerDefaultTxType] = useState('');
   const [expandedContainer, setExpandedContainer] = useState(null);
   const [entries, setEntries] = useState({});
   const [editingEvent, setEditingEvent] = useState(false);
@@ -1005,8 +1009,8 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
     };
   };
 
-  // Entry form state - default to first type (Given)
-  const [entryForm, setEntryForm] = useState({ name: '', type: transactionTypes[0] || 'Given', amount: '' });
+  // Entry form state
+  const [entryForm, setEntryForm] = useState({ name: '', type: transactionTypes[0] || 'Given', amount: '', textValue: '' });
   const [entrySaving, setEntrySaving] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
   const [confirmDelEntry, setConfirmDelEntry] = useState(null);
@@ -1032,27 +1036,42 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
     } catch (err) { toast.error(err.message); }
   }, []);
 
+  const getDefaultEntryForm = (container) => {
+    const defaultType = container?.defaultTransactionType || transactionTypes[0] || 'Given';
+    return { name: '', type: defaultType, amount: '', textValue: '' };
+  };
+
   const handleToggleContainer = (containerId) => {
     if (expandedContainer === containerId) {
       setExpandedContainer(null);
     } else {
       setExpandedContainer(containerId);
       if (!entries[containerId]) fetchEntries(containerId);
-      setEntryForm({ name: '', type: transactionTypes[0] || 'Given', amount: '' });
+      const cont = containers.find(c => c._id === containerId);
+      setEntryForm(getDefaultEntryForm(cont));
       setEditingEntry(null);
     }
+  };
+
+  const resetContainerForm = () => {
+    setContainerName(''); setContainerDate(''); setContainerTime('');
+    setContainerLogType('currency'); setContainerCurrency('PKR');
+    setContainerShowTxType(true); setContainerDefaultTxType('');
+    setAskContainerName(false);
   };
 
   const handleCreateContainer = async (e) => {
     e.preventDefault();
     if (!containerName.trim()) return;
     try {
-      await createEventContainer(event._id, { name: containerName.trim(), date: containerDate, time: containerTime });
+      await createEventContainer(event._id, {
+        name: containerName.trim(), date: containerDate, time: containerTime,
+        logType: containerLogType, currency: containerLogType === 'currency' ? containerCurrency : undefined,
+        showTransactionType: containerShowTxType,
+        defaultTransactionType: containerShowTxType ? containerDefaultTxType : '',
+      });
       toast.success('Occasion created');
-      setContainerName('');
-      setContainerDate('');
-      setContainerTime('');
-      setAskContainerName(false);
+      resetContainerForm();
       fetchContainers();
     } catch (err) { toast.error(err.response?.data?.error || err.message); }
   };
@@ -1069,18 +1088,30 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
 
   const handleAddEntry = async (e) => {
     e.preventDefault();
-    if (!entryForm.name.trim() || !entryForm.amount) { toast.error('Name and amount are required'); return; }
+    const cont = containers.find(c => c._id === expandedContainer);
+    const lt = cont?.logType || 'currency';
+    if (!entryForm.name.trim()) { toast.error('Name is required'); return; }
+    if (lt !== 'other' && !entryForm.amount && entryForm.amount !== 0) { toast.error(lt === 'time' ? 'Hours are required' : 'Amount is required'); return; }
+
+    const payload = { name: entryForm.name.trim() };
+    if (cont?.showTransactionType !== false) payload.type = entryForm.type;
+    if (lt === 'other') {
+      payload.textValue = entryForm.textValue;
+    } else {
+      payload.amount = Number(entryForm.amount);
+    }
+
     setEntrySaving(true);
     try {
       if (editingEntry) {
-        await updateEventEntry(editingEntry._id, { name: entryForm.name.trim(), type: entryForm.type, amount: Number(entryForm.amount) });
+        await updateEventEntry(editingEntry._id, payload);
         toast.success('Entry updated');
         setEditingEntry(null);
       } else {
-        await createEventEntry(expandedContainer, { name: entryForm.name.trim(), type: entryForm.type, amount: Number(entryForm.amount) });
+        await createEventEntry(expandedContainer, payload);
         toast.success('Entry added');
       }
-      setEntryForm({ name: '', type: transactionTypes[0] || 'Given', amount: '' });
+      setEntryForm(getDefaultEntryForm(cont));
       fetchEntries(expandedContainer);
       fetchContainers();
     } catch (err) { toast.error(err.response?.data?.error || err.message); }
@@ -1099,7 +1130,7 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
 
   const startEditEntry = (entry) => {
     setEditingEntry(entry);
-    setEntryForm({ name: entry.name, type: entry.type, amount: String(entry.amount) });
+    setEntryForm({ name: entry.name, type: entry.type || '', amount: String(entry.amount || ''), textValue: entry.textValue || '' });
   };
 
   return (
@@ -1131,7 +1162,7 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-            onClick={() => { const n = getNowPKT(); setContainerDate(n.date); setContainerTime(n.time); setAskContainerName(true); }}>
+            onClick={() => { const n = getNowPKT(); setContainerDate(n.date); setContainerTime(n.time); setContainerLogType('currency'); setContainerCurrency('PKR'); setContainerShowTxType(true); setContainerDefaultTxType(''); setAskContainerName(true); }}>
             <IoAdd size={16} /> New Occasion
           </button>
           <button className="btn-ghost" style={{ padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600 }}
@@ -1181,9 +1212,55 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
               <input type="time" value={containerTime} onChange={(e) => setContainerTime(e.target.value)}
                 style={{ flex: 1 }} />
             </div>
+            {/* Log Type */}
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Log Type</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[{ v: 'currency', l: 'Currency' }, { v: 'time', l: 'Time' }, { v: 'other', l: 'Other' }].map(o => (
+                  <button key={o.v} type="button" onClick={() => setContainerLogType(o.v)}
+                    style={{
+                      flex: 1, padding: '8px 0', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                      border: '1.5px solid ' + (containerLogType === o.v ? 'var(--primary)' : 'var(--border)'),
+                      background: containerLogType === o.v ? 'rgba(118,210,219,0.12)' : 'var(--bg-input)',
+                      color: containerLogType === o.v ? 'var(--primary)' : 'var(--text-muted)',
+                      cursor: 'pointer',
+                    }}>{o.l}</button>
+                ))}
+              </div>
+            </div>
+            {/* Currency selector */}
+            {containerLogType === 'currency' && (
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Currency</label>
+                <select value={containerCurrency} onChange={(e) => setContainerCurrency(e.target.value)} style={{ width: '100%' }}>
+                  {['PKR', 'USD', 'EUR', 'GBP', 'AED', 'SAR', 'CAD', 'AUD', 'INR', 'CNY', 'JPY', 'TRY', 'MYR', 'SGD', 'KWD', 'QAR', 'BHD', 'OMR'].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {/* Transaction Type Toggle */}
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={containerShowTxType}
+                  onChange={(e) => { setContainerShowTxType(e.target.checked); if (!e.target.checked) setContainerDefaultTxType(''); }}
+                  style={{ width: 14, height: 14 }} />
+                Show transaction type dropdown (e.g. Given/Received)
+              </label>
+            </div>
+            {/* Default Transaction Type */}
+            {containerShowTxType && transactionTypes.length > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Default transaction type</label>
+                <select value={containerDefaultTxType} onChange={(e) => setContainerDefaultTxType(e.target.value)} style={{ width: '100%' }}>
+                  <option value="">-- First available --</option>
+                  {transactionTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="submit" className="btn-primary" style={{ flex: 1 }}>Create Occasion</button>
-              <button type="button" className="btn-ghost" onClick={() => { setAskContainerName(false); setContainerName(''); setContainerDate(''); setContainerTime(''); }}
+              <button type="button" className="btn-ghost" onClick={resetContainerForm}
                 style={{ padding: '10px 14px' }}><IoClose size={18} /></button>
             </div>
           </form>
@@ -1219,10 +1296,10 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
                       </div>
                     )}
                     {c.summary && Object.keys(c.summary).length > 0 && (
-                      <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
                         {Object.entries(c.summary).map(([type, total]) => (
                           <span key={type} style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                            {type}: {formatPKR(total)}
+                            {type === '_total' ? 'Total' : type}: {(c.logType || 'currency') === 'time' ? `${total}h` : (c.currency || 'PKR') === 'PKR' ? formatPKR(total) : `${c.currency || 'PKR'} ${Number(total).toLocaleString()}`}
                           </span>
                         ))}
                       </div>
@@ -1236,8 +1313,19 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
                 </div>
 
                 {/* Expanded: Entry Form + Entries List */}
-                {isExpanded && (
+                {isExpanded && (() => {
+                  const lt = c.logType || 'currency';
+                  const showTx = c.showTransactionType !== false;
+                  return (
                   <div style={{ padding: '12px 14px' }}>
+                    {/* Log type badge */}
+                    <div style={{ marginBottom: 8, display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                        background: lt === 'currency' ? 'rgba(118,210,219,0.15)' : lt === 'time' ? 'rgba(245,158,11,0.15)' : 'rgba(168,85,247,0.15)',
+                        color: lt === 'currency' ? 'var(--primary)' : lt === 'time' ? '#f59e0b' : '#a855f7',
+                      }}>{lt === 'currency' ? `Currency (${c.currency || 'PKR'})` : lt === 'time' ? 'Time (Hours)' : 'Other (Text)'}</span>
+                      {!showTx && <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>No transaction type</span>}
+                    </div>
                     {/* Entry Form */}
                     <form onSubmit={handleAddEntry} style={{ marginBottom: 14 }}>
                       <div className="form-group" style={{ marginBottom: 8 }}>
@@ -1246,14 +1334,28 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
                           style={{ width: '100%' }} />
                       </div>
                       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                        <select value={entryForm.type}
-                          onChange={(e) => setEntryForm(p => ({ ...p, type: e.target.value }))}
-                          style={{ flex: 1 }}>
-                          {transactionTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                        <input type="number" placeholder="Amount (PKR)" value={entryForm.amount}
-                          onChange={(e) => setEntryForm(p => ({ ...p, amount: e.target.value }))}
-                          style={{ flex: 1 }} min="0" />
+                        {showTx && (
+                          <select value={entryForm.type}
+                            onChange={(e) => setEntryForm(p => ({ ...p, type: e.target.value }))}
+                            style={{ flex: 1 }}>
+                            {transactionTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        )}
+                        {lt === 'currency' && (
+                          <input type="number" placeholder={`Amount (${c.currency || 'PKR'})`} value={entryForm.amount}
+                            onChange={(e) => setEntryForm(p => ({ ...p, amount: e.target.value }))}
+                            style={{ flex: 1 }} step="any" />
+                        )}
+                        {lt === 'time' && (
+                          <input type="number" placeholder="Hours" value={entryForm.amount}
+                            onChange={(e) => setEntryForm(p => ({ ...p, amount: e.target.value }))}
+                            style={{ flex: 1 }} step="any" />
+                        )}
+                        {lt === 'other' && (
+                          <input type="text" placeholder="Value (text, number, etc.)" value={entryForm.textValue}
+                            onChange={(e) => setEntryForm(p => ({ ...p, textValue: e.target.value }))}
+                            style={{ flex: 1 }} />
+                        )}
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={entrySaving}>
@@ -1261,7 +1363,7 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
                         </button>
                         {editingEntry && (
                           <button type="button" className="btn-ghost" style={{ padding: '10px 14px' }}
-                            onClick={() => { setEditingEntry(null); setEntryForm({ name: '', type: transactionTypes[0] || 'Given', amount: '' }); }}>
+                            onClick={() => { setEditingEntry(null); const cont = containers.find(cc => cc._id === expandedContainer); setEntryForm(getDefaultEntryForm(cont)); }}>
                             Cancel
                           </button>
                         )}
@@ -1279,19 +1381,23 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
                           <div key={entry._id} style={{
                             display: 'flex', alignItems: 'center', gap: 8,
                             padding: '8px 10px', borderRadius: 6,
-                            background: entry.type.toLowerCase() === 'received' ? 'rgba(34, 197, 94, 0.06)' : 'rgba(239, 68, 68, 0.06)',
+                            background: (entry.type || '').toLowerCase() === 'received' ? 'rgba(34, 197, 94, 0.06)' : 'rgba(239, 68, 68, 0.06)',
                             border: '1px solid var(--border)',
                           }}>
                             <div style={{ flex: 1 }}>
                               <span style={{ fontSize: 13, fontWeight: 500 }}>{entry.name}</span>
-                              <span style={{
-                                marginLeft: 8, fontSize: 10, fontWeight: 700, padding: '1px 6px',
-                                borderRadius: 4,
-                                background: entry.type.toLowerCase() === 'received' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                                color: entry.type.toLowerCase() === 'received' ? '#22c55e' : '#ef4444',
-                              }}>{entry.type}</span>
+                              {entry.type && (
+                                <span style={{
+                                  marginLeft: 8, fontSize: 10, fontWeight: 700, padding: '1px 6px',
+                                  borderRadius: 4,
+                                  background: entry.type.toLowerCase() === 'received' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                  color: entry.type.toLowerCase() === 'received' ? '#22c55e' : '#ef4444',
+                                }}>{entry.type}</span>
+                              )}
                             </div>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{formatPKR(entry.amount)}</span>
+                            {lt === 'currency' && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{(c.currency || 'PKR') === 'PKR' ? formatPKR(entry.amount) : `${(c.currency || 'PKR')} ${Number(entry.amount || 0).toLocaleString()}`}</span>}
+                            {lt === 'time' && <span style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>{entry.amount}h</span>}
+                            {lt === 'other' && <span style={{ fontSize: 13, color: 'var(--text-secondary)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.textValue || ''}</span>}
                             <button className="btn-ghost" style={{ padding: 2 }}
                               onClick={() => startEditEntry(entry)}>
                               <IoCreate size={12} color="var(--text-muted)" />
@@ -1305,7 +1411,8 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
                       </div>
                     )}
                   </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })}
