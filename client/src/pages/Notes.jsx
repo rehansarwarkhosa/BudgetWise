@@ -687,6 +687,7 @@ function EventsSection() {
     return (
       <EventDetailView
         event={selectedEvent}
+        folderName={selectedFolder?.name || ''}
         onBack={() => { setSelectedEvent(null); }}
         onOpenNoteEditor={(content, onSave) => setEventNoteEditor({ content, onSave })}
         transactionTypes={transactionTypes}
@@ -984,7 +985,7 @@ function AllEventsList({ events, loading, onRefresh, onSelectEvent }) {
 
 // ─── Event Detail View (Occasions + Entries) ───
 
-function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) {
+function EventDetailView({ event, folderName, onBack, onOpenNoteEditor, transactionTypes }) {
   const [containers, setContainers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [askContainerName, setAskContainerName] = useState(false);
@@ -1297,6 +1298,11 @@ function EventDetailView({ event, onBack, onOpenNoteEditor, transactionTypes }) 
             <IoArrowBack size={20} />
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
+            {folderName && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <IoFolder size={11} /> {folderName} <IoChevronForward size={10} /> {event.name}
+              </div>
+            )}
             <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px 0', wordBreak: 'break-word' }}>{event.name}</h2>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>

@@ -214,30 +214,49 @@ export default function Routines() {
                     </span>
                   )}
                 </div>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {r.completedEntries}/{r.targetEntries} entries ({r.progress}%)
-                  {r.lastEntry && <> &middot; Last: {formatDateTime(r.lastEntry.date)}</>}
-                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                    background: r.progress >= 100 ? 'rgba(34,197,94,0.12)' : 'rgba(118,210,219,0.12)',
+                    color: r.progress >= 100 ? '#22c55e' : 'var(--primary)',
+                  }}>
+                    {r.completedEntries}/{r.targetEntries} entries
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.progress}%</span>
+                </div>
                 {!r.isExpired && r.isActiveToday !== false && (
-                  <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    Today: {r.todayCompleteCount}/{r.maxDailyEntries} daily
-                    {r.dueDate && <> &middot; Due: <span style={{ color: 'var(--warning)' }}>{formatDate(r.dueDate)}</span></>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                      background: r.isDoneForToday ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)',
+                      color: r.isDoneForToday ? '#22c55e' : '#f59e0b',
+                    }}>
+                      Today: {r.todayCompleteCount}/{r.maxDailyEntries}
+                    </span>
                     {r.nextLogDate && r.isDoneForToday && (() => {
                       const lbl = getNextLogLabel(r.nextLogDate);
-                      return lbl && lbl !== 'Today' ? <> &middot; Next: <span style={{ color: 'var(--primary)' }}>{lbl}</span></> : null;
+                      return lbl && lbl !== 'Today' ? (
+                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--primary)' }}>
+                          <IoCalendar size={10} style={{ verticalAlign: -1, marginRight: 2 }} />Next: {lbl}
+                        </span>
+                      ) : null;
                     })()}
-                  </p>
+                    {r.dueDate && <span style={{ fontSize: 10, color: 'var(--warning)' }}>Due: {formatDate(r.dueDate)}</span>}
+                  </div>
                 )}
                 {!r.isExpired && r.isActiveToday === false && (
-                  <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
                     {r.nextLogDate && (
-                      <>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                        background: 'rgba(118,210,219,0.12)', color: 'var(--primary)',
+                      }}>
                         <IoCalendar size={10} style={{ verticalAlign: -1, marginRight: 3 }} />
-                        Next log: <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{getNextLogLabel(r.nextLogDate)}</span>
-                      </>
+                        Next: {getNextLogLabel(r.nextLogDate)}
+                      </span>
                     )}
-                    {r.dueDate && <> &middot; Due: <span style={{ color: 'var(--warning)' }}>{formatDate(r.dueDate)}</span></>}
-                  </p>
+                    {r.dueDate && <span style={{ fontSize: 10, color: 'var(--warning)' }}>Due: {formatDate(r.dueDate)}</span>}
+                  </div>
                 )}
                 {r.isExpired && r.dueDate && (
                   <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 2 }}>
@@ -1183,56 +1202,60 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
         </div>
       )}
 
-      {/* Done for today badge */}
-      {routine?.isDoneForToday && !isExpired && (
-        <div style={{ marginBottom: 12 }}>
-          <span className="badge" style={{
-            background: 'var(--success)', color: 'white', fontSize: 13, padding: '4px 12px',
-          }}>
-            Done for today ({routine.todayCompleteCount}/{maxDailyEntries})
-          </span>
-        </div>
-      )}
-
-      {/* Daily progress info */}
-      {!isExpired && fetched && (
-        <div style={{
-          padding: '8px 12px', background: 'var(--bg-input)', borderRadius: 8,
-          fontSize: 12, color: 'var(--text-muted)', marginBottom: 12,
-        }}>
-          Daily target: <strong>{maxDailyEntries}</strong> entries/day
-          &middot; Today: <strong style={{ color: routine?.isDoneForToday ? 'var(--success)' : 'var(--warning)' }}>
-            {routine?.todayCompleteCount || 0}/{maxDailyEntries}
-          </strong>
-          {routine?.nextLogDate && (() => {
-            const lbl = getNextLogLabel(routine.nextLogDate);
-            if (!lbl) return null;
-            const isToday = lbl === 'Today';
-            return (
-              <>
-                <br />
-                <IoCalendar size={11} style={{ verticalAlign: -1, marginRight: 3 }} />
-                Next log: <strong style={{ color: isToday ? 'var(--success)' : 'var(--primary)' }}>{lbl}</strong>
-              </>
-            );
-          })()}
-        </div>
-      )}
-
-      {/* Progress bar */}
+      {/* Overall Progress Card */}
       {fetched && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
-            <span>{completedCount}/{targetEntries} entries</span>
-            <span>{progress}%</span>
+        <div style={{
+          padding: '12px 14px', background: 'var(--bg-input)', borderRadius: 10,
+          marginBottom: 12, border: '1px solid var(--border)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{
+              fontSize: 22, fontWeight: 800,
+              color: progress >= 100 ? 'var(--success)' : 'var(--primary)',
+            }}>
+              {completedCount}<span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-muted)' }}>/{targetEntries}</span>
+            </span>
+            <span style={{
+              fontSize: 14, fontWeight: 700, padding: '3px 10px', borderRadius: 8,
+              background: progress >= 100 ? 'rgba(34,197,94,0.15)' : 'rgba(118,210,219,0.12)',
+              color: progress >= 100 ? '#22c55e' : 'var(--primary)',
+            }}>{progress}%</span>
           </div>
-          <div style={{ height: 8, background: 'var(--bg-input)', borderRadius: 4, overflow: 'hidden' }}>
+          <div style={{ height: 8, background: 'rgba(0,0,0,0.15)', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
             <div style={{
               height: '100%', borderRadius: 4, transition: 'width 0.3s',
               width: `${Math.min(progress, 100)}%`,
               background: progress >= 100 ? 'var(--success)' : progress >= 75 ? 'var(--primary-light)' : 'var(--primary)',
             }} />
           </div>
+          {/* Today's status */}
+          {!isExpired && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{
+                fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 8,
+                background: routine?.isDoneForToday ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)',
+                color: routine?.isDoneForToday ? '#22c55e' : '#f59e0b',
+              }}>
+                Today: {routine?.todayCompleteCount || 0}/{maxDailyEntries}
+                {routine?.isDoneForToday ? ' Done' : ` (${maxDailyEntries - (routine?.todayCompleteCount || 0)} pending)`}
+              </span>
+              {routine?.nextLogDate && (() => {
+                const lbl = getNextLogLabel(routine.nextLogDate);
+                if (!lbl) return null;
+                const isToday = lbl === 'Today';
+                return (
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 8,
+                    background: isToday ? 'rgba(34,197,94,0.12)' : 'rgba(118,210,219,0.12)',
+                    color: isToday ? '#22c55e' : 'var(--primary)',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}>
+                    <IoCalendar size={12} /> Next: {lbl}
+                  </span>
+                );
+              })()}
+            </div>
+          )}
         </div>
       )}
 

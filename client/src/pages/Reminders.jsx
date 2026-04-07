@@ -1084,15 +1084,22 @@ export default function Reminders() {
                 <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 6, fontWeight: 600 }}>
                   Dates
                 </label>
-                <input type="date"
-                  onChange={e => {
-                    if (!e.target.value) return;
-                    if (!formDates.includes(e.target.value)) {
-                      setFormDates(prev => [...prev, e.target.value]);
-                    }
-                    e.target.value = '';
-                  }}
-                  style={{ width: '100%', marginBottom: 8 }} />
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <input type="date" id="custom-date-picker"
+                    style={{ flex: 1 }} />
+                  <button type="button" className="btn-primary" style={{ padding: '8px 14px', fontSize: 12, whiteSpace: 'nowrap' }}
+                    onClick={() => {
+                      const input = document.getElementById('custom-date-picker');
+                      const val = input?.value;
+                      if (!val) { toast.error('Select a date first'); return; }
+                      if (!formDates.includes(val)) {
+                        setFormDates(prev => [...prev, val]);
+                      } else {
+                        toast.error('Date already added');
+                      }
+                      input.value = '';
+                    }}>+ Add</button>
+                </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {formDates.map((d, i) => (
                     <span key={i} style={{
@@ -1100,7 +1107,7 @@ export default function Reminders() {
                       background: 'var(--primary)', color: 'white',
                       display: 'inline-flex', alignItems: 'center', gap: 6,
                     }}>
-                      {d}
+                      {new Date(d + 'T00:00:00').toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })}
                       <button style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1 }}
                         onClick={() => setFormDates(prev => prev.filter((_, idx) => idx !== i))}>×</button>
                     </span>
