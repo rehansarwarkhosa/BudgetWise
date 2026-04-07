@@ -58,6 +58,18 @@ export default function Routines() {
   const [cloneSource, setCloneSource] = useState(null);
   useBackClose(!!createModal, () => setCreateModal(false));
   useBackClose(!!detailRoutine, () => setDetailRoutine(null));
+
+  // Keep detailRoutine in sync with fresh routines data after refetch
+  useEffect(() => {
+    if (detailRoutine && routines) {
+      const fresh = routines.find(r => r._id === detailRoutine._id);
+      if (fresh && (fresh.completedEntries !== detailRoutine.completedEntries
+        || fresh.todayCompleteCount !== detailRoutine.todayCompleteCount
+        || fresh.isDoneForToday !== detailRoutine.isDoneForToday)) {
+        setDetailRoutine(fresh);
+      }
+    }
+  }, [routines]);
   useBackClose(!!cloneSource, () => setCloneSource(null));
   const tabSwipeEnabled = settings?.tabSwipeRoutines !== false;
   const [activeTab, _setActiveTab] = useState(() => sessionStorage.getItem('routines_tab') || 'pending');
@@ -1262,28 +1274,36 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
       {/* Stats bar */}
       {fetched && entries.length > 0 && (
         <div style={{
-          display: 'flex', gap: 8, marginBottom: 16,
+          display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16,
           padding: '10px 12px', background: 'var(--bg-input)', borderRadius: 8,
         }}>
-          <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ flex: '1 0 30%', textAlign: 'center', minWidth: 60 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--primary)' }}>{totalActualComplete}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Logged</div>
+          </div>
+          <div style={{ flex: '1 0 30%', textAlign: 'center', minWidth: 60 }}>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>{totalExpected}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Exp. Till Date</div>
+          </div>
+          <div style={{ flex: '1 0 30%', textAlign: 'center', minWidth: 60 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-muted)' }}>{targetEntries}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Total Target</div>
+          </div>
+          <div style={{ flex: '1 0 18%', textAlign: 'center', minWidth: 50 }}>
             <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--primary)' }}>{completionRate}%</div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Rate</div>
           </div>
-          <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ flex: '1 0 18%', textAlign: 'center', minWidth: 50 }}>
             <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--success)' }}>{currentStreak}</div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Streak</div>
           </div>
-          <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ flex: '1 0 18%', textAlign: 'center', minWidth: 50 }}>
             <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--warning)' }}>{longestStreak}</div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Best</div>
           </div>
-          <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ flex: '1 0 18%', textAlign: 'center', minWidth: 50 }}>
             <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--danger)' }}>{totalMissed}</div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Missed</div>
-          </div>
-          <div style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{totalExpected}</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Expected</div>
           </div>
         </div>
       )}

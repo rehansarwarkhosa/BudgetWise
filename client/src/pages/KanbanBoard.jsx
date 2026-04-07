@@ -57,7 +57,7 @@ function stripHtml(html) {
   return tmp.textContent || tmp.innerText || '';
 }
 
-export default function KanbanBoard({ autoOpenId, onAutoOpened }) {
+export default function KanbanBoard({ autoOpenId, onAutoOpened, refreshKey }) {
   const { settings } = useSettings();
   const dueDateColors = settings?.kanbanDueDateColors;
   const [workOrders, setWorkOrders] = useState([]);
@@ -148,6 +148,11 @@ export default function KanbanBoard({ autoOpenId, onAutoOpened }) {
   }, [searchQuery, filterPriority, filterBudgetType]);
 
   const refresh = () => { fetchWorkOrders(searchQuery, filterPriority, filterBudgetType); fetchArchived(); fetchBacklog(); };
+
+  // Refresh when parent signals (e.g. tab switch)
+  useEffect(() => {
+    if (refreshKey) refresh();
+  }, [refreshKey]);
 
   // Auto-open a work order when navigated from trail
   useEffect(() => {

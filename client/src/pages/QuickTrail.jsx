@@ -98,7 +98,12 @@ export default function QuickTrail() {
   const [detailEntry, setDetailEntry] = useState(null);
   useBackClose(!!detailEntry, () => setDetailEntry(null));
   const [activeTab, _setActiveTab] = useState(() => sessionStorage.getItem('quicktrail_tab') || 'trail');
-  const setActiveTab = useCallback((t) => { _setActiveTab(t); sessionStorage.setItem('quicktrail_tab', t); }, []);
+  const [boardRefreshKey, setBoardRefreshKey] = useState(0);
+  const setActiveTab = useCallback((t) => {
+    _setActiveTab(t);
+    sessionStorage.setItem('quicktrail_tab', t);
+    if (t === 'board') setBoardRefreshKey(k => k + 1);
+  }, []);
   const tabSwipeEnabled = settings?.tabSwipeTrail !== false;
   const aiEnabled = settings?.aiEnabled || false;
   const tabList = aiEnabled ? ['trail', 'board', 'reminders', 'ai_history'] : ['trail', 'board', 'reminders'];
@@ -875,9 +880,9 @@ export default function QuickTrail() {
                                 <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); handleCopy(entry); }}>
                                   <IoCopy size={14} color={entry.highlighted ? '#ccc' : 'var(--text-muted)'} />
                                 </button>
-                                <button className="btn-ghost" style={{ padding: 4 }} disabled={boardFlowSending}
+                                <button className="btn-ghost" style={{ padding: 4 }} disabled={boardFlowSending || !!entry.linkedWorkOrderId}
                                   onClick={(e) => { e.stopPropagation(); handleSendToBoard(entry); }}
-                                  title="Send to Board">
+                                  title={entry.linkedWorkOrderId ? 'Already on Board' : 'Send to Board'}>
                                   <IoClipboard size={14} color={entry.linkedWorkOrderId ? 'var(--primary)' : entry.highlighted ? '#ccc' : 'var(--text-muted)'} />
                                 </button>
                                 <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setConfirmDelete(entry); }}>
@@ -967,7 +972,7 @@ export default function QuickTrail() {
         )}
       </div>
       <div style={{ display: activeTab === 'board' ? 'block' : 'none' }}>
-        <KanbanBoard autoOpenId={autoOpenBoardId} onAutoOpened={() => setAutoOpenBoardId(null)} />
+        <KanbanBoard autoOpenId={autoOpenBoardId} onAutoOpened={() => setAutoOpenBoardId(null)} refreshKey={boardRefreshKey} />
       </div>
 
       <div style={{ display: activeTab === 'reminders' ? 'block' : 'none' }}>
