@@ -139,6 +139,7 @@ router.put('/:id', async (req, res, next) => {
     if (req.body.text !== undefined) { trail.text = req.body.text; changes.push('text updated'); }
     if (req.body.highlighted !== undefined) { trail.highlighted = req.body.highlighted; changes.push(`highlighted: ${trail.highlighted}`); }
     if (req.body.reminders !== undefined) { trail.reminders = req.body.reminders; changes.push(`reminders updated (${req.body.reminders.length})`); }
+    if (req.body.linkedWorkOrderId !== undefined) { trail.linkedWorkOrderId = req.body.linkedWorkOrderId || null; changes.push('linked to work order'); }
     if (req.body.adjustedAt !== undefined) {
       const oldDate = trail.createdAt;
       trail.createdAt = new Date(req.body.adjustedAt);

@@ -17,6 +17,7 @@ const trailSchema = new mongoose.Schema({
   quickPhrase: { type: Boolean, default: false },
   sortOrder: { type: Number, default: 0 },
   adjustedAt: { type: Date, default: null },
+  linkedWorkOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkOrder', default: null },
   createdAt: { type: Date, default: Date.now },
 });
 

@@ -57,7 +57,7 @@ function stripHtml(html) {
   return tmp.textContent || tmp.innerText || '';
 }
 
-export default function KanbanBoard() {
+export default function KanbanBoard({ autoOpenId, onAutoOpened }) {
   const { settings } = useSettings();
   const dueDateColors = settings?.kanbanDueDateColors;
   const [workOrders, setWorkOrders] = useState([]);
@@ -148,6 +148,15 @@ export default function KanbanBoard() {
   }, [searchQuery, filterPriority, filterBudgetType]);
 
   const refresh = () => { fetchWorkOrders(searchQuery, filterPriority, filterBudgetType); fetchArchived(); fetchBacklog(); };
+
+  // Auto-open a work order when navigated from trail
+  useEffect(() => {
+    if (autoOpenId) {
+      refresh();
+      setDetailId(autoOpenId);
+      onAutoOpened?.();
+    }
+  }, [autoOpenId]);
 
   const handleArchive = async (id) => {
     try {

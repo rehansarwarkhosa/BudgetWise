@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoChevronDown, IoChevronForward, IoTime, IoCreate, IoCheckmark, IoStar, IoStarOutline, IoFlash, IoPin, IoPinOutline } from 'react-icons/io5';
+import { IoSend, IoTrash, IoCopy, IoSearch, IoClose, IoAlarm, IoFilter, IoDocumentText, IoAdd, IoChevronDown, IoChevronForward, IoTime, IoCreate, IoCheckmark, IoStar, IoStarOutline, IoFlash, IoPin, IoPinOutline, IoClipboard } from 'react-icons/io5';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ConfirmModal from '../components/ConfirmModal';
@@ -10,7 +10,7 @@ import useSwipeTabs from '../hooks/useSwipeTabs';
 import useBackClose from '../hooks/useBackClose';
 
 import { IoReorderThree } from 'react-icons/io5';
-import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote, reorderTrails, updateSettings, getAiResponses, deleteAiResponse } from '../api';
+import { getTrails, createTrail, updateTrail, deleteTrail, getTrailNotes, addTrailNote, updateTrailNote, deleteTrailNote, reorderTrails, updateSettings, getAiResponses, deleteAiResponse, createWorkOrder, moveWorkOrder } from '../api';
 import { formatDateTime, formatDate, formatTime } from '../utils/format';
 import KanbanBoard from './KanbanBoard';
 import Reminders from './Reminders';
@@ -117,6 +117,61 @@ export default function QuickTrail() {
   const [aiResponsesLoading, setAiResponsesLoading] = useState(false);
   const [aiDetailView, setAiDetailView] = useState(null);
   useBackClose(!!aiDetailView, () => setAiDetailView(null));
+
+  // Send to Board flow
+  const [boardFlowEntry, setBoardFlowEntry] = useState(null); // the trail entry being sent
+  const [boardFlowStep, setBoardFlowStep] = useState(null); // 'status' | 'delete' | 'navigate'
+  const [boardFlowWoId, setBoardFlowWoId] = useState(null); // created work order ID
+  const [boardFlowSending, setBoardFlowSending] = useState(false);
+  const [autoOpenBoardId, setAutoOpenBoardId] = useState(null); // pass to KanbanBoard to auto-open detail
+  useBackClose(!!boardFlowStep, () => { setBoardFlowStep(null); setBoardFlowEntry(null); setBoardFlowWoId(null); });
+
+  const handleSendToBoard = async (entry) => {
+    setBoardFlowEntry(entry);
+    setBoardFlowSending(true);
+    try {
+      const res = await createWorkOrder({ title: entry.text, priority: 'low' });
+      setBoardFlowWoId(res.data._id);
+      setBoardFlowStep('status');
+    } catch (err) { toast.error(err.response?.data?.error || err.message); setBoardFlowEntry(null); }
+    finally { setBoardFlowSending(false); }
+  };
+
+  const handleBoardFlowStatus = async (status) => {
+    if (status !== 'todo') {
+      try { await moveWorkOrder(boardFlowWoId, status); } catch { /* ignore, default todo is fine */ }
+    }
+    setBoardFlowStep('delete');
+  };
+
+  const handleBoardFlowDelete = async (shouldDelete) => {
+    if (shouldDelete) {
+      try {
+        await deleteTrail(boardFlowEntry._id);
+        setEntries(prev => prev.filter(e => e._id !== boardFlowEntry._id));
+        toast.success('Entry removed from trail');
+      } catch { toast.error('Failed to delete from trail'); }
+      setBoardFlowStep('navigate');
+    } else {
+      // Mark entry as linked
+      try {
+        const res = await updateTrail(boardFlowEntry._id, { linkedWorkOrderId: boardFlowWoId });
+        setEntries(prev => prev.map(e => e._id === boardFlowEntry._id ? res.data : e));
+      } catch { /* silent */ }
+      setBoardFlowStep('navigate');
+    }
+  };
+
+  const handleBoardFlowNavigate = (shouldNavigate) => {
+    const woId = boardFlowWoId;
+    setBoardFlowStep(null);
+    setBoardFlowEntry(null);
+    setBoardFlowWoId(null);
+    if (shouldNavigate) {
+      setAutoOpenBoardId(woId);
+      setActiveTab('board');
+    }
+  };
 
   const fetchAiResponses = useCallback(async () => {
     setAiResponsesLoading(true);
@@ -703,7 +758,8 @@ export default function QuickTrail() {
                         position: 'relative',
                         ...(entry.highlighted
                           ? { background: '#000', border: '1.5px solid #555' }
-                          : hlColor ? { background: hlColor + '20', borderLeft: `3px solid ${hlColor}` } : {}),
+                          : hlColor ? { background: hlColor + '20', borderLeft: `3px solid ${hlColor}` }
+                          : entry.linkedWorkOrderId ? { borderLeft: '3px solid var(--primary)', fontStyle: 'italic' } : {}),
                         ...(isUnlocked ? { outline: '2px solid var(--primary)', outlineOffset: 1 } : {}),
                       }}
                         onClick={() => {
@@ -819,6 +875,11 @@ export default function QuickTrail() {
                                 <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); handleCopy(entry); }}>
                                   <IoCopy size={14} color={entry.highlighted ? '#ccc' : 'var(--text-muted)'} />
                                 </button>
+                                <button className="btn-ghost" style={{ padding: 4 }} disabled={boardFlowSending}
+                                  onClick={(e) => { e.stopPropagation(); handleSendToBoard(entry); }}
+                                  title="Send to Board">
+                                  <IoClipboard size={14} color={entry.linkedWorkOrderId ? 'var(--primary)' : entry.highlighted ? '#ccc' : 'var(--text-muted)'} />
+                                </button>
                                 <button className="btn-ghost" style={{ padding: 4 }} onClick={(e) => { e.stopPropagation(); setConfirmDelete(entry); }}>
                                   <IoTrash size={14} color="var(--danger)" />
                                 </button>
@@ -854,9 +915,59 @@ export default function QuickTrail() {
           onConfirm={handleDelete}
           title="Delete entry?"
           message={`Delete "${confirmDelete?.text?.slice(0, 50)}${confirmDelete?.text?.length > 50 ? '...' : ''}"?`} />
+
+        {/* Send to Board Flow — Step 1: Pick Status */}
+        {boardFlowStep === 'status' && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+            onClick={() => { setBoardFlowStep(null); setBoardFlowEntry(null); }}>
+            <div style={{ background: 'var(--bg-card)', borderRadius: 12, padding: 20, maxWidth: 340, width: '100%' }}
+              onClick={e => e.stopPropagation()}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Work order created</h3>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>Select status for this work order:</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[{ v: 'todo', l: 'To Do', c: 'var(--text-muted)' }, { v: 'doing', l: 'Doing', c: 'var(--warning)' }, { v: 'done', l: 'Done', c: 'var(--success)' }].map(s => (
+                  <button key={s.v} className="btn-outline" style={{ flex: 1, fontWeight: 700, borderColor: s.c, color: s.c }}
+                    onClick={() => handleBoardFlowStatus(s.v)}>{s.l}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Send to Board Flow — Step 2: Delete from Trail? */}
+        {boardFlowStep === 'delete' && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+            onClick={() => handleBoardFlowDelete(false)}>
+            <div style={{ background: 'var(--bg-card)', borderRadius: 12, padding: 20, maxWidth: 340, width: '100%' }}
+              onClick={e => e.stopPropagation()}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Remove from Trail?</h3>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>This entry is now saved in the Board. Remove it from Trail?</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn-danger" style={{ flex: 1 }} onClick={() => handleBoardFlowDelete(true)}>Yes, Remove</button>
+                <button className="btn-outline" style={{ flex: 1 }} onClick={() => handleBoardFlowDelete(false)}>No, Keep</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Send to Board Flow — Step 3: Navigate to Board? */}
+        {boardFlowStep === 'navigate' && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+            onClick={() => handleBoardFlowNavigate(false)}>
+            <div style={{ background: 'var(--bg-card)', borderRadius: 12, padding: 20, maxWidth: 340, width: '100%' }}
+              onClick={e => e.stopPropagation()}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Go to Board?</h3>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>Navigate to the Board and view this work order?</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn-primary" style={{ flex: 1 }} onClick={() => handleBoardFlowNavigate(true)}>Yes, Show me</button>
+                <button className="btn-outline" style={{ flex: 1 }} onClick={() => handleBoardFlowNavigate(false)}>No, Stay here</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       <div style={{ display: activeTab === 'board' ? 'block' : 'none' }}>
-        <KanbanBoard />
+        <KanbanBoard autoOpenId={autoOpenBoardId} onAutoOpened={() => setAutoOpenBoardId(null)} />
       </div>
 
       <div style={{ display: activeTab === 'reminders' ? 'block' : 'none' }}>
