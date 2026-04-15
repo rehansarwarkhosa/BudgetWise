@@ -201,7 +201,7 @@ router.post('/test-push', async (req, res, next) => {
         included_segments: ['All'],
         headings: { en: 'BudgetWise — Test Push' },
         contents: { en: 'If you see this, push notifications are working!' },
-        url: 'https://budgetwise-f41c.onrender.com/',
+        url: `${process.env.APP_URL}/`,
       }),
     });
     const data = await response.json();

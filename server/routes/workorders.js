@@ -59,7 +59,7 @@ const sendPushNotification = async (title, message, url) => {
         headings: { en: title },
         contents: { en: message },
         url: url || undefined,
-        chrome_web_badge: 'https://budgetwise-f41c.onrender.com/vite.svg',
+        chrome_web_badge: `${process.env.APP_URL}/vite.svg`,
       }),
     });
     const data = await response.json();
@@ -230,7 +230,7 @@ router.get('/check-reminders', async (req, res, next) => {
 
       const pushTitle = `BudgetWise — ${triggered.length} Work Order Reminder${triggered.length > 1 ? 's' : ''}`;
       const pushMessage = triggered.map(t => `${t.workOrderTitle} (${t.reminderTime})`).join(', ');
-      pushResult = await sendPushNotification(pushTitle, pushMessage, 'https://budgetwise-f41c.onrender.com/');
+      pushResult = await sendPushNotification(pushTitle, pushMessage, `${process.env.APP_URL}/`);
 
       if (pushResult.sent) {
         await AuditLog.create({

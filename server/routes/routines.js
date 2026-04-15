@@ -82,7 +82,7 @@ const sendPushNotification = async (title, message, url) => {
         headings: { en: title },
         contents: { en: message },
         url: url || undefined,
-        chrome_web_badge: 'https://budgetwise-f41c.onrender.com/vite.svg',
+        chrome_web_badge: `${process.env.APP_URL}/vite.svg`,
       }),
     });
     const data = await response.json();
@@ -374,7 +374,7 @@ router.get('/check-reminders', async (req, res, next) => {
       pushResult = await sendPushNotification(
         pushTitle,
         pushMessage,
-        'https://budgetwise-f41c.onrender.com/routines'
+        `${process.env.APP_URL}/routines`
       );
 
       if (pushResult.sent) {
@@ -481,7 +481,7 @@ router.get('/check-reminders', async (req, res, next) => {
       // Push notification for work orders
       const woPushTitle = `BudgetWise — ${woTriggered.length} Work Order Reminder${woTriggered.length > 1 ? 's' : ''}`;
       const woPushMessage = woTriggered.map(t => `${t.workOrderTitle} (${t.reminderTime})`).join(', ');
-      woPushResult = await sendPushNotification(woPushTitle, woPushMessage, 'https://budgetwise-f41c.onrender.com/');
+      woPushResult = await sendPushNotification(woPushTitle, woPushMessage, `${process.env.APP_URL}/`);
 
       if (woPushResult.sent) {
         await AuditLog.create({
@@ -592,7 +592,7 @@ router.get('/check-reminders', async (req, res, next) => {
       // Push notification for trail reminders
       const trailPushTitle = `BudgetWise — ${trailTriggered.length} Trail Reminder${trailTriggered.length > 1 ? 's' : ''}`;
       const trailPushMessage = trailTriggered.map(t => `${t.trailText.slice(0, 40)} (${t.reminderTime})`).join(', ');
-      trailPushResult = await sendPushNotification(trailPushTitle, trailPushMessage, 'https://budgetwise-f41c.onrender.com/');
+      trailPushResult = await sendPushNotification(trailPushTitle, trailPushMessage, `${process.env.APP_URL}/`);
 
       if (trailPushResult.sent) {
         await AuditLog.create({
@@ -719,7 +719,7 @@ router.get('/check-reminders', async (req, res, next) => {
 
       const remPushTitle = `BudgetWise — ${reminderTriggered.length} Reminder${reminderTriggered.length > 1 ? 's' : ''}`;
       const remPushMessage = reminderTriggered.map(t => `${t.reminderTitle} (${t.reminderTime})`).join(', ');
-      remPushResult = await sendPushNotification(remPushTitle, remPushMessage, 'https://budgetwise-f41c.onrender.com/');
+      remPushResult = await sendPushNotification(remPushTitle, remPushMessage, `${process.env.APP_URL}/`);
 
       if (remPushResult.sent) {
         await AuditLog.create({
@@ -801,7 +801,7 @@ router.get('/check-reminders', async (req, res, next) => {
 
       const evtPushTitle = `BudgetWise — ${eventTriggered.length} Event Reminder${eventTriggered.length > 1 ? 's' : ''}`;
       const evtPushMessage = eventTriggered.map(t => t.eventName).join(', ');
-      evtPushResult = await sendPushNotification(evtPushTitle, evtPushMessage, 'https://budgetwise-f41c.onrender.com/notes');
+      evtPushResult = await sendPushNotification(evtPushTitle, evtPushMessage, `${process.env.APP_URL}/notes`);
 
       if (evtPushResult.sent) {
         await AuditLog.create({ action: 'PUSH_NOTIFY', entity: 'Event', details: `Event push sent to ${evtPushResult.recipients} subscriber(s): ${evtPushMessage}` });

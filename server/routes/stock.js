@@ -21,7 +21,7 @@ const sendPushNotification = async (title, message, url) => {
         app_id: ONESIGNAL_APP_ID, included_segments: ['All'],
         headings: { en: title }, contents: { en: message },
         url: url || undefined,
-        chrome_web_badge: 'https://budgetwise-f41c.onrender.com/vite.svg',
+        chrome_web_badge: `${process.env.APP_URL}/vite.svg`,
       }),
     });
     const data = await response.json();
@@ -37,7 +37,7 @@ const sendStockAlert = async (items) => {
   // Push notification
   const pushTitle = `BudgetWise — ${items.length} Stock Alert${items.length > 1 ? 's' : ''}`;
   const pushMessage = items.map(i => `${i.name}: ${i.currentStock} ${i.unit}(s)`).join(', ');
-  const pushResult = await sendPushNotification(pushTitle, pushMessage, 'https://budgetwise-f41c.onrender.com/budget');
+  const pushResult = await sendPushNotification(pushTitle, pushMessage, `${process.env.APP_URL}/budget`);
 
   if (pushResult.sent) {
     await AuditLog.create({ action: 'PUSH_NOTIFY', entity: 'StockItem', details: `Stock alert push sent: ${pushMessage}` });
