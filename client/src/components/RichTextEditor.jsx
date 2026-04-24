@@ -104,13 +104,20 @@ export default function RichTextEditor({ open, initialContent, onSave, onClose, 
     touchAction: 'manipulation',
   });
 
-  // Applied to every toolbar button — keeps focus on the contenteditable on
-  // mobile so the keyboard never disappears and selection is preserved.
-  const keepFocusProps = {
+  // Bind the action to mousedown (fires before focus loss) instead of click.
+  // This is the only reliable pattern for contenteditable toolbars on Android:
+  // `click` fires after the editor has already blurred, losing selection + keyboard.
+  // On mobile the browser synthesizes mousedown from a tap, so this works for both.
+  const toolAction = (fn) => ({
     tabIndex: -1,
-    onMouseDown: (e) => e.preventDefault(),
-    onPointerDown: (e) => e.preventDefault(),
-  };
+    onMouseDown: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fn();
+    },
+    // onClick reserved for accessibility/keyboard — no-op here so we don't double-fire
+    onClick: (e) => e.preventDefault(),
+  });
 
   const dropdownStyle = {
     position: 'absolute', top: '100%', left: 0, zIndex: 20,
@@ -153,35 +160,32 @@ export default function RichTextEditor({ open, initialContent, onSave, onClose, 
         </button>
       </div>
 
-      {/* Formatting Toolbar — prevent default on mousedown/pointerdown so focus
-          never leaves the editor (keeps selection + keyboard on mobile) */}
+      {/* Formatting Toolbar — all interactions go through toolAction() on each
+          button, which prevents focus loss and fires the command synchronously. */}
       <div style={{
         display: 'flex', gap: 2, padding: '6px 8px',
         borderBottom: '1px solid var(--border)', background: 'var(--bg-card)',
         overflowX: 'auto', flexShrink: 0, alignItems: 'center',
         WebkitOverflowScrolling: 'touch',
       }}
-        onMouseDown={(e) => { if (e.target.tagName !== 'INPUT') e.preventDefault(); }}
-        onPointerDown={(e) => { if (e.target.tagName !== 'INPUT') e.preventDefault(); }}
-        onClick={() => closeAllPickers()}>
+        onMouseDown={(e) => { if (e.target.tagName !== 'INPUT') e.preventDefault(); }}>
 
         {/* Heading selector */}
-        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
-          <button {...keepFocusProps} style={toolBtn(showHeading)}
-            onClick={() => { closeAllPickers(); setShowHeading(!showHeading); }}>
+        <div style={{ position: 'relative' }}>
+          <button {...toolAction(() => { closeAllPickers(); setShowHeading(v => !v); })} style={toolBtn(showHeading)}>
             <span style={{ fontSize: 12, fontWeight: 700 }}>H</span>
           </button>
           {showHeading && (
             <div style={{ ...dropdownStyle, minWidth: 130 }}>
               {HEADING_OPTIONS.map(h => (
-                <button key={h.tag} {...keepFocusProps}
-                  onClick={() => { execCmd('formatBlock', h.tag); setShowHeading(false); }}
+                <button key={h.tag}
+                  {...toolAction(() => { execCmd('formatBlock', h.tag); setShowHeading(false); })}
                   style={{
                     display: 'block', width: '100%', padding: '6px 10px', border: 'none',
                     background: 'transparent', cursor: 'pointer', textAlign: 'left',
                     fontSize: h.tag === 'p' ? 13 : h.tag === 'h3' ? 14 : h.tag === 'h2' ? 16 : 18,
                     fontWeight: h.tag === 'p' ? 400 : 700, color: 'var(--text)',
-                    borderRadius: 4,
+                    borderRadius: 4, touchAction: 'manipulation',
                   }}>
                   {h.label}
                 </button>
@@ -193,39 +197,38 @@ export default function RichTextEditor({ open, initialContent, onSave, onClose, 
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
 
         {/* Bold */}
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('bold')}>
+        <button {...toolAction(() => execCmd('bold'))} style={toolBtn()}>
           <span style={{ fontWeight: 900, fontSize: 14 }}>B</span>
         </button>
         {/* Italic */}
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('italic')}>
+        <button {...toolAction(() => execCmd('italic'))} style={toolBtn()}>
           <span style={{ fontStyle: 'italic', fontSize: 14, fontWeight: 500 }}>I</span>
         </button>
         {/* Underline */}
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('underline')}>
+        <button {...toolAction(() => execCmd('underline'))} style={toolBtn()}>
           <span style={{ textDecoration: 'underline', fontSize: 14 }}>U</span>
         </button>
         {/* Strikethrough */}
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('strikeThrough')}>
+        <button {...toolAction(() => execCmd('strikeThrough'))} style={toolBtn()}>
           <span style={{ textDecoration: 'line-through', fontSize: 14 }}>S</span>
         </button>
 
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
 
         {/* Font Size */}
-        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
-          <button {...keepFocusProps} style={toolBtn(showFontSize)}
-            onClick={() => { closeAllPickers(); setShowFontSize(!showFontSize); }}>
+        <div style={{ position: 'relative' }}>
+          <button {...toolAction(() => { closeAllPickers(); setShowFontSize(v => !v); })} style={toolBtn(showFontSize)}>
             <span style={{ fontSize: 11, fontWeight: 600 }}>A<span style={{ fontSize: 8 }}>A</span></span>
           </button>
           {showFontSize && (
             <div style={{ ...dropdownStyle, minWidth: 100 }}>
               {FONT_SIZES.map(f => (
-                <button key={f.value} {...keepFocusProps}
-                  onClick={() => { execCmd('fontSize', f.value); setShowFontSize(false); }}
+                <button key={f.value}
+                  {...toolAction(() => { execCmd('fontSize', f.value); setShowFontSize(false); })}
                   style={{
                     display: 'block', width: '100%', padding: '6px 10px', border: 'none',
                     background: 'transparent', cursor: 'pointer', textAlign: 'left',
-                    fontSize: 13, color: 'var(--text)', borderRadius: 4,
+                    fontSize: 13, color: 'var(--text)', borderRadius: 4, touchAction: 'manipulation',
                   }}>
                   {f.label}
                 </button>
@@ -235,9 +238,8 @@ export default function RichTextEditor({ open, initialContent, onSave, onClose, 
         </div>
 
         {/* Text Color */}
-        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
-          <button {...keepFocusProps} style={toolBtn(showColorPicker)}
-            onClick={() => { closeAllPickers(); setShowColorPicker(!showColorPicker); }}>
+        <div style={{ position: 'relative' }}>
+          <button {...toolAction(() => { closeAllPickers(); setShowColorPicker(v => !v); })} style={toolBtn(showColorPicker)}>
             <span style={{ fontSize: 14, fontWeight: 700 }}>A<span style={{
               display: 'block', height: 3, background: customColor, borderRadius: 1, marginTop: -2,
             }} /></span>
@@ -245,11 +247,12 @@ export default function RichTextEditor({ open, initialContent, onSave, onClose, 
           {showColorPicker && (
             <div style={{ ...dropdownStyle, display: 'flex', gap: 4, flexWrap: 'wrap', width: 164 }}>
               {COLORS.map(c => (
-                <button key={c} {...keepFocusProps}
-                  onClick={() => { execCmd('foreColor', c); setCustomColor(c); setShowColorPicker(false); }}
+                <button key={c}
+                  {...toolAction(() => { execCmd('foreColor', c); setCustomColor(c); setShowColorPicker(false); })}
                   style={{
                     width: 28, height: 28, borderRadius: '50%',
                     border: '2px solid var(--border)', background: c, cursor: 'pointer',
+                    touchAction: 'manipulation',
                   }} />
               ))}
               <input type="color" value={customColor}
@@ -260,9 +263,8 @@ export default function RichTextEditor({ open, initialContent, onSave, onClose, 
         </div>
 
         {/* Highlight */}
-        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
-          <button {...keepFocusProps} style={toolBtn(showHighlightPicker)}
-            onClick={() => { closeAllPickers(); setShowHighlightPicker(!showHighlightPicker); }}>
+        <div style={{ position: 'relative' }}>
+          <button {...toolAction(() => { closeAllPickers(); setShowHighlightPicker(v => !v); })} style={toolBtn(showHighlightPicker)}>
             <span style={{
               fontSize: 13, fontWeight: 700, background: '#FFD93D50', padding: '0 3px', borderRadius: 2,
             }}>H</span>
@@ -270,12 +272,13 @@ export default function RichTextEditor({ open, initialContent, onSave, onClose, 
           {showHighlightPicker && (
             <div style={{ ...dropdownStyle, display: 'flex', gap: 4, flexWrap: 'wrap', width: 164 }}>
               {['#FFD93D', '#FF6B6B', '#6BCB77', '#4D96FF', '#9B59B6', '#FF8C00', 'transparent'].map(c => (
-                <button key={c} {...keepFocusProps}
-                  onClick={() => { execCmd('hiliteColor', c); setShowHighlightPicker(false); }}
+                <button key={c}
+                  {...toolAction(() => { execCmd('hiliteColor', c); setShowHighlightPicker(false); })}
                   style={{
                     width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
                     border: '2px solid var(--border)',
                     background: c === 'transparent' ? 'var(--bg-input)' : c + '80',
+                    touchAction: 'manipulation',
                   }}>
                   {c === 'transparent' && <IoClose size={14} style={{ color: 'var(--text-muted)' }} />}
                 </button>
@@ -287,66 +290,69 @@ export default function RichTextEditor({ open, initialContent, onSave, onClose, 
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
 
         {/* Bullet List */}
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('insertUnorderedList')}>
+        <button {...toolAction(() => execCmd('insertUnorderedList'))} style={toolBtn()}>
           <span style={{ fontSize: 14 }}>&#8226;</span>
         </button>
         {/* Numbered List */}
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('insertOrderedList')}>
+        <button {...toolAction(() => execCmd('insertOrderedList'))} style={toolBtn()}>
           <span style={{ fontSize: 12, fontWeight: 600 }}>1.</span>
         </button>
 
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
 
         {/* Indent / Outdent */}
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('indent')} title="Indent">
+        <button {...toolAction(() => execCmd('indent'))} style={toolBtn()} title="Indent">
           <span style={{ fontSize: 13 }}>&rarr;</span>
         </button>
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('outdent')} title="Outdent">
+        <button {...toolAction(() => execCmd('outdent'))} style={toolBtn()} title="Outdent">
           <span style={{ fontSize: 13 }}>&larr;</span>
         </button>
 
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
 
         {/* Alignment */}
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('justifyLeft')} title="Align left">
+        <button {...toolAction(() => execCmd('justifyLeft'))} style={toolBtn()} title="Align left">
           <span style={{ fontSize: 11, lineHeight: 1 }}>&#9776;</span>
         </button>
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('justifyCenter')} title="Align center">
+        <button {...toolAction(() => execCmd('justifyCenter'))} style={toolBtn()} title="Align center">
           <span style={{ fontSize: 11, lineHeight: 1, textAlign: 'center', display: 'block' }}>&#9776;</span>
         </button>
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('justifyRight')} title="Align right">
+        <button {...toolAction(() => execCmd('justifyRight'))} style={toolBtn()} title="Align right">
           <span style={{ fontSize: 11, lineHeight: 1 }}>&#9776;</span>
         </button>
 
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
 
         {/* Quote */}
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('formatBlock', 'blockquote')} title="Blockquote">
+        <button {...toolAction(() => execCmd('formatBlock', 'blockquote'))} style={toolBtn()} title="Blockquote">
           <span style={{ fontSize: 16, fontWeight: 700, fontStyle: 'italic', color: 'var(--text-muted)' }}>&ldquo;</span>
         </button>
         {/* Horizontal Rule */}
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('insertHorizontalRule')} title="Horizontal line">
+        <button {...toolAction(() => execCmd('insertHorizontalRule'))} style={toolBtn()} title="Horizontal line">
           <span style={{ fontSize: 11, letterSpacing: 2 }}>&#8212;</span>
         </button>
         {/* Clear Formatting */}
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('removeFormat')} title="Clear formatting">
+        <button {...toolAction(() => execCmd('removeFormat'))} style={toolBtn()} title="Clear formatting">
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>T<span style={{ fontSize: 9 }}>x</span></span>
         </button>
 
         <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
 
         {/* Undo / Redo */}
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('undo')} title="Undo">
+        <button {...toolAction(() => execCmd('undo'))} style={toolBtn()} title="Undo">
           <span style={{ fontSize: 14 }}>&#8630;</span>
         </button>
-        <button {...keepFocusProps} style={toolBtn()} onClick={() => execCmd('redo')} title="Redo">
+        <button {...toolAction(() => execCmd('redo'))} style={toolBtn()} title="Redo">
           <span style={{ fontSize: 14 }}>&#8631;</span>
         </button>
       </div>
 
-      {/* Editor Area */}
+      {/* Editor Area — tapping anywhere here focuses the editor. We intentionally
+          do NOT close open dropdowns on editor tap, because the user may have
+          just opened one and is positioning the caret first. Dropdowns close
+          when another toolbar picker opens or after an action is chosen. */}
       <div style={{ flex: 1, overflow: 'auto', background: 'var(--bg)' }}
-        onClick={() => { closeAllPickers(); editorRef.current?.focus(); }}>
+        onClick={() => { editorRef.current?.focus(); }}>
         <div ref={editorRef} contentEditable suppressContentEditableWarning
           onBlur={saveSelection}
           style={{
