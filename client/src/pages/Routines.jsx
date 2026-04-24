@@ -591,32 +591,37 @@ function getScheduleDates(dueDate, reminders, maxDates = 60) {
   return dates;
 }
 
-function calcEntriesFromReminders(dueDate, reminders) {
+// Calculate total expected entries for a routine.
+// `startDateStr` optional — if provided (ISO YYYY-MM-DD or full date), counting
+// starts from that date instead of "today". This keeps the number stable across
+// edits of an existing routine (use createdAt). Time-of-day is never considered.
+function calcEntriesFromReminders(dueDate, reminders, startDateStr) {
   if (!dueDate || reminders.length === 0) return 0;
   const nowPKT = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
-  const currentHour = nowPKT.getHours();
-  const currentMin = nowPKT.getMinutes();
-  const nowMins = currentHour * 60 + currentMin;
   const today = new Date(nowPKT);
   today.setHours(0, 0, 0, 0);
-  const due = new Date(dueDate + 'T23:59:59');
-  if (due < today) return 0;
 
-  const isToday = (d) => d.getTime() === today.getTime();
+  let start = today;
+  if (startDateStr) {
+    const raw = typeof startDateStr === 'string' && startDateStr.includes('T')
+      ? startDateStr.split('T')[0] : startDateStr;
+    const s = new Date(raw + (typeof raw === 'string' && raw.length === 10 ? 'T00:00:00' : ''));
+    if (!isNaN(s.getTime())) { s.setHours(0, 0, 0, 0); start = s; }
+  }
+  const due = new Date(dueDate + 'T23:59:59');
+  if (due < start) return 0;
 
   let total = 0;
   for (const rem of reminders) {
     if (!rem.enabled) continue;
 
-    // Only daily reminders skip past times on creation day
-    // Weekdays, custom_days, custom_dates use natural full-day counting
+    // Count full days — no time-of-day subtraction. Keeps total stable regardless
+    // of when in the day the user creates or edits the routine.
     if (rem.type === 'daily') {
-      const days = Math.floor((due - today) / 86400000) + 1;
-      const [rh, rm] = (rem.time || '00:00').split(':').map(Number);
-      const timePast = nowMins > (rh * 60 + rm);
-      total += timePast ? days - 1 : days;
+      const days = Math.floor((due - start) / 86400000) + 1;
+      total += days;
     } else if (rem.type === 'weekdays') {
-      let d = new Date(today);
+      let d = new Date(start);
       while (d <= due) {
         const dow = d.getDay();
         if (dow >= 1 && dow <= 5) total++;
@@ -624,7 +629,7 @@ function calcEntriesFromReminders(dueDate, reminders) {
       }
     } else if (rem.type === 'custom_days') {
       if (!rem.days?.length) continue;
-      let d = new Date(today);
+      let d = new Date(start);
       while (d <= due) {
         if (rem.days.includes(d.getDay())) total++;
         d.setDate(d.getDate() + 1);
@@ -634,7 +639,7 @@ function calcEntriesFromReminders(dueDate, reminders) {
       for (const dateStr of rem.dates) {
         const cd = new Date(dateStr);
         cd.setHours(0, 0, 0, 0);
-        if (cd >= today && cd <= due) total++;
+        if (cd >= start && cd <= due) total++;
       }
     } else if (rem.type === 'once') {
       total += 1;
@@ -646,7 +651,7 @@ function calcEntriesFromReminders(dueDate, reminders) {
       const rawEnd = rem.intervalEndDate ? (typeof rem.intervalEndDate === 'string' && rem.intervalEndDate.includes('T') ? rem.intervalEndDate.split('T')[0] : rem.intervalEndDate) : null;
       const endD = rawEnd ? new Date(rawEnd) : new Date(due);
       endD.setHours(0, 0, 0, 0);
-      const effectiveStart = startD < today ? today : startD;
+      const effectiveStart = startD < start ? start : startD;
       const effectiveEnd = endD > due ? due : endD;
       if (effectiveStart > effectiveEnd) continue;
       let d = new Date(effectiveStart);
@@ -663,7 +668,7 @@ function calcEntriesFromReminders(dueDate, reminders) {
       }
     } else if (rem.type === 'monthly_date') {
       if (!rem.monthlyDateDay || rem.monthlyDateDay < 1 || rem.monthlyDateDay > 31) continue;
-      let d = new Date(today);
+      let d = new Date(start);
       while (d <= due) {
         const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
         const targetDay = Math.min(rem.monthlyDateDay, lastDay);
@@ -932,7 +937,9 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   ];
   const detailSwipe = useSwipeTabs(detailTabs, detailTab, setDetailTab, undefined, detailSettings?.tabSwipeRoutines !== false);
 
-  const editAutoCalc = calcEntriesFromReminders(editDueDate, editReminders);
+  // Use the routine's original createdAt as the start date so the expected total
+  // doesn't change across edits (which previously recalculated from "today").
+  const editAutoCalc = calcEntriesFromReminders(editDueDate, editReminders, routine?.createdAt);
   const editAutoDaily = calcMaxDailyEntries(Number(editTargetEntries) || 0, editDueDate, editReminders);
   const editRemindersKey = JSON.stringify(editReminders.map(r => ({ type: r.type, time: r.time, days: r.days, dates: r.dates, enabled: r.enabled, intervalDays: r.intervalDays, intervalStartDate: r.intervalStartDate, intervalEndDate: r.intervalEndDate, intervalIncludeStart: r.intervalIncludeStart, monthlyDateDay: r.monthlyDateDay })));
 
@@ -1334,24 +1341,24 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
         </div>
       )}
 
-      {/* Action buttons */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      {/* Action buttons — wrap on narrow screens so all buttons remain visible */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
         {!isExpired && !routine?.isDoneForToday && (
           <>
-            <button className="btn-primary" style={{ flex: 1 }} onClick={() => setLogModal(true)}>
+            <button className="btn-primary" style={{ flex: '1 1 140px', minWidth: 120 }} onClick={() => setLogModal(true)}>
               Log Entry
             </button>
-            <button className="btn-outline" style={{ width: 'auto', padding: '12px 14px', color: 'var(--danger)', borderColor: 'var(--danger)' }}
+            <button className="btn-outline" style={{ flex: '0 0 auto', padding: '12px 14px', color: 'var(--danger)', borderColor: 'var(--danger)' }}
               title="Mark Missed (counts against performance)"
               onClick={() => setMissedModal(true)}>
               <IoCloseCircle size={16} />
             </button>
-            <button className="btn-outline" style={{ width: 'auto', padding: '12px 14px', color: 'var(--text-muted)' }}
+            <button className="btn-outline" style={{ flex: '0 0 auto', padding: '12px 14px', color: 'var(--text-muted)' }}
               title="Ignore (excluded from metrics)"
               onClick={() => setIgnoreModal(true)}>
               <IoClose size={16} />
             </button>
-            <button className="btn-outline" style={{ width: 'auto', padding: '12px 14px' }}
+            <button className="btn-outline" style={{ flex: '0 0 auto', padding: '12px 14px' }}
               title="Quick Batch"
               onClick={() => setBatchModal(true)}>
               <IoFlash size={16} />
