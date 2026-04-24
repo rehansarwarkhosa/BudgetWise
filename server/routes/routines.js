@@ -182,48 +182,23 @@ router.get('/', async (req, res, next) => {
         // Compare due date as end-of-day in PKT so routine doesn't expire before day ends
         const dueDateStr = r.dueDate ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(r.dueDate)) : null;
         const dueEndPKT = dueDateStr ? new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET) : null;
-        let isExpired = dueEndPKT && dueEndPKT < now;
+        const isExpired = dueEndPKT && dueEndPKT < now;
 
-        // If today IS the due date, check daily reminders — if ALL daily reminder
-        // times have passed, mark as expired (only applies to 'daily' type)
-        if (!isExpired && dueDateStr === todayStr && r.reminders?.length > 0) {
-          const pkt = getPKTComponents(now);
-          const nowMins = pkt.hour * 60 + pkt.minute;
-          const enabledDaily = r.reminders.filter(rem => rem.enabled && rem.type === 'daily');
-          if (enabledDaily.length > 0) {
-            const allPast = enabledDaily.every(rem => {
-              const [rh, rm] = rem.time.split(':').map(Number);
-              return nowMins > (rh * 60 + rm);
-            });
-            if (allPast) isExpired = true;
-          }
-        }
-
-        // Count today's complete entries for this routine (using proper UTC range for PKT day)
+        // Count today's entries (complete + incomplete both fill daily slots)
         const todayCompleteCount = await RoutineEntry.countDocuments({
           routineId: r._id,
           status: 'complete',
           date: { $gte: todayStart, $lte: todayEnd },
         });
-        let maxDailyEntries = r.maxDailyEntries || 1;
-
-        // On creation day, reduce effective daily limit for daily reminders whose time passed
-        const createdDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(r.createdAt));
-        let effectiveMaxDaily = maxDailyEntries;
-        if (createdDateStr === todayStr && r.reminders?.length > 0) {
-          const pkt = getPKTComponents(now);
-          const nowMins = pkt.hour * 60 + pkt.minute;
-          const enabledDaily = r.reminders.filter(rem => rem.enabled && rem.type === 'daily');
-          if (enabledDaily.length > 0) {
-            const futureCount = enabledDaily.filter(rem => {
-              const [rh, rm] = rem.time.split(':').map(Number);
-              return nowMins <= (rh * 60 + rm);
-            }).length;
-            const nonDaily = r.reminders.filter(rem => rem.enabled && rem.type !== 'daily').length;
-            effectiveMaxDaily = Math.max(1, futureCount + nonDaily);
-          }
-        }
-        const isDoneForToday = todayCompleteCount >= effectiveMaxDaily;
+        const todayIncompleteCount = await RoutineEntry.countDocuments({
+          routineId: r._id,
+          status: 'incomplete',
+          date: { $gte: todayStart, $lte: todayEnd },
+        });
+        const todayFilledCount = todayCompleteCount + todayIncompleteCount;
+        const maxDailyEntries = r.maxDailyEntries || 1;
+        const effectiveMaxDaily = maxDailyEntries;
+        const isDoneForToday = todayFilledCount >= effectiveMaxDaily;
 
         // Determine if today is an active day for this routine
         // If no reminders → always active (daily by default)
@@ -245,7 +220,8 @@ router.get('/', async (req, res, next) => {
         return {
           ...r.toObject(), entryCount, completedEntries, targetEntries,
           progress, isExpired, lastEntry,
-          todayCompleteCount, maxDailyEntries: effectiveMaxDaily, isDoneForToday,
+          todayCompleteCount, todayIncompleteCount, todayFilledCount,
+          maxDailyEntries: effectiveMaxDaily, isDoneForToday,
           isActiveToday, nextLogDate,
         };
       })
@@ -1042,23 +1018,7 @@ router.post('/:id/entries', async (req, res, next) => {
       const realNow = new Date();
       const dueDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(routine.dueDate));
       const dueEndPKT = new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET);
-      let expired = dueEndPKT < realNow;
-
-      // If today is the due date and all daily reminder times have passed, expired
-      const currentTodayStr = getTodayStrPKT();
-      if (!expired && dueDateStr === currentTodayStr && routine.reminders?.length > 0) {
-        const pkt = getPKTComponents(realNow);
-        const nowMins = pkt.hour * 60 + pkt.minute;
-        const enabledDaily = routine.reminders.filter(r => r.enabled && r.type === 'daily');
-        if (enabledDaily.length > 0 && enabledDaily.every(r => {
-          const [rh, rm] = r.time.split(':').map(Number);
-          return nowMins > (rh * 60 + rm);
-        })) {
-          expired = true;
-        }
-      }
-
-      if (expired) {
+      if (dueEndPKT < realNow) {
         return error(res, 'Routine has expired, no more entries allowed', 400);
       }
     }
@@ -1076,36 +1036,18 @@ router.post('/:id/entries', async (req, res, next) => {
       }
     }
 
-    // Check if daily limit reached
+    // Check if daily limit reached (complete + incomplete both fill slots)
     const todayStr = getTodayStrPKT();
     const { start: todayStart, end: todayEnd } = pktDayToUTCRange(todayStr);
-    const todayCompleteCount = await RoutineEntry.countDocuments({
+    const todayFilledCount = await RoutineEntry.countDocuments({
       routineId: routine._id,
-      status: 'complete',
+      status: { $in: ['complete', 'incomplete'] },
       date: { $gte: todayStart, $lte: todayEnd },
     });
-    let maxDaily = routine.maxDailyEntries || 1;
+    const maxDaily = routine.maxDailyEntries || 1;
 
-    // On creation day, reduce daily limit for daily reminders whose time has passed
-    const createdDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(routine.createdAt));
-    if (createdDateStr === todayStr && routine.reminders?.length > 0) {
-      const pkt = getPKTComponents(new Date());
-      const nowMins = pkt.hour * 60 + pkt.minute;
-      const enabledDaily = routine.reminders.filter(r => r.enabled && r.type === 'daily');
-      if (enabledDaily.length > 0) {
-        const futureCount = enabledDaily.filter(r => {
-          const [rh, rm] = r.time.split(':').map(Number);
-          return nowMins <= (rh * 60 + rm);
-        }).length;
-        // On creation day, effective limit = future daily slots + non-daily reminders
-        const nonDaily = routine.reminders.filter(r => r.enabled && r.type !== 'daily').length;
-        maxDaily = futureCount + nonDaily;
-        if (maxDaily < 1) maxDaily = 1;
-      }
-    }
-
-    if (todayCompleteCount >= maxDaily && !manualDate) {
-      return error(res, `Daily limit reached (${todayCompleteCount}/${maxDaily}). Already done for today.`, 400);
+    if (todayFilledCount >= maxDaily && !manualDate) {
+      return error(res, `Daily limit reached (${todayFilledCount}/${maxDaily}). Already done for today.`, 400);
     }
 
     // Use real UTC time — frontend formats it to PKT for display
@@ -1139,22 +1081,7 @@ router.post('/:id/entries/batch', async (req, res, next) => {
       const realNow = new Date();
       const dueDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(routine.dueDate));
       const dueEndPKT = new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET);
-      let expired = dueEndPKT < realNow;
-
-      const currentTodayStr = getTodayStrPKT();
-      if (!expired && dueDateStr === currentTodayStr && routine.reminders?.length > 0) {
-        const pkt = getPKTComponents(realNow);
-        const nowMins = pkt.hour * 60 + pkt.minute;
-        const enabledDaily = routine.reminders.filter(r => r.enabled && r.type === 'daily');
-        if (enabledDaily.length > 0 && enabledDaily.every(r => {
-          const [rh, rm] = r.time.split(':').map(Number);
-          return nowMins > (rh * 60 + rm);
-        })) {
-          expired = true;
-        }
-      }
-
-      if (expired) {
+      if (dueEndPKT < realNow) {
         return error(res, 'Routine has expired, no more entries allowed', 400);
       }
     }
@@ -1172,35 +1099,19 @@ router.post('/:id/entries/batch', async (req, res, next) => {
       }
     }
 
-    // Enforce daily limit (same logic as single entry)
+    // Enforce daily limit (complete + incomplete both fill slots)
     const todayStr = getTodayStrPKT();
     const { start: todayStart, end: todayEnd } = pktDayToUTCRange(todayStr);
-    const todayCompleteCount = await RoutineEntry.countDocuments({
+    const todayFilledCount = await RoutineEntry.countDocuments({
       routineId: routine._id,
-      status: 'complete',
+      status: { $in: ['complete', 'incomplete'] },
       date: { $gte: todayStart, $lte: todayEnd },
     });
-    let maxDaily = routine.maxDailyEntries || 1;
+    const maxDaily = routine.maxDailyEntries || 1;
 
-    // On creation day, reduce daily limit for daily reminders whose time has passed
-    const createdDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(routine.createdAt));
-    if (createdDateStr === todayStr && routine.reminders?.length > 0) {
-      const pkt = getPKTComponents(new Date());
-      const nowMins = pkt.hour * 60 + pkt.minute;
-      const enabledDaily = routine.reminders.filter(r => r.enabled && r.type === 'daily');
-      if (enabledDaily.length > 0) {
-        const futureCount = enabledDaily.filter(r => {
-          const [rh, rm] = r.time.split(':').map(Number);
-          return nowMins <= (rh * 60 + rm);
-        }).length;
-        const nonDaily = routine.reminders.filter(r => r.enabled && r.type !== 'daily').length;
-        maxDaily = Math.max(1, futureCount + nonDaily);
-      }
-    }
-
-    const remaining = maxDaily - todayCompleteCount;
+    const remaining = maxDaily - todayFilledCount;
     if (remaining <= 0) {
-      return error(res, `Daily limit reached (${todayCompleteCount}/${maxDaily}). Already done for today.`, 400);
+      return error(res, `Daily limit reached (${todayFilledCount}/${maxDaily}). Already done for today.`, 400);
     }
 
     // Cap batch count at remaining daily slots
@@ -1220,6 +1131,57 @@ router.post('/:id/entries/batch', async (req, res, next) => {
     await AuditLog.create({
       action: 'CREATE', entity: 'RoutineEntry',
       details: `Batch logged ${n} complete entries for "${routine.name}"`,
+    });
+    success(res, entries, 201);
+  } catch (err) { next(err); }
+});
+
+// Mark N of today's remaining slots as missed (incomplete) — one-by-one or bulk
+router.post('/:id/entries/missed', async (req, res, next) => {
+  try {
+    const { count } = req.body;
+    const routine = await Routine.findById(req.params.id);
+    if (!routine) return error(res, 'Routine not found', 404);
+
+    if (routine.dueDate) {
+      const realNow = new Date();
+      const dueDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(routine.dueDate));
+      const dueEndPKT = new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET);
+      if (dueEndPKT < realNow) {
+        return error(res, 'Routine has expired', 400);
+      }
+    }
+
+    const todayStr = getTodayStrPKT();
+    const { start: todayStart, end: todayEnd } = pktDayToUTCRange(todayStr);
+    const todayFilledCount = await RoutineEntry.countDocuments({
+      routineId: routine._id,
+      status: { $in: ['complete', 'incomplete'] },
+      date: { $gte: todayStart, $lte: todayEnd },
+    });
+    const maxDaily = routine.maxDailyEntries || 1;
+    const remaining = maxDaily - todayFilledCount;
+    if (remaining <= 0) {
+      return error(res, `No remaining slots today (${todayFilledCount}/${maxDaily})`, 400);
+    }
+
+    const requested = count === 'all' ? remaining : parseInt(count);
+    if (!requested || requested < 1) return error(res, 'Invalid count', 400);
+    const n = Math.min(requested, remaining);
+
+    const entryDate = new Date();
+    const docs = Array.from({ length: n }, () => ({
+      routineId: req.params.id,
+      status: 'incomplete',
+      date: entryDate,
+      fieldValues: [],
+      manualDate: false,
+    }));
+
+    const entries = await RoutineEntry.insertMany(docs);
+    await AuditLog.create({
+      action: 'CREATE', entity: 'RoutineEntry',
+      details: `Marked ${n} slot(s) as missed for "${routine.name}"`,
     });
     success(res, entries, 201);
   } catch (err) { next(err); }
