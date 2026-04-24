@@ -1341,30 +1341,50 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
         </div>
       )}
 
-      {/* Action buttons — wrap on narrow screens so all buttons remain visible */}
+      {/* Primary action row: Log + Batch */}
+      {!isExpired && !routine?.isDoneForToday && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <button className="btn-primary" style={{ flex: '1 1 140px', minWidth: 120 }} onClick={() => setLogModal(true)}>
+            Log Entry
+          </button>
+          <button className="btn-outline" style={{ flex: '0 0 auto', padding: '12px 14px' }}
+            title="Quick Batch"
+            onClick={() => setBatchModal(true)}>
+            <IoFlash size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* Missed / Ignore row — always visible when routine is active (not expired) */}
+      {!isExpired && (routine?.todayFilledCount ?? 0) < (routine?.maxDailyEntries ?? 1) && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <button
+            style={{
+              flex: '1 1 0', minWidth: 130, padding: '10px 12px', borderRadius: 8,
+              border: '1px solid var(--danger)', background: 'rgba(239,68,68,0.08)',
+              color: 'var(--danger)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+            title="Mark slot(s) as missed — counts against your performance metrics"
+            onClick={() => setMissedModal(true)}>
+            <IoCloseCircle size={16} /> Mark Missed
+          </button>
+          <button
+            style={{
+              flex: '1 1 0', minWidth: 130, padding: '10px 12px', borderRadius: 8,
+              border: '1px solid var(--border)', background: 'var(--bg-input)',
+              color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+            title="Ignore slot(s) — excluded from metrics, reduces today's target"
+            onClick={() => setIgnoreModal(true)}>
+            <IoClose size={16} /> Ignore Slots
+          </button>
+        </div>
+      )}
+
+      {/* Secondary tools row: edit / clone / delete */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {!isExpired && !routine?.isDoneForToday && (
-          <>
-            <button className="btn-primary" style={{ flex: '1 1 140px', minWidth: 120 }} onClick={() => setLogModal(true)}>
-              Log Entry
-            </button>
-            <button className="btn-outline" style={{ flex: '0 0 auto', padding: '12px 14px', color: 'var(--danger)', borderColor: 'var(--danger)' }}
-              title="Mark Missed (counts against performance)"
-              onClick={() => setMissedModal(true)}>
-              <IoCloseCircle size={16} />
-            </button>
-            <button className="btn-outline" style={{ flex: '0 0 auto', padding: '12px 14px', color: 'var(--text-muted)' }}
-              title="Ignore (excluded from metrics)"
-              onClick={() => setIgnoreModal(true)}>
-              <IoClose size={16} />
-            </button>
-            <button className="btn-outline" style={{ flex: '0 0 auto', padding: '12px 14px' }}
-              title="Quick Batch"
-              onClick={() => setBatchModal(true)}>
-              <IoFlash size={16} />
-            </button>
-          </>
-        )}
         <button className="btn-outline" style={{ width: 'auto', padding: '12px 14px' }}
           onClick={() => {
             editReadyRef.current = false;
