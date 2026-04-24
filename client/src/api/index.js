@@ -57,6 +57,7 @@ export const logRoutineEntry = (id, data) => api.post(`/routines/${id}/entries`,
 export const deleteRoutineEntry = (entryId) => api.delete(`/routines/entries/${entryId}`);
 export const batchLogRoutineEntries = (id, data) => api.post(`/routines/${id}/entries/batch`, data);
 export const markRoutineMissed = (id, data) => api.post(`/routines/${id}/entries/missed`, data);
+export const ignoreRoutineEntries = (id, data) => api.post(`/routines/${id}/entries/ignored`, data);
 export const checkReminders = () => api.get('/routines/check-reminders');
 export const autoIncompleteRoutines = () => api.post('/routines/auto-incomplete');
 export const getRoutineNotes = (id) => api.get(`/routines/${id}/notes`);

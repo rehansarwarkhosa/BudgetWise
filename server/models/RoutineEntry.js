@@ -8,7 +8,7 @@ const fieldValueSchema = new mongoose.Schema({
 
 const routineEntrySchema = new mongoose.Schema({
   routineId: { type: mongoose.Schema.Types.ObjectId, ref: 'Routine', required: true },
-  status: { type: String, enum: ['complete', 'incomplete'], default: 'complete' },
+  status: { type: String, enum: ['complete', 'incomplete', 'ignored'], default: 'complete' },
   date: { type: Date, default: Date.now },
   fieldValues: [fieldValueSchema],
   manualDate: { type: Boolean, default: false },

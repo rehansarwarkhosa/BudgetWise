@@ -184,7 +184,8 @@ router.get('/', async (req, res, next) => {
         const dueEndPKT = dueDateStr ? new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET) : null;
         const isExpired = dueEndPKT && dueEndPKT < now;
 
-        // Count today's entries (complete + incomplete both fill daily slots)
+        // Count today's entries. Ignored entries reduce the expected count for
+        // today rather than filling a slot against performance.
         const todayCompleteCount = await RoutineEntry.countDocuments({
           routineId: r._id,
           status: 'complete',
@@ -195,10 +196,22 @@ router.get('/', async (req, res, next) => {
           status: 'incomplete',
           date: { $gte: todayStart, $lte: todayEnd },
         });
-        const todayFilledCount = todayCompleteCount + todayIncompleteCount;
+        const todayIgnoredCount = await RoutineEntry.countDocuments({
+          routineId: r._id,
+          status: 'ignored',
+          date: { $gte: todayStart, $lte: todayEnd },
+        });
+        const todayFilledCount = todayCompleteCount + todayIncompleteCount + todayIgnoredCount;
         const maxDailyEntries = r.maxDailyEntries || 1;
         const effectiveMaxDaily = maxDailyEntries;
         const isDoneForToday = todayFilledCount >= effectiveMaxDaily;
+
+        // Total ignored across the routine's lifetime (to reduce effective target)
+        const totalIgnored = await RoutineEntry.countDocuments({
+          routineId: r._id, status: 'ignored',
+        });
+        const effectiveTarget = Math.max(1, targetEntries - totalIgnored);
+        const effectiveProgress = Math.round((completedEntries / effectiveTarget) * 100);
 
         // Determine if today is an active day for this routine
         // If no reminders → always active (daily by default)
@@ -220,8 +233,9 @@ router.get('/', async (req, res, next) => {
         return {
           ...r.toObject(), entryCount, completedEntries, targetEntries,
           progress, isExpired, lastEntry,
-          todayCompleteCount, todayIncompleteCount, todayFilledCount,
+          todayCompleteCount, todayIncompleteCount, todayIgnoredCount, todayFilledCount,
           maxDailyEntries: effectiveMaxDaily, isDoneForToday,
+          totalIgnored, effectiveTarget, effectiveProgress,
           isActiveToday, nextLogDate,
         };
       })
@@ -840,7 +854,19 @@ router.post('/auto-incomplete', async (req, res, next) => {
         date: { $gte: yStart, $lte: yEnd },
       });
 
-      const missing = maxDaily - yesterdayCompleteCount;
+      const yesterdayIncompleteCount = await RoutineEntry.countDocuments({
+        routineId: routine._id,
+        status: 'incomplete',
+        date: { $gte: yStart, $lte: yEnd },
+      });
+      const yesterdayIgnoredCount = await RoutineEntry.countDocuments({
+        routineId: routine._id,
+        status: 'ignored',
+        date: { $gte: yStart, $lte: yEnd },
+      });
+      // Ignored entries reduce the expected count; existing complete + incomplete already fill slots
+      const effectiveDailyTarget = Math.max(0, maxDaily - yesterdayIgnoredCount);
+      const missing = effectiveDailyTarget - yesterdayCompleteCount - yesterdayIncompleteCount;
       if (missing > 0) {
         let shouldCount = false;
 
@@ -1041,7 +1067,7 @@ router.post('/:id/entries', async (req, res, next) => {
     const { start: todayStart, end: todayEnd } = pktDayToUTCRange(todayStr);
     const todayFilledCount = await RoutineEntry.countDocuments({
       routineId: routine._id,
-      status: { $in: ['complete', 'incomplete'] },
+      status: { $in: ['complete', 'incomplete', 'ignored'] },
       date: { $gte: todayStart, $lte: todayEnd },
     });
     const maxDaily = routine.maxDailyEntries || 1;
@@ -1104,7 +1130,7 @@ router.post('/:id/entries/batch', async (req, res, next) => {
     const { start: todayStart, end: todayEnd } = pktDayToUTCRange(todayStr);
     const todayFilledCount = await RoutineEntry.countDocuments({
       routineId: routine._id,
-      status: { $in: ['complete', 'incomplete'] },
+      status: { $in: ['complete', 'incomplete', 'ignored'] },
       date: { $gte: todayStart, $lte: todayEnd },
     });
     const maxDaily = routine.maxDailyEntries || 1;
@@ -1156,7 +1182,7 @@ router.post('/:id/entries/missed', async (req, res, next) => {
     const { start: todayStart, end: todayEnd } = pktDayToUTCRange(todayStr);
     const todayFilledCount = await RoutineEntry.countDocuments({
       routineId: routine._id,
-      status: { $in: ['complete', 'incomplete'] },
+      status: { $in: ['complete', 'incomplete', 'ignored'] },
       date: { $gte: todayStart, $lte: todayEnd },
     });
     const maxDaily = routine.maxDailyEntries || 1;
@@ -1182,6 +1208,58 @@ router.post('/:id/entries/missed', async (req, res, next) => {
     await AuditLog.create({
       action: 'CREATE', entity: 'RoutineEntry',
       details: `Marked ${n} slot(s) as missed for "${routine.name}"`,
+    });
+    success(res, entries, 201);
+  } catch (err) { next(err); }
+});
+
+// Ignore N of today's remaining slots — ignored entries don't count against
+// performance metrics (streak, missed, rate) and reduce the expected target.
+router.post('/:id/entries/ignored', async (req, res, next) => {
+  try {
+    const { count } = req.body;
+    const routine = await Routine.findById(req.params.id);
+    if (!routine) return error(res, 'Routine not found', 404);
+
+    if (routine.dueDate) {
+      const realNow = new Date();
+      const dueDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(routine.dueDate));
+      const dueEndPKT = new Date(dueDateStr + 'T23:59:59' + PKT_OFFSET);
+      if (dueEndPKT < realNow) {
+        return error(res, 'Routine has expired', 400);
+      }
+    }
+
+    const todayStr = getTodayStrPKT();
+    const { start: todayStart, end: todayEnd } = pktDayToUTCRange(todayStr);
+    const todayFilledCount = await RoutineEntry.countDocuments({
+      routineId: routine._id,
+      status: { $in: ['complete', 'incomplete', 'ignored'] },
+      date: { $gte: todayStart, $lte: todayEnd },
+    });
+    const maxDaily = routine.maxDailyEntries || 1;
+    const remaining = maxDaily - todayFilledCount;
+    if (remaining <= 0) {
+      return error(res, `No remaining slots today (${todayFilledCount}/${maxDaily})`, 400);
+    }
+
+    const requested = count === 'all' ? remaining : parseInt(count);
+    if (!requested || requested < 1) return error(res, 'Invalid count', 400);
+    const n = Math.min(requested, remaining);
+
+    const entryDate = new Date();
+    const docs = Array.from({ length: n }, () => ({
+      routineId: req.params.id,
+      status: 'ignored',
+      date: entryDate,
+      fieldValues: [],
+      manualDate: false,
+    }));
+
+    const entries = await RoutineEntry.insertMany(docs);
+    await AuditLog.create({
+      action: 'CREATE', entity: 'RoutineEntry',
+      details: `Ignored ${n} slot(s) for "${routine.name}" (not counted against performance)`,
     });
     success(res, entries, 201);
   } catch (err) { next(err); }

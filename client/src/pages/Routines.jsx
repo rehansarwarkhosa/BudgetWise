@@ -13,7 +13,7 @@ import useBackClose from '../hooks/useBackClose';
 import { formatDateTime, formatDate } from '../utils/format';
 import {
   getRoutines, createRoutine, deleteRoutine, updateRoutine,
-  getRoutineEntries, logRoutineEntry, deleteRoutineEntry, batchLogRoutineEntries, markRoutineMissed,
+  getRoutineEntries, logRoutineEntry, deleteRoutineEntry, batchLogRoutineEntries, markRoutineMissed, ignoreRoutineEntries,
   getRoutineNotes, addRoutineNote, updateRoutineNote, deleteRoutineNote,
   aiRoutineInsights,
 } from '../api';
@@ -246,7 +246,12 @@ export default function Routines() {
                       Today: {r.todayCompleteCount}/{r.maxDailyEntries}
                       {r.todayIncompleteCount > 0 && (
                         <span style={{ marginLeft: 4, color: 'var(--danger)' }}>
-                          ({r.todayIncompleteCount} missed)
+                          · {r.todayIncompleteCount} missed
+                        </span>
+                      )}
+                      {r.todayIgnoredCount > 0 && (
+                        <span style={{ marginLeft: 4, color: 'var(--text-muted)' }}>
+                          · {r.todayIgnoredCount} ignored
                         </span>
                       )}
                     </span>
@@ -892,6 +897,7 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const [logModal, setLogModal] = useState(false);
   const [batchModal, setBatchModal] = useState(false);
   const [missedModal, setMissedModal] = useState(false);
+  const [ignoreModal, setIgnoreModal] = useState(false);
   const [fetched, setFetched] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDeleteEntry, setConfirmDeleteEntry] = useState(null);
@@ -1064,12 +1070,12 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   const nowPKT = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
   const todayStr = `${nowPKT.getFullYear()}-${String(nowPKT.getMonth() + 1).padStart(2, '0')}-${String(nowPKT.getDate()).padStart(2, '0')}`;
 
-  // Build map of date → { complete, incomplete } from actual entries
+  // Build map of date → { complete, incomplete, ignored } from actual entries
   const dayMap = {};
   for (const e of entries) {
     const dateKey = toPKTDateStr(e.date);
-    if (!dayMap[dateKey]) dayMap[dateKey] = { complete: 0, incomplete: 0 };
-    dayMap[dateKey][e.status]++;
+    if (!dayMap[dateKey]) dayMap[dateKey] = { complete: 0, incomplete: 0, ignored: 0 };
+    if (dayMap[dateKey][e.status] !== undefined) dayMap[dateKey][e.status]++;
   }
 
   // Client-side reminderMatchesDay (mirrors server logic)
@@ -1141,8 +1147,9 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
     while (cursor < endStr && (!dueDateStr || cursor <= dueDateStr)) {
       if (isActiveDayForDate(cursor)) {
         allActiveDays.push(cursor);
-        const actual = dayMap[cursor] || { complete: 0, incomplete: 0 };
-        const expected = maxDailyEntries;
+        const actual = dayMap[cursor] || { complete: 0, incomplete: 0, ignored: 0 };
+        // Ignored entries reduce the day's expected count (they don't count toward performance)
+        const expected = Math.max(0, maxDailyEntries - (actual.ignored || 0));
         totalExpected += expected;
         totalActualComplete += actual.complete;
         const missed = Math.max(0, expected - actual.complete);
@@ -1158,12 +1165,15 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
     : (completedCount > 0 ? 100 : 0);
 
   // Streaks: iterate ALL active days in order
-  // A day is "fulfilled" if complete entries >= maxDailyEntries
+  // A day is "fulfilled" if complete entries >= (maxDailyEntries - ignored that day)
+  // Fully-ignored days are treated as neutral — they don't break the streak
   let longestStreak = 0;
   let tempStreak = 0;
   for (const dateStr of allActiveDays) {
-    const actual = dayMap[dateStr] || { complete: 0 };
-    if (actual.complete >= maxDailyEntries) {
+    const actual = dayMap[dateStr] || { complete: 0, ignored: 0 };
+    const dayTarget = Math.max(0, maxDailyEntries - (actual.ignored || 0));
+    if (dayTarget === 0) continue; // fully ignored — skip without resetting
+    if (actual.complete >= dayTarget) {
       tempStreak++;
       if (tempStreak > longestStreak) longestStreak = tempStreak;
     } else {
@@ -1172,16 +1182,16 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
   }
 
   // Current streak: count backward from most recent active day
-  // Include today if it has entries (but don't penalize if not fulfilled yet)
   let currentStreak = 0;
-  // Check today first — if today is active and has completions, count it
   if (isActiveDayForDate(todayStr) && dayMap[todayStr]?.complete > 0) {
     currentStreak++;
   }
   for (let i = allActiveDays.length - 1; i >= 0; i--) {
     const dateStr = allActiveDays[i];
-    const actual = dayMap[dateStr] || { complete: 0 };
-    if (actual.complete >= maxDailyEntries) {
+    const actual = dayMap[dateStr] || { complete: 0, ignored: 0 };
+    const dayTarget = Math.max(0, maxDailyEntries - (actual.ignored || 0));
+    if (dayTarget === 0) continue; // fully ignored — skip
+    if (actual.complete >= dayTarget) {
       currentStreak++;
     } else {
       break;
@@ -1257,10 +1267,15 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
                 Today: {routine?.todayCompleteCount || 0}/{maxDailyEntries}
                 {routine?.todayIncompleteCount > 0 && (
                   <span style={{ marginLeft: 4, color: 'var(--danger)' }}>
-                    ({routine.todayIncompleteCount} missed)
+                    · {routine.todayIncompleteCount} missed
                   </span>
                 )}
-                {routine?.isDoneForToday ? ' Done' : ` (${maxDailyEntries - (routine?.todayFilledCount || routine?.todayCompleteCount || 0)} pending)`}
+                {routine?.todayIgnoredCount > 0 && (
+                  <span style={{ marginLeft: 4, color: 'var(--text-muted)' }}>
+                    · {routine.todayIgnoredCount} ignored
+                  </span>
+                )}
+                {routine?.isDoneForToday ? ' · Done' : ` · ${maxDailyEntries - (routine?.todayFilledCount || routine?.todayCompleteCount || 0)} pending`}
               </span>
               {routine?.nextLogDate && (() => {
                 const lbl = getNextLogLabel(routine.nextLogDate);
@@ -1327,9 +1342,14 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
               Log Entry
             </button>
             <button className="btn-outline" style={{ width: 'auto', padding: '12px 14px', color: 'var(--danger)', borderColor: 'var(--danger)' }}
-              title="Mark Missed"
+              title="Mark Missed (counts against performance)"
               onClick={() => setMissedModal(true)}>
               <IoCloseCircle size={16} />
+            </button>
+            <button className="btn-outline" style={{ width: 'auto', padding: '12px 14px', color: 'var(--text-muted)' }}
+              title="Ignore (excluded from metrics)"
+              onClick={() => setIgnoreModal(true)}>
+              <IoClose size={16} />
             </button>
             <button className="btn-outline" style={{ width: 'auto', padding: '12px 14px' }}
               title="Quick Batch"
@@ -1446,8 +1466,14 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                         {entry.status === 'complete'
                           ? <IoCheckmarkCircle size={16} color="var(--success)" />
-                          : <IoCloseCircle size={16} color="var(--danger)" />}
-                        <span style={{ fontSize: 13, fontWeight: 500 }}>{entry.status}</span>
+                          : entry.status === 'ignored'
+                            ? <IoClose size={16} color="var(--text-muted)" />
+                            : <IoCloseCircle size={16} color="var(--danger)" />}
+                        <span style={{
+                          fontSize: 13, fontWeight: 500,
+                          color: entry.status === 'ignored' ? 'var(--text-muted)' : undefined,
+                          fontStyle: entry.status === 'ignored' ? 'italic' : undefined,
+                        }}>{entry.status}</span>
                         {entry.manualDate && <span className="badge badge-warning">Manual</span>}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatDateTime(entry.date)}</div>
@@ -1655,6 +1681,11 @@ function RoutineDetailModal({ open, routine, onClose, onDone, onClone }) {
       {missedModal && (
         <MarkMissedModal open={missedModal} routine={routine}
           onClose={() => setMissedModal(false)} onDone={() => { fetchEntries(); onDone(); }} />
+      )}
+
+      {ignoreModal && (
+        <IgnoreEntriesModal open={ignoreModal} routine={routine}
+          onClose={() => setIgnoreModal(false)} onDone={() => { fetchEntries(); onDone(); }} />
       )}
 
       <ConfirmModal open={confirmDelete} onClose={() => setConfirmDelete(false)}
@@ -1932,6 +1963,99 @@ function MarkMissedModal({ open, routine, onClose, onDone }) {
               disabled={loading}
               onClick={() => doMark(remaining)}>
               Mark All ({remaining})
+            </button>
+          )}
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function IgnoreEntriesModal({ open, routine, onClose, onDone }) {
+  const maxDaily = routine?.maxDailyEntries || 1;
+  const todayComplete = routine?.todayCompleteCount || 0;
+  const todayIncomplete = routine?.todayIncompleteCount || 0;
+  const todayIgnored = routine?.todayIgnoredCount || 0;
+  const todayFilled = routine?.todayFilledCount ?? (todayComplete + todayIncomplete + todayIgnored);
+  const remaining = Math.max(0, maxDaily - todayFilled);
+
+  const [count, setCount] = useState(1);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) setCount(Math.min(1, remaining));
+  }, [open]);
+
+  const doIgnore = async (n) => {
+    if (remaining <= 0) { toast.error('No remaining slots today'); return; }
+    setLoading(true);
+    try {
+      await ignoreRoutineEntries(routine._id, { count: n });
+      toast.success(`${n} slot${n > 1 ? 's' : ''} ignored`);
+      onClose(); onDone();
+    } catch (err) { toast.error(err.response?.data?.error || err.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleSubmit = (e) => { e.preventDefault(); doIgnore(count); };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Ignore Slots">
+      <form onSubmit={handleSubmit}>
+        <div style={{
+          padding: '10px 12px', background: 'rgba(118,210,219,0.08)',
+          borderRadius: 8, fontSize: 12, lineHeight: 1.5,
+          color: 'var(--text-secondary)', marginBottom: 12,
+          border: '1px solid rgba(118,210,219,0.2)',
+        }}>
+          <strong style={{ color: 'var(--primary)' }}>Ignore</strong> removes a slot from today's expected total.
+          It does <strong>not</strong> count as missed and won't break streaks or hurt your completion rate.
+          Use this when you start a routine late in the day and can't do the earlier slots.
+        </div>
+
+        <div style={{
+          padding: '8px 12px', background: 'var(--bg-input)', borderRadius: 8,
+          fontSize: 12, color: 'var(--text-muted)', marginBottom: 12,
+        }}>
+          Daily limit: <strong>{maxDaily}</strong> &middot;
+          Done: <strong>{todayComplete}</strong> &middot;
+          Missed: <strong>{todayIncomplete}</strong> &middot;
+          Ignored: <strong>{todayIgnored}</strong> &middot;
+          Remaining: <strong style={{ color: remaining > 0 ? 'var(--warning)' : 'var(--danger)' }}>{remaining}</strong>
+        </div>
+
+        <div className="form-group">
+          <label>How many slots to ignore?</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button type="button" className="btn-outline"
+              style={{ width: 40, height: 40, padding: 0, fontSize: 20, fontWeight: 700 }}
+              onClick={() => setCount(c => Math.max(1, c - 1))}>−</button>
+            <span style={{ fontSize: 28, fontWeight: 700, minWidth: 40, textAlign: 'center' }}>{count}</span>
+            <button type="button" className="btn-outline"
+              style={{ width: 40, height: 40, padding: 0, fontSize: 20, fontWeight: 700 }}
+              onClick={() => setCount(c => Math.min(remaining, c + 1))}>+</button>
+          </div>
+        </div>
+
+        <div style={{
+          padding: '10px 12px', background: 'var(--bg-input)', borderRadius: 8,
+          fontSize: 13, color: 'var(--text-muted)', marginBottom: 12,
+        }}>
+          Will ignore <strong style={{ color: 'var(--text-primary)' }}>{count}</strong>{' '}
+          of today's remaining slot{count > 1 ? 's' : ''}. Today's target drops to{' '}
+          <strong style={{ color: 'var(--primary)' }}>{Math.max(0, maxDaily - todayIgnored - count)}</strong>.
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="submit" className="btn-primary" style={{ flex: 1 }}
+            disabled={loading || remaining <= 0}>
+            {loading ? 'Ignoring...' : remaining <= 0 ? 'Nothing to Ignore' : `Ignore ${count} Slot${count > 1 ? 's' : ''}`}
+          </button>
+          {remaining > 1 && (
+            <button type="button" className="btn-outline" style={{ flex: 1 }}
+              disabled={loading}
+              onClick={() => doIgnore(remaining)}>
+              Ignore All ({remaining})
             </button>
           )}
         </div>
