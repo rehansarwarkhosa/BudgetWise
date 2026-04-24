@@ -122,13 +122,16 @@ export default function RichTextEditor({ open, initialContent, onSave, onClose, 
         </button>
       </div>
 
-      {/* Formatting Toolbar */}
+      {/* Formatting Toolbar — prevent default on mousedown/pointerdown so focus
+          never leaves the editor (keeps selection + keyboard on mobile) */}
       <div style={{
         display: 'flex', gap: 2, padding: '6px 8px',
         borderBottom: '1px solid var(--border)', background: 'var(--bg-card)',
         overflowX: 'auto', flexShrink: 0, alignItems: 'center',
         WebkitOverflowScrolling: 'touch',
       }}
+        onMouseDown={(e) => { if (e.target.tagName !== 'INPUT') e.preventDefault(); }}
+        onPointerDown={(e) => { if (e.target.tagName !== 'INPUT') e.preventDefault(); }}
         onClick={() => closeAllPickers()}>
 
         {/* Heading selector */}

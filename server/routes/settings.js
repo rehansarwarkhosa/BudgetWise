@@ -21,6 +21,7 @@ import WorkOrder from '../models/WorkOrder.js';
 import WorkOrderNote from '../models/WorkOrderNote.js';
 import PriceItem from '../models/PriceItem.js';
 import PriceEntry from '../models/PriceEntry.js';
+import Store from '../models/Store.js';
 import RoutineNote from '../models/RoutineNote.js';
 import StockItem from '../models/StockItem.js';
 import StockNote from '../models/StockNote.js';
@@ -222,7 +223,7 @@ router.post('/test-push', async (req, res, next) => {
 // Export all data
 router.get('/export', async (req, res, next) => {
   try {
-    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders, reminderNotes, eventFolders, events, eventContainers, eventEntries, aiResponses] = await Promise.all([
+    const [settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, stores, routineNotes, stockItems, stockNotes, reminders, reminderNotes, eventFolders, events, eventContainers, eventEntries, aiResponses] = await Promise.all([
       Settings.findOne(),
       Income.find(),
       Budget.find(),
@@ -244,6 +245,7 @@ router.get('/export', async (req, res, next) => {
       WorkOrderNote.find(),
       PriceItem.find(),
       PriceEntry.find(),
+      Store.find(),
       RoutineNote.find(),
       StockItem.find(),
       StockNote.find(),
@@ -258,7 +260,7 @@ router.get('/export', async (req, res, next) => {
     success(res, {
       exportDate: new Date().toISOString(),
       version: 1,
-      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, routineNotes, stockItems, stockNotes, reminders, reminderNotes, eventFolders, events, eventContainers, eventEntries, aiResponses,
+      settings, incomes, budgets, expenses, routines, routineEntries, savings, tags, topics, subTopics, notes, trails, trailNotes, fundEntries, auditLogs, budgetCategories, budgetTemplates, workOrders, workOrderNotes, priceItems, priceEntries, stores, routineNotes, stockItems, stockNotes, reminders, reminderNotes, eventFolders, events, eventContainers, eventEntries, aiResponses,
     });
   } catch (err) { next(err); }
 });
@@ -291,6 +293,7 @@ router.post('/import', async (req, res, next) => {
       workOrderNotes: await WorkOrderNote.find().lean(),
       priceItems: await PriceItem.find().lean(),
       priceEntries: await PriceEntry.find().lean(),
+      stores: await Store.find().lean(),
       routineNotes: await RoutineNote.find().lean(),
       stockItems: await StockItem.find().lean(),
       stockNotes: await StockNote.find().lean(),
@@ -312,7 +315,7 @@ router.post('/import', async (req, res, next) => {
         Tag.deleteMany({}), Topic.deleteMany({}), SubTopic.deleteMany({}), Note.deleteMany({}),
         Trail.deleteMany({}), TrailNote.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
         BudgetTemplate.deleteMany({}), WorkOrder.deleteMany({}), WorkOrderNote.deleteMany({}),
-        PriceItem.deleteMany({}), PriceEntry.deleteMany({}),
+        PriceItem.deleteMany({}), PriceEntry.deleteMany({}), Store.deleteMany({}),
         RoutineNote.deleteMany({}), StockItem.deleteMany({}), StockNote.deleteMany({}),
         Reminder.deleteMany({}), ReminderNote.deleteMany({}),
         EventFolder.deleteMany({}), Event.deleteMany({}), EventContainer.deleteMany({}), EventEntry.deleteMany({}),
@@ -340,6 +343,7 @@ router.post('/import', async (req, res, next) => {
       if (data.workOrderNotes?.length) await WorkOrderNote.insertMany(data.workOrderNotes);
       if (data.priceItems?.length) await PriceItem.insertMany(data.priceItems);
       if (data.priceEntries?.length) await PriceEntry.insertMany(data.priceEntries);
+      if (data.stores?.length) await Store.insertMany(data.stores);
       if (data.routineNotes?.length) await RoutineNote.insertMany(data.routineNotes);
       if (data.stockItems?.length) await StockItem.insertMany(data.stockItems);
       if (data.stockNotes?.length) await StockNote.insertMany(data.stockNotes);
@@ -390,7 +394,7 @@ router.post('/import', async (req, res, next) => {
         Tag.deleteMany({}), Topic.deleteMany({}), SubTopic.deleteMany({}), Note.deleteMany({}),
         Trail.deleteMany({}), TrailNote.deleteMany({}), FundEntry.deleteMany({}), AuditLog.deleteMany({}), BudgetCategory.deleteMany({}),
         BudgetTemplate.deleteMany({}), WorkOrder.deleteMany({}), WorkOrderNote.deleteMany({}),
-        PriceItem.deleteMany({}), PriceEntry.deleteMany({}),
+        PriceItem.deleteMany({}), PriceEntry.deleteMany({}), Store.deleteMany({}),
         RoutineNote.deleteMany({}), StockItem.deleteMany({}), StockNote.deleteMany({}),
         Reminder.deleteMany({}), ReminderNote.deleteMany({}),
         EventFolder.deleteMany({}), Event.deleteMany({}), EventContainer.deleteMany({}), EventEntry.deleteMany({}),
@@ -416,6 +420,7 @@ router.post('/import', async (req, res, next) => {
       if (snapshot.workOrderNotes.length) await WorkOrderNote.insertMany(snapshot.workOrderNotes);
       if (snapshot.priceItems.length) await PriceItem.insertMany(snapshot.priceItems);
       if (snapshot.priceEntries.length) await PriceEntry.insertMany(snapshot.priceEntries);
+      if (snapshot.stores?.length) await Store.insertMany(snapshot.stores);
       if (snapshot.routineNotes.length) await RoutineNote.insertMany(snapshot.routineNotes);
       if (snapshot.stockItems.length) await StockItem.insertMany(snapshot.stockItems);
       if (snapshot.stockNotes.length) await StockNote.insertMany(snapshot.stockNotes);
@@ -458,6 +463,7 @@ router.delete('/all-data', async (req, res, next) => {
       WorkOrderNote.deleteMany({}),
       PriceItem.deleteMany({}),
       PriceEntry.deleteMany({}),
+      Store.deleteMany({}),
       RoutineNote.deleteMany({}),
       StockItem.deleteMany({}),
       StockNote.deleteMany({}),
