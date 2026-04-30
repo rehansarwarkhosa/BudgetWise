@@ -27,6 +27,7 @@ import storeRoutes from './routes/stores.js';
 import eventRoutes from './routes/events.js';
 import aiRoutes from './routes/ai.js';
 import aiResponseRoutes from './routes/aiResponses.js';
+import fcmRoutes from './routes/fcm.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -54,6 +55,11 @@ app.use('/api/stores', storeRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/ai-responses', aiResponseRoutes);
+
+// FCM (NotifyHub): management at /api/fcm/*, plus the two top-level paths the app expects.
+app.use('/api/fcm', fcmRoutes);
+app.use('/api/ping', (req, res, next) => { req.url = '/ping'; fcmRoutes(req, res, next); });
+app.use('/api/register-device-token', (req, res, next) => { req.url = '/register-device-token'; fcmRoutes(req, res, next); });
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, data: { status: 'ok' } });

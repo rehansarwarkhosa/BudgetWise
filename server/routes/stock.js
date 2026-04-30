@@ -5,6 +5,7 @@ import StockNote from '../models/StockNote.js';
 import Settings from '../models/Settings.js';
 import AuditLog from '../models/AuditLog.js';
 import { success, error } from '../utils/response.js';
+import { sendFcmToAll } from '../utils/fcm.js';
 
 const router = Router();
 
@@ -42,6 +43,13 @@ const sendStockAlert = async (items) => {
   if (pushResult.sent) {
     await AuditLog.create({ action: 'PUSH_NOTIFY', entity: 'StockItem', details: `Stock alert push sent: ${pushMessage}` });
   }
+
+  // FCM (NotifyHub) — dispatch alongside OneSignal
+  const fcmResult = await sendFcmToAll(pushTitle, pushMessage, { deepLink: `${process.env.APP_URL || ''}/budget`, category: 'alert' });
+  await AuditLog.create({
+    action: fcmResult.sent ? 'PUSH_NOTIFY' : 'PUSH_SKIP', entity: 'StockItem',
+    details: fcmResult.sent ? `FCM stock alert sent to ${fcmResult.recipients} device(s)` : `FCM skipped: ${fcmResult.reason}`,
+  });
 
   // Email notification
   if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) return;

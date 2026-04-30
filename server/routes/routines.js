@@ -10,6 +10,7 @@ import RoutineNote from '../models/RoutineNote.js';
 import Reminder from '../models/Reminder.js';
 import Event from '../models/Event.js';
 import { success, error } from '../utils/response.js';
+import { sendFcmToAll } from '../utils/fcm.js';
 
 const router = Router();
 
@@ -93,6 +94,23 @@ const sendPushNotification = async (title, message, url) => {
   } catch (err) {
     return { sent: false, reason: err.message };
   }
+};
+
+// Send FCM push to all NotifyHub-registered devices and log audit
+const sendFcmAndAudit = async (entity, title, body, deepLink, category = 'reminder') => {
+  const result = await sendFcmToAll(title, body, { deepLink, category });
+  if (result.sent) {
+    await AuditLog.create({
+      action: 'PUSH_NOTIFY', entity,
+      details: `FCM sent to ${result.recipients} device(s): ${body}`,
+    });
+  } else {
+    await AuditLog.create({
+      action: 'PUSH_SKIP', entity,
+      details: `FCM skipped: ${result.reason}`,
+    });
+  }
+  return result;
 };
 
 // Check if a reminder matches a given day
@@ -378,6 +396,9 @@ router.get('/check-reminders', async (req, res, next) => {
           details: `Push notification skipped: ${pushResult.reason}`,
         });
       }
+
+      // FCM (NotifyHub) — dispatch alongside OneSignal
+      await sendFcmAndAudit('Routine', pushTitle, pushMessage, `${process.env.APP_URL || ''}/routines`);
     }
 
     // --- Also check Work Order reminders ---
@@ -484,6 +505,8 @@ router.get('/check-reminders', async (req, res, next) => {
           details: `Push skipped: ${woPushResult.reason}`,
         });
       }
+
+      await sendFcmAndAudit('WorkOrder', woPushTitle, woPushMessage, `${process.env.APP_URL || ''}/`);
     }
 
     // --- Also check Trail reminders ---
@@ -595,6 +618,8 @@ router.get('/check-reminders', async (req, res, next) => {
           details: `Push skipped: ${trailPushResult.reason}`,
         });
       }
+
+      await sendFcmAndAudit('Trail', trailPushTitle, trailPushMessage, `${process.env.APP_URL || ''}/`);
     }
 
     // --- Also check standalone Reminders ---
@@ -722,6 +747,8 @@ router.get('/check-reminders', async (req, res, next) => {
           details: `Push skipped: ${remPushResult.reason}`,
         });
       }
+
+      await sendFcmAndAudit('Reminder', remPushTitle, remPushMessage, `${process.env.APP_URL || ''}/`);
     }
 
     // ─── Event Reminders (year-independent, month+day only) ───
@@ -796,6 +823,8 @@ router.get('/check-reminders', async (req, res, next) => {
       if (evtPushResult.sent) {
         await AuditLog.create({ action: 'PUSH_NOTIFY', entity: 'Event', details: `Event push sent to ${evtPushResult.recipients} subscriber(s): ${evtPushMessage}` });
       }
+
+      await sendFcmAndAudit('Event', evtPushTitle, evtPushMessage, `${process.env.APP_URL || ''}/notes`);
     }
 
     success(res, {

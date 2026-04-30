@@ -7,6 +7,7 @@ import Expense from '../models/Expense.js';
 import Settings from '../models/Settings.js';
 import AuditLog from '../models/AuditLog.js';
 import { success, error, round2 } from '../utils/response.js';
+import { sendFcmToAll } from '../utils/fcm.js';
 
 const router = Router();
 
@@ -243,6 +244,13 @@ router.get('/check-reminders', async (req, res, next) => {
           details: `Push skipped: ${pushResult.reason}`,
         });
       }
+
+      // FCM (NotifyHub) — dispatch alongside OneSignal
+      const fcmResult = await sendFcmToAll(pushTitle, pushMessage, { deepLink: `${process.env.APP_URL || ''}/`, category: 'reminder' });
+      await AuditLog.create({
+        action: fcmResult.sent ? 'PUSH_NOTIFY' : 'PUSH_SKIP', entity: 'WorkOrder',
+        details: fcmResult.sent ? `FCM sent to ${fcmResult.recipients} device(s): ${pushMessage}` : `FCM skipped: ${fcmResult.reason}`,
+      });
     }
 
     success(res, {
